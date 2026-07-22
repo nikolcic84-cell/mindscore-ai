@@ -402,7 +402,9 @@ const startPremiumCheckout = async () => {
 
     setIsCheckoutRedirecting(true);
 
-    const response = await fetch(apiUrl(`${API_BASE}/create-checkout-session`), {
+    const checkoutSessionUrl = apiUrl(`${API_BASE}/create-checkout-session`);
+
+    const response = await fetch(checkoutSessionUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -417,7 +419,17 @@ const startPremiumCheckout = async () => {
       }),
     });
 
-    const data = await response.json();
+    const rawBody = await response.text();
+    let data;
+
+    try {
+      data = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      throw new Error(
+        `Checkout endpoint returned non-JSON response from ${checkoutSessionUrl}.`
+      );
+    }
+
     if (!response.ok) {
       throw new Error(data.error || "Unable to create checkout session.");
     }
