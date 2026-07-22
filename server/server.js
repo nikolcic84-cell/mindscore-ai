@@ -18,9 +18,10 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = "0.0.0.0";
-const CHECKOUT_SUCCESS_URL =
-  "http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}";
-const CHECKOUT_CANCEL_URL = "http://localhost:5173/payment-cancelled";
+const FRONTEND_BASE_URL =
+  process.env.FRONTEND_BASE_URL || process.env.BACKEND_BASE_URL || "http://localhost:5173";
+const CHECKOUT_SUCCESS_URL = `${FRONTEND_BASE_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`;
+const CHECKOUT_CANCEL_URL = `${FRONTEND_BASE_URL}/payment-cancelled`;
 const STORE_PATH = path.join(__dirname, "data", "payments-store.json");
 const REPORTS_DIR = path.join(__dirname, "data", "reports");
 const DOWNLOAD_TOKEN_TTL_MS = 1000 * 60 * 60 * 4;

@@ -5,11 +5,7 @@ import "./App.css";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 
 const SHOW_TEST_REPORT_BUTTON = true;
-const BACKEND_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
-    ? "http://localhost:3001"
-    : "");
+const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 const apiUrl = (path) => `${BACKEND_URL}${path}`;
 const API_BASE = "/api";
