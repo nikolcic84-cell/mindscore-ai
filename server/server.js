@@ -297,30 +297,31 @@ const sendPdfEmail = async ({ toEmail, assessmentType, pdfBuffer }) => {
   });
 };
 
-const fulfillCheckoutSession = async (session, eventId) => {
+const fulfillCheckoutSession = async (session, eventId = "") => {
   const sessionId = toSafeText(session.id);
   if (!sessionId) throw new Error("Missing session id in webhook event");
+  const eventKey = toSafeText(eventId, `session_${sessionId}`);
 
   const metadata = session.metadata || {};
   const assessmentId = toSafeText(metadata.assessmentId);
 
   const store = await readStore();
 
-  if (store.processedEventIds[eventId]) {
-    console.log("[stripe] idempotent skip: event already processed", { eventId, sessionId });
+  if (store.processedEventIds[eventKey]) {
+    console.log("[stripe] idempotent skip: event already processed", { eventId: eventKey, sessionId });
     return;
   }
 
   const existingPurchase = store.purchases[sessionId];
   if (existingPurchase?.fulfillmentStatus === "processing") {
-    console.log("[stripe] idempotent skip: purchase already processing", { sessionId, eventId });
+    console.log("[stripe] idempotent skip: purchase already processing", { sessionId, eventId: eventKey });
     return;
   }
 
   if (existingPurchase?.fulfillmentStatus === "completed") {
-    store.processedEventIds[eventId] = new Date().toISOString();
+    store.processedEventIds[eventKey] = new Date().toISOString();
     await writeStore(store);
-    console.log("[stripe] idempotent skip: purchase already fulfilled", { sessionId, eventId });
+    console.log("[stripe] idempotent skip: purchase already fulfilled", { sessionId, eventId: eventKey });
     return;
   }
 
@@ -391,7 +392,7 @@ const fulfillCheckoutSession = async (session, eventId) => {
       nextPurchase.pdfPath = pdfPath;
       nextPurchase.emailSentAt = new Date().toISOString();
       nextStore.purchases[sessionId] = nextPurchase;
-      nextStore.processedEventIds[eventId] = new Date().toISOString();
+      nextStore.processedEventIds[eventKey] = new Date().toISOString();
     });
   } catch (error) {
     console.error("[fulfillment] fulfillment error", {
@@ -582,20 +583,43 @@ app.get("/api/payment-session/:sessionId/verify", async (req, res) => {
 
     const store = await readStore();
     const purchase = store.purchases[sessionId];
+    const paid = session.payment_status === "paid";
+
+    const shouldReconcileFulfillment =
+      paid &&
+      (!purchase ||
+        purchase.fulfillmentStatus === "pending" ||
+        purchase.fulfillmentStatus === "error" ||
+        purchase.fulfillmentStatus === "unknown");
+
+    if (shouldReconcileFulfillment) {
+      try {
+        await fulfillCheckoutSession(session, `verify_${sessionId}`);
+      } catch (error) {
+        console.error("[payment] verify reconciliation failed", {
+          sessionId,
+          message: error.message,
+        });
+      }
+    }
+
+    const refreshedStore = await readStore();
+    const refreshedPurchase = refreshedStore.purchases[sessionId];
     const customerEmail =
-      toSafeText(purchase?.customerEmail) ||
+      toSafeText(refreshedPurchase?.customerEmail) ||
       toSafeText(session.customer_details?.email) ||
       toSafeText(session.customer_email);
 
-    const paid = session.payment_status === "paid";
-    const ready = purchase?.fulfillmentStatus === "completed" && !!purchase?.pdfPath;
+    const ready =
+      refreshedPurchase?.fulfillmentStatus === "completed" &&
+      !!refreshedPurchase?.pdfPath;
 
     return res.json({
       sessionId,
       paid,
       ready,
       customerEmail,
-      fulfillmentStatus: purchase?.fulfillmentStatus || "unknown",
+      fulfillmentStatus: refreshedPurchase?.fulfillmentStatus || "unknown",
       downloadUrl: ready
         ? `/api/premium-report/download?token=${encodeURIComponent(
             createDownloadToken(sessionId, customerEmail)
