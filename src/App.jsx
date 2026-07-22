@@ -5,7 +5,14 @@ import "./App.css";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 
 const SHOW_TEST_REPORT_BUTTON = true;
-const BACKEND_URL = "http://localhost:3001";
+const BACKEND_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "http://localhost:3001"
+    : "");
+
+const apiUrl = (path) => `${BACKEND_URL}${path}`;
+const API_BASE = "/api";
 
 const tests = {
   mental: {
@@ -164,7 +171,7 @@ function PaymentSuccessPage() {
 
       try {
         const response = await fetch(
-          `${BACKEND_URL}/api/payment-session/${encodeURIComponent(sessionId)}/verify`
+          apiUrl(`${API_BASE}/payment-session/${encodeURIComponent(sessionId)}/verify`)
         );
         const data = await response.json();
 
@@ -310,7 +317,7 @@ const testAiReport = async () => {
 console.log("DIMENSION SCORES:", dimensionScores);
 
     const response = await fetch(
-      "http://localhost:3001/api/generate-report",
+      apiUrl(`${API_BASE}/generate-report`),
       {
         method: "POST",
         headers: {
@@ -399,7 +406,7 @@ const startPremiumCheckout = async () => {
 
     setIsCheckoutRedirecting(true);
 
-    const response = await fetch(`${BACKEND_URL}/api/create-checkout-session`, {
+    const response = await fetch(apiUrl(`${API_BASE}/create-checkout-session`), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

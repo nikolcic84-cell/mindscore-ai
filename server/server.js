@@ -623,10 +623,14 @@ app.get("/api/premium-report/download", async (req, res) => {
   }
 });
 
+app.use("/api", (req, res) => {
+  return res.status(404).json({ error: "API route not found." });
+});
+
 app.use(express.static(FRONTEND_DIST_DIR));
 
 app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/api/")) {
+  if (req.path === "/api" || req.path.startsWith("/api/")) {
     return next();
   }
 
