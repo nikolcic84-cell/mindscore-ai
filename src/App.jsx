@@ -166,9 +166,7 @@ function PaymentSuccessPage() {
       }
 
       try {
-        const verifySessionUrl = apiUrl(
-          `${API_BASE}/payment-session/${encodeURIComponent(sessionId)}/verify`
-        );
+        const verifySessionUrl = `${API_BASE}/payment-session/${encodeURIComponent(sessionId)}/verify`;
 
         const response = await fetch(verifySessionUrl);
         const rawBody = await response.text();
