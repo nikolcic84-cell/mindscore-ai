@@ -20,6 +20,8 @@ const HOST = "0.0.0.0";
 const CHECKOUT_SUCCESS_URL =
   "http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}";
 const CHECKOUT_CANCEL_URL = "http://localhost:5173/payment-cancelled";
+const DIST_DIR = path.resolve(__dirname, "../dist");
+const DIST_INDEX_PATH = path.join(DIST_DIR, "index.html");
 const STORE_PATH = path.join(__dirname, "data", "payments-store.json");
 const REPORTS_DIR = path.join(__dirname, "data", "reports");
 const DOWNLOAD_TOKEN_TTL_MS = 1000 * 60 * 60 * 4;
@@ -422,10 +424,6 @@ app.post(
 
 app.use(express.json({ limit: "2mb" }));
 
-app.get("/", (req, res) => {
-  res.send("MindScore AI Server running.");
-});
-
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
@@ -606,6 +604,12 @@ app.get("/api/premium-report/download", async (req, res) => {
     console.error("[payment] download token error", error.message);
     return res.status(401).json({ error: "Invalid or expired token." });
   }
+});
+
+app.use(express.static(DIST_DIR));
+
+app.get(/^(?!\/api\/).*/, (req, res) => {
+  res.sendFile(DIST_INDEX_PATH);
 });
 
 app.listen(PORT, HOST, () => {
