@@ -166,10 +166,21 @@ function PaymentSuccessPage() {
       }
 
       try {
-        const response = await fetch(
-          apiUrl(`${API_BASE}/payment-session/${encodeURIComponent(sessionId)}/verify`)
+        const verifySessionUrl = apiUrl(
+          `${API_BASE}/payment-session/${encodeURIComponent(sessionId)}/verify`
         );
-        const data = await response.json();
+
+        const response = await fetch(verifySessionUrl);
+        const rawBody = await response.text();
+
+        let data;
+        try {
+          data = rawBody ? JSON.parse(rawBody) : {};
+        } catch {
+          throw new Error(
+            `Payment verification endpoint returned non-JSON response from ${verifySessionUrl}.`
+          );
+        }
 
         if (!response.ok) {
           throw new Error(data.error || "Payment verification failed.");
