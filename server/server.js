@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import Stripe from "stripe";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
+import { existsSync } from "fs";
 import path from "path";
 import { promises as fs } from "fs";
 import { fileURLToPath } from "url";
@@ -20,8 +21,6 @@ const HOST = "0.0.0.0";
 const CHECKOUT_SUCCESS_URL =
   "http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}";
 const CHECKOUT_CANCEL_URL = "http://localhost:5173/payment-cancelled";
-const DIST_DIR = path.resolve(__dirname, "../dist");
-const DIST_INDEX_PATH = path.join(DIST_DIR, "index.html");
 const STORE_PATH = path.join(__dirname, "data", "payments-store.json");
 const REPORTS_DIR = path.join(__dirname, "data", "reports");
 const DOWNLOAD_TOKEN_TTL_MS = 1000 * 60 * 60 * 4;
@@ -61,6 +60,24 @@ const mailTransport = nodemailer.createTransport({
 
 const app = express();
 app.use(cors());
+
+const DIST_CANDIDATES = [
+  path.resolve(__dirname, "../dist"),
+  path.resolve(process.cwd(), "../dist"),
+  path.resolve(process.cwd(), "dist"),
+];
+
+const FRONTEND_DIST_DIR =
+  DIST_CANDIDATES.find((candidate) => existsSync(path.join(candidate, "index.html"))) ||
+  DIST_CANDIDATES[0];
+const FRONTEND_INDEX_PATH = path.join(FRONTEND_DIST_DIR, "index.html");
+
+if (!existsSync(FRONTEND_INDEX_PATH)) {
+  console.warn("[startup] Frontend dist/index.html not found", {
+    checkedPaths: DIST_CANDIDATES,
+    selectedPath: FRONTEND_DIST_DIR,
+  });
+}
 
 const toSafeText = (value, fallback = "") => {
   if (value === null || value === undefined) return fallback;
@@ -606,10 +623,14 @@ app.get("/api/premium-report/download", async (req, res) => {
   }
 });
 
-app.use(express.static(DIST_DIR));
+app.use(express.static(FRONTEND_DIST_DIR));
 
-app.get(/^(?!\/api\/).*/, (req, res) => {
-  res.sendFile(DIST_INDEX_PATH);
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    return next();
+  }
+
+  return res.sendFile(FRONTEND_INDEX_PATH);
 });
 
 app.listen(PORT, HOST, () => {
