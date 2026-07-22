@@ -146,6 +146,7 @@ function PaymentSuccessPage() {
     ready: false,
     customerEmail: "",
     downloadUrl: "",
+    isDownloading: false,
     error: "",
   });
 
@@ -216,6 +217,69 @@ function PaymentSuccessPage() {
     };
   }, [sessionId]);
 
+  const handleDownloadPdf = async () => {
+    if (!state.downloadUrl) {
+      setState((previous) => ({
+        ...previous,
+        error: "Download URL is missing. Please refresh the page and try again.",
+      }));
+      return;
+    }
+
+    setState((previous) => ({
+      ...previous,
+      isDownloading: true,
+      error: "",
+    }));
+
+    try {
+      const response = await fetch(state.downloadUrl);
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      const contentDisposition = response.headers.get("content-disposition") || "";
+
+      if (!response.ok) {
+        const rawError = await response.text();
+        throw new Error(rawError || "Failed to download PDF.");
+      }
+
+      if (!contentType.includes("application/pdf")) {
+        throw new Error("Download endpoint did not return a PDF file.");
+      }
+
+      if (!contentDisposition.toLowerCase().includes("attachment")) {
+        throw new Error("Download response is missing attachment headers.");
+      }
+
+      const blob = await response.blob();
+      if (!blob.size) {
+        throw new Error("Downloaded PDF is empty.");
+      }
+
+      const nameMatch =
+        /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition) || /filename="?([^";]+)"?/i.exec(contentDisposition);
+      const fileName = decodeURIComponent(nameMatch?.[1] || "MindScore-AI-Premium-Report.pdf");
+
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setState((previous) => ({
+        ...previous,
+        error: error.message || "Failed to download Premium PDF.",
+      }));
+    } finally {
+      setState((previous) => ({
+        ...previous,
+        isDownloading: false,
+      }));
+    }
+  };
+
   return (
     <main className="page">
       <section className="result-card payment-status-card">
@@ -237,9 +301,9 @@ function PaymentSuccessPage() {
 
         <div className="result-actions">
           {state.ready ? (
-            <a className="primary-btn" href={state.downloadUrl}>
-              Download Premium PDF
-            </a>
+            <button className="primary-btn" onClick={handleDownloadPdf} disabled={state.isDownloading}>
+              {state.isDownloading ? "Downloading..." : "Download Premium PDF"}
+            </button>
           ) : (
             <button className="primary-btn" disabled>
               Download Premium PDF

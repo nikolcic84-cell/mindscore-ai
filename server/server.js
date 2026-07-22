@@ -597,7 +597,7 @@ app.get("/api/payment-session/:sessionId/verify", async (req, res) => {
       customerEmail,
       fulfillmentStatus: purchase?.fulfillmentStatus || "unknown",
       downloadUrl: ready
-        ? `${process.env.BACKEND_BASE_URL || `http://localhost:${PORT}`}/api/premium-report/download?token=${encodeURIComponent(
+        ? `/api/premium-report/download?token=${encodeURIComponent(
             createDownloadToken(sessionId, customerEmail)
           )}`
         : null,
