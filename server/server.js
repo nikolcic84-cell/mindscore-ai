@@ -297,7 +297,8 @@ const sendPdfEmail = async ({ toEmail, assessmentType, pdfBuffer }) => {
   });
 };
 
-const fulfillCheckoutSession = async (session, eventId = "") => {
+const fulfillCheckoutSession = async (session, eventId = "", options = {}) => {
+  const allowEmailFailure = Boolean(options.allowEmailFailure);
   const sessionId = toSafeText(session.id);
   if (!sessionId) throw new Error("Missing session id in webhook event");
   const eventKey = toSafeText(eventId, `session_${sessionId}`);
@@ -375,22 +376,39 @@ const fulfillCheckoutSession = async (session, eventId = "") => {
       path: pdfPath,
     });
 
-    await sendPdfEmail({
-      toEmail: purchase.customerEmail,
-      assessmentType: purchase.assessmentType,
-      pdfBuffer,
-    });
-    console.log("[fulfillment] email sent", {
-      sessionId,
-      email: purchase.customerEmail,
-    });
+    let emailSent = true;
+    let emailError = "";
+    try {
+      await sendPdfEmail({
+        toEmail: purchase.customerEmail,
+        assessmentType: purchase.assessmentType,
+        pdfBuffer,
+      });
+      console.log("[fulfillment] email sent", {
+        sessionId,
+        email: purchase.customerEmail,
+      });
+    } catch (error) {
+      emailSent = false;
+      emailError = error.message;
+      if (!allowEmailFailure) throw error;
+      console.error("[fulfillment] email send failed (continuing)", {
+        sessionId,
+        message: error.message,
+      });
+    }
 
     await withStoreMutation(async (nextStore) => {
       const nextPurchase = nextStore.purchases[sessionId] || purchase;
       nextPurchase.fulfillmentStatus = "completed";
       nextPurchase.fulfilledAt = new Date().toISOString();
       nextPurchase.pdfPath = pdfPath;
-      nextPurchase.emailSentAt = new Date().toISOString();
+      if (emailSent) {
+        nextPurchase.emailSentAt = new Date().toISOString();
+        delete nextPurchase.emailError;
+      } else {
+        nextPurchase.emailError = emailError;
+      }
       nextStore.purchases[sessionId] = nextPurchase;
       nextStore.processedEventIds[eventKey] = new Date().toISOString();
     });
@@ -638,11 +656,56 @@ app.get("/api/premium-report/download", async (req, res) => {
     if (!token) return res.status(400).json({ error: "Missing token." });
 
     const payload = verifyDownloadToken(token);
+    console.log("[download] request received", {
+      sessionId: payload.sid,
+      email: payload.email,
+    });
+
     const store = await readStore();
-    const purchase = store.purchases[payload.sid];
+    let purchase = store.purchases[payload.sid];
+
+    console.log("[download] token lookup result", {
+      sessionId: payload.sid,
+      found: Boolean(purchase),
+      fulfillmentStatus: purchase?.fulfillmentStatus || "missing",
+      hasPdfPath: Boolean(purchase?.pdfPath),
+    });
 
     if (!purchase || purchase.fulfillmentStatus !== "completed" || !purchase.pdfPath) {
-      return res.status(404).json({ error: "Report not ready." });
+      const session = await stripe.checkout.sessions.retrieve(payload.sid);
+      if (session.payment_status !== "paid") {
+        return res.status(404).json({ error: "Report not ready: payment not completed." });
+      }
+
+      try {
+        console.log("[download] attempting reconciliation", {
+          sessionId: payload.sid,
+        });
+        await fulfillCheckoutSession(session, `download_${payload.sid}`, {
+          allowEmailFailure: true,
+        });
+      } catch (error) {
+        console.error("[download] reconciliation failed", {
+          sessionId: payload.sid,
+          message: error.message,
+        });
+      }
+
+      const refreshedStore = await readStore();
+      purchase = refreshedStore.purchases[payload.sid];
+
+      console.log("[download] post-reconciliation lookup", {
+        sessionId: payload.sid,
+        found: Boolean(purchase),
+        fulfillmentStatus: purchase?.fulfillmentStatus || "missing",
+        hasPdfPath: Boolean(purchase?.pdfPath),
+      });
+    }
+
+    if (!purchase || purchase.fulfillmentStatus !== "completed" || !purchase.pdfPath) {
+      return res.status(404).json({
+        error: "Report not ready. Fulfillment data is unavailable on this instance.",
+      });
     }
 
     if (toSafeText(purchase.customerEmail).toLowerCase() !== toSafeText(payload.email).toLowerCase()) {
@@ -650,6 +713,11 @@ app.get("/api/premium-report/download", async (req, res) => {
     }
 
     const pdfBuffer = await fs.readFile(purchase.pdfPath);
+    console.log("[download] serving PDF", {
+      sessionId: payload.sid,
+      pdfPath: purchase.pdfPath,
+      bytes: pdfBuffer.length,
+    });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=MindScore-AI-Premium-Report.pdf");
     return res.send(pdfBuffer);

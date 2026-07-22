@@ -218,6 +218,12 @@ function PaymentSuccessPage() {
   }, [sessionId]);
 
   const handleDownloadPdf = async () => {
+    console.log("[download-click] handler start", {
+      sessionId,
+      ready: state.ready,
+      hasDownloadUrl: Boolean(state.downloadUrl),
+    });
+
     if (!state.downloadUrl) {
       setState((previous) => ({
         ...previous,
@@ -225,6 +231,8 @@ function PaymentSuccessPage() {
       }));
       return;
     }
+
+    console.log("[download-click] requested URL", state.downloadUrl);
 
     setState((previous) => ({
       ...previous,
