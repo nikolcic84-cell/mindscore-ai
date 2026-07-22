@@ -18,10 +18,11 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = "0.0.0.0";
-const FRONTEND_BASE_URL =
-  process.env.FRONTEND_BASE_URL || process.env.BACKEND_BASE_URL || "http://localhost:5173";
+const rawFrontendBaseUrl =
+  process.env.FRONTEND_BASE_URL || (process.env.NODE_ENV === "production" ? "" : "http://localhost:5173");
+const FRONTEND_BASE_URL = rawFrontendBaseUrl.replace(/\/+$/, "");
 const CHECKOUT_SUCCESS_URL = `${FRONTEND_BASE_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`;
-const CHECKOUT_CANCEL_URL = `${FRONTEND_BASE_URL}/payment-cancelled`;
+const CHECKOUT_CANCEL_URL = `${FRONTEND_BASE_URL}/`;
 const STORE_PATH = path.join(__dirname, "data", "payments-store.json");
 const REPORTS_DIR = path.join(__dirname, "data", "reports");
 const DOWNLOAD_TOKEN_TTL_MS = 1000 * 60 * 60 * 4;
@@ -40,6 +41,10 @@ const REQUIRED_ENV = [
 const missingRequired = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missingRequired.length > 0) {
   console.warn("[startup] Missing environment variables:", missingRequired.join(", "));
+}
+
+if (!FRONTEND_BASE_URL) {
+  console.warn("[startup] Missing FRONTEND_BASE_URL. Set it in production environment.");
 }
 
 const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -468,6 +473,12 @@ app.post("/api/generate-report", async (req, res) => {
 
 app.post("/api/create-checkout-session", async (req, res) => {
   try {
+    if (!FRONTEND_BASE_URL) {
+      return res.status(500).json({
+        error: "Server configuration error: FRONTEND_BASE_URL is not set.",
+      });
+    }
+
     const {
       customerEmail,
       assessmentType,

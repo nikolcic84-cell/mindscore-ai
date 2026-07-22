@@ -32,6 +32,7 @@ Do not commit real values. Configure these in Render:
 - SMTP_PASS
 - SMTP_FROM_EMAIL
 - BACKEND_BASE_URL
+- FRONTEND_BASE_URL
 - DOWNLOAD_TOKEN_SECRET
 - PORT (optional on Render, Render sets this automatically)
 
@@ -46,5 +47,7 @@ Do not commit real values. Configure these in Render:
 - The backend listens on process.env.PORT and host 0.0.0.0.
 - BACKEND_BASE_URL should be set to your deployed Render URL, for example:
   https://mindscore-ai-backend.onrender.com
+- FRONTEND_BASE_URL must be set to your deployed frontend URL. For this production deployment:
+  https://mindscore-ai.onrender.com
 - Stripe webhook endpoint to register in Stripe Dashboard:
   https://YOUR_RENDER_BACKEND_URL/api/stripe/webhook
