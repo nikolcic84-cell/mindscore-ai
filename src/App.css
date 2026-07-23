@@ -1234,18 +1234,6 @@ p {
   margin-top: 8px;
 }
 
-.test-report-button {
-  border: 1px dashed rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.12);
-  color: #f3f8ff;
-  font-size: 0.95rem;
-}
-
-.test-report-button:disabled {
-  opacity: 0.75;
-  cursor: wait;
-}
-
 .email-box input {
   margin-bottom: 0;
 }

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { calculateDimensions } from "./psychology/dimensions";
-import { generatePremiumPdf } from "./premiumPdfGenerator";
 import "./App.css";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 
@@ -127,15 +126,6 @@ const answers = [
   { icon: "😐", text: "Sometimes true", points: 3 },
   { icon: "🤔", text: "Rarely true", points: 2 },
   { icon: "❌", text: "Not like me at all", points: 1 },
-];
-
-const loadingMessages = [
-  "Analyzing your response patterns…",
-  "Comparing your five assessment dimensions…",
-  "Identifying strengths and growth opportunities…",
-  "Structuring your personalized recommendations…",
-  "Building your 30-day action plan…",
-  "Preparing your premium PDF…",
 ];
 
 const LEGAL_LAST_UPDATED = "July 23, 2026";
@@ -553,113 +543,15 @@ function AssessmentApp() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
   const [email, setEmail] = useState("");
-  const [aiReport, setAiReport] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isCheckoutRedirecting, setIsCheckoutRedirecting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
-  const [generationMessage, setGenerationMessage] = useState(loadingMessages[0]);
   const [userAnswers, setUserAnswers] = useState([]);
 
   const test = selectedTest ? tests[selectedTest] : null;
   const dashboardScores =
-  selectedTest && userAnswers.length > 0
-    ? calculateDimensions(userAnswers)
-    : [];
-  
-useEffect(() => {
-  if (!isGenerating) return undefined;
-
-  let currentIndex = 0;
-  setGenerationMessage(loadingMessages[0]);
-
-  const interval = window.setInterval(() => {
-    currentIndex = (currentIndex + 1) % loadingMessages.length;
-    setGenerationMessage(loadingMessages[currentIndex]);
-  }, 1400);
-
-  return () => window.clearInterval(interval);
-}, [isGenerating]);
-
-const testAiReport = async () => {
-  try {
-    setIsGenerating(true);
-    setAiReport("");
-    setGenerationMessage(loadingMessages[0]);
-    const dimensionScores = calculateDimensions(userAnswers);
-
-console.log("DIMENSION SCORES:", dimensionScores);
-
-    const response = await fetch(
-      apiUrl(`${API_BASE}/generate-report`),
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-  testName: test?.title || selectedTest || "MindScore Test",
-  score: Math.round(
-    (score / (test.questions.length * 5)) * 100
-  ),
-  answers: userAnswers,
-  dimensions: dimensionScores,
-}),
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        data.error || "Greška pri generisanju izveštaja."
-      );
-    }
-
-    setAiReport(data.report);
-  } catch (error) {
-    console.error("Greška:", error);
-    alert(error.message);
-  } finally {
-    setIsGenerating(false);
-    setGenerationMessage(loadingMessages[0]);
-  }
-};
-const downloadPdf = async () => {
-  if (!aiReport) {
-    alert("Prvo generiši AI izveštaj.");
-    return;
-  }
-
-  try {
-    const finalScore = test
-      ? Math.round((score / (test.questions.length * 5)) * 100)
-      : 0;
-
-    const assessmentDate = new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-
-    const profileDimensions =
-      dashboardScores.length > 0
-        ? dashboardScores
-        : calculateDimensions(userAnswers);
-
-    const doc = await generatePremiumPdf({
-      reportText: aiReport,
-      profileDimensions,
-      finalScore,
-      assessmentDate,
-      selectedTestTitle: test?.title || selectedTest || "MindScore Assessment",
-    });
-
-    doc.save("MindScore-AI-Report.pdf");
-  } catch (error) {
-    console.error("PDF generation error:", error);
-    alert("PDF nije mogao da se generiše. Pogledaj Console za grešku.");
-  }
-};
+    selectedTest && userAnswers.length > 0
+      ? calculateDimensions(userAnswers)
+      : [];
 
 const startPremiumCheckout = async () => {
   try {
@@ -727,7 +619,6 @@ function startTest(key) {
   setCurrentQuestion(0);
   setScore(0);
   setEmail("");
-  setAiReport("");
   setCheckoutError("");
   setIsCheckoutRedirecting(false);
   setUserAnswers([]);
@@ -991,31 +882,6 @@ function getLevel(finalScore) {
           {checkoutError && <p className="payment-error">{checkoutError}</p>}
           <p className="premium-supporting-line">€4.99 • Instant access • Downloadable PDF</p>
           <p className="premium-trust-line">Secure payment powered by Stripe</p>
-
-{isGenerating && (
-  <div className="ai-loading-panel" role="status" aria-live="polite">
-    <div className="ai-loading-spinner" aria-hidden="true">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-    <p className="ai-loading-title">Preparing your premium report</p>
-    <p className="ai-loading-message">{generationMessage}</p>
-    <p className="ai-loading-hint">This may take a moment. Please keep this page open.</p>
-  </div>
-)}
-{aiReport && (
-  <div className="ai-report-box">
-    <h3>Your AI Report</h3>
-    <pre>{aiReport}</pre>
-    <button
-  className="primary-btn"
-  onClick={downloadPdf}
->
-  Download PDF
-</button>
-  </div>
-)}
 
             <button className="secondary-btn" onClick={restart}>
               Back to all tests
