@@ -280,9 +280,9 @@ const generatePremiumPdfBuffer = async ({
 const sendPdfEmail = async ({ toEmail, assessmentType, pdfBuffer }) => {
   const subject = "Your MindScore AI Premium Report";
   const text = [
-    "Payment successful.",
-    "Your Premium PDF report is attached to this email.",
-    "Thank you for using MindScore AI.",
+    "Thank you for your purchase.",
+    "Your Premium Report is attached to this email.",
+    "For support, contact: aimindscore@gmail.com.",
     `Assessment type: ${assessmentType}`,
   ].join("\n");
 
@@ -301,8 +301,7 @@ const sendPdfEmail = async ({ toEmail, assessmentType, pdfBuffer }) => {
   });
 };
 
-const fulfillCheckoutSession = async (session, eventId = "", options = {}) => {
-  const allowEmailFailure = Boolean(options.allowEmailFailure);
+const fulfillCheckoutSession = async (session, eventId = "") => {
   const sessionId = toSafeText(session.id);
   if (!sessionId) throw new Error("Missing session id in webhook event");
   const eventKey = toSafeText(eventId, `session_${sessionId}`);
@@ -395,8 +394,7 @@ const fulfillCheckoutSession = async (session, eventId = "", options = {}) => {
     } catch (error) {
       emailSent = false;
       emailError = error.message;
-      if (!allowEmailFailure) throw error;
-      console.error("[fulfillment] email send failed (continuing)", {
+      console.error("[fulfillment] email send failed (continuing without blocking purchase)", {
         sessionId,
         message: error.message,
       });
@@ -685,9 +683,7 @@ app.get("/api/premium-report/download", async (req, res) => {
         console.log("[download] attempting reconciliation", {
           sessionId: payload.sid,
         });
-        await fulfillCheckoutSession(session, `download_${payload.sid}`, {
-          allowEmailFailure: true,
-        });
+        await fulfillCheckoutSession(session, `download_${payload.sid}`);
       } catch (error) {
         console.error("[download] reconciliation failed", {
           sessionId: payload.sid,
