@@ -624,15 +624,18 @@ function AssessmentCard({ item, onStart }) {
         <span className="assessment-icon" aria-hidden="true">
           {iconMap[item.key] || item.icon}
         </span>
-        <span className="assessment-tag">{item.category}</span>
+        <span className="assessment-arrow" aria-hidden="true">
+          →
+        </span>
       </div>
       <h3>{item.title}</h3>
       <p>{item.subtitle}</p>
-      <ul>
-        <li>{item.minutes}</li>
-        <li>Free result available</li>
-        <li>Premium analysis available</li>
-      </ul>
+      <div className="assessment-meta">
+        <span className="assessment-pill time">Estimated {item.minutes}</span>
+        <span className="assessment-pill free">Free result</span>
+        <span className="assessment-pill premium">Premium report</span>
+      </div>
+      <p className="assessment-time">{item.category}</p>
       <span className="assessment-cta">Start assessment</span>
     </button>
   );
@@ -640,6 +643,16 @@ function AssessmentCard({ item, onStart }) {
 
 function Homepage({ onStartAssessment }) {
   const assessments = Object.entries(tests).map(([key, value]) => ({ key, ...value }));
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [activeSection, setActiveSection] = useState("hero");
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 12);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     const revealElements = document.querySelectorAll(".reveal");
@@ -662,13 +675,33 @@ function Homepage({ onStartAssessment }) {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const sections = ["assessments", "how-it-works", "premium-report", "why-mindscore", "faq"];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntry = entries.find((entry) => entry.isIntersecting);
+        if (visibleEntry?.target?.id) {
+          setActiveSection(visibleEntry.target.id);
+        }
+      },
+      { threshold: 0.42 }
+    );
+
+    sections.forEach((id) => {
+      const element = document.getElementById(id);
+      if (element) observer.observe(element);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <>
       <SeoHead
         title="MindScore AI | Premium Self-Assessment Platform"
         description="Complete intelligent self-assessments and unlock a personalized premium AI report with secure Stripe checkout and instant PDF delivery."
       />
-      <header className="site-header">
+      <header className={`site-header ${isScrolled ? "header-scrolled" : ""}`}>
         <div className="brand-wrap">
           <a href="/" className="brand-link" aria-label="MindScore AI Home">
             <span className="brand-mark" aria-hidden="true">
@@ -678,10 +711,10 @@ function Homepage({ onStartAssessment }) {
           </a>
         </div>
         <nav className="site-nav" aria-label="Primary navigation">
-          <a href="#assessments">Assessments</a>
-          <a href="#how-it-works">How It Works</a>
-          <a href="#premium-report">Premium Report</a>
-          <a href="#faq">FAQ</a>
+          <a className={activeSection === "assessments" ? "active" : ""} href="#assessments">Assessments</a>
+          <a className={activeSection === "how-it-works" ? "active" : ""} href="#how-it-works">How It Works</a>
+          <a className={activeSection === "premium-report" ? "active" : ""} href="#premium-report">Premium Report</a>
+          <a className={activeSection === "faq" ? "active" : ""} href="#faq">FAQ</a>
           <a href="/support">Support</a>
         </nav>
         <button className="header-cta" onClick={() => onStartAssessment("mental")}>Start Free Assessment</button>
@@ -702,7 +735,7 @@ function Homepage({ onStartAssessment }) {
                 See What You Get
               </a>
             </div>
-            <div className="trust-strip" aria-label="Value highlights">
+            <div className="trust-strip hero-trust" aria-label="Value highlights">
               <span>Free basic results</span>
               <span>Personalized AI analysis</span>
               <span>Secure Stripe payment</span>
@@ -714,6 +747,15 @@ function Homepage({ onStartAssessment }) {
 
           <aside className="hero-visual reveal" aria-label="Platform preview">
             <div className="hero-neural-brain" aria-hidden="true">
+              <div className="particle-cloud">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
               <div className="brain-orbit orbit-one" />
               <div className="brain-orbit orbit-two" />
               <div className="brain-orbit orbit-three" />
@@ -853,32 +895,60 @@ function Homepage({ onStartAssessment }) {
               </ul>
               <button className="primary-btn" onClick={() => onStartAssessment("mental")}>Unlock Your Premium Report</button>
             </article>
-            <article className="premium-preview">
-              <div className="report-page">
-                <h3>Page 1</h3>
-                <p>Executive summary and score interpretation</p>
-                <div className="line-group">
-                  <span />
-                  <span />
-                  <span />
+            <article className="premium-preview pdf-preview">
+              <div className="pdf-preview-header">
+                <div>
+                  <p>Premium PDF preview</p>
+                  <h3>Professional report layout</h3>
                 </div>
+                <span>3 pages</span>
               </div>
-              <div className="report-page">
-                <h3>Page 2</h3>
-                <p>Dimension breakdown and pattern analysis</p>
-                <div className="bar-group">
-                  <i style={{ width: "82%" }} />
-                  <i style={{ width: "66%" }} />
-                  <i style={{ width: "74%" }} />
+
+              <div className="pdf-preview-grid">
+                <div className="pdf-page pdf-page-one">
+                  <span>Page 1</span>
+                  <h4>Executive Summary</h4>
+                  <div className="pdf-summary-card">
+                    <strong>84</strong>
+                    <small>Overall score</small>
+                  </div>
+                  <div className="pdf-copy-lines">
+                    <i />
+                    <i />
+                    <i />
+                  </div>
                 </div>
-              </div>
-              <div className="report-page">
-                <h3>Page 3</h3>
-                <p>Practical recommendations and 30-day action plan</p>
-                <div className="line-group">
-                  <span />
-                  <span />
-                  <span />
+
+                <div className="pdf-page pdf-page-two">
+                  <span>Page 2</span>
+                  <h4>Charts</h4>
+                  <div className="radar-wrap" aria-hidden="true">
+                    <div className="radar-chart" />
+                  </div>
+                  <div className="pdf-score-bars">
+                    <div><b /> <i style={{ width: "84%" }} /></div>
+                    <div><b /> <i style={{ width: "71%" }} /></div>
+                    <div><b /> <i style={{ width: "77%" }} /></div>
+                  </div>
+                </div>
+
+                <div className="pdf-page pdf-page-three">
+                  <span>Page 3</span>
+                  <h4>Action Plan</h4>
+                  <div className="recommendation-cards">
+                    <article>
+                      <strong>Focus</strong>
+                      <p>Weekly habits</p>
+                    </article>
+                    <article>
+                      <strong>Practice</strong>
+                      <p>Stress regulation</p>
+                    </article>
+                    <article>
+                      <strong>Track</strong>
+                      <p>Progress markers</p>
+                    </article>
+                  </div>
                 </div>
               </div>
             </article>
@@ -935,7 +1005,40 @@ function Homepage({ onStartAssessment }) {
           </div>
         </section>
       </main>
-      <SiteFooter />
+      <footer className="site-footer homepage-footer" aria-label="Homepage footer">
+        <div className="footer-grid">
+          <div className="footer-col brand">
+            <p className="footer-brand">MindScore AI</p>
+            <p className="footer-note">
+              Educational and informational self-assessment platform. Not medical diagnosis or treatment.
+            </p>
+          </div>
+
+          <nav className="footer-col" aria-label="Privacy and terms">
+            <p className="footer-col-title">Company</p>
+            <div className="site-footer-links">
+              <a href="/privacy">Privacy</a>
+              <a href="/terms">Terms</a>
+            </div>
+          </nav>
+
+          <nav className="footer-col" aria-label="Support contact">
+            <p className="footer-col-title">Support</p>
+            <div className="site-footer-links">
+              <a href="/support">Support</a>
+              <a href="mailto:aimindscore@gmail.com">aimindscore@gmail.com</a>
+            </div>
+          </nav>
+
+          <div className="footer-col" aria-label="Copyright">
+            <p className="footer-col-title">MindScore AI</p>
+            <div className="site-footer-links">
+              <span>Premium self-assessment</span>
+              <span>(c) {new Date().getFullYear()}</span>
+            </div>
+          </div>
+        </div>
+      </footer>
     </>
   );
 }
