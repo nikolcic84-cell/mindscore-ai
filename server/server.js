@@ -23,8 +23,10 @@ const rawFrontendBaseUrl =
 const FRONTEND_BASE_URL = rawFrontendBaseUrl.replace(/\/+$/, "");
 const CHECKOUT_SUCCESS_URL = `${FRONTEND_BASE_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`;
 const CHECKOUT_CANCEL_URL = `${FRONTEND_BASE_URL}/`;
-const STORE_PATH = path.join(__dirname, "data", "payments-store.json");
-const REPORTS_DIR = path.join(__dirname, "data", "reports");
+const rawDataDir = typeof process.env.DATA_DIR === "string" ? process.env.DATA_DIR.trim() : "";
+const DATA_DIR = rawDataDir ? path.resolve(rawDataDir) : path.join(__dirname, "data");
+const STORE_PATH = path.join(DATA_DIR, "payments-store.json");
+const REPORTS_DIR = path.join(DATA_DIR, "reports");
 const DOWNLOAD_TOKEN_TTL_MS = 1000 * 60 * 60 * 4;
 
 const REQUIRED_ENV = [
@@ -46,6 +48,8 @@ if (missingRequired.length > 0) {
 if (!FRONTEND_BASE_URL) {
   console.warn("[startup] Missing FRONTEND_BASE_URL. Set it in production environment.");
 }
+
+console.log("[startup] Storage directory", DATA_DIR);
 
 const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {

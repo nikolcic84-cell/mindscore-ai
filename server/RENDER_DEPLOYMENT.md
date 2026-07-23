@@ -34,6 +34,7 @@ Do not commit real values. Configure these in Render:
 - BACKEND_BASE_URL
 - FRONTEND_BASE_URL
 - DOWNLOAD_TOKEN_SECRET
+- DATA_DIR
 - PORT (optional on Render, Render sets this automatically)
 
 ## Render Web Service Settings
@@ -49,5 +50,8 @@ Do not commit real values. Configure these in Render:
   https://mindscore-ai-backend.onrender.com
 - FRONTEND_BASE_URL must be set to your deployed frontend URL. For this production deployment:
   https://mindscore-ai.onrender.com
+- DATA_DIR should point to a persistent disk mount on Render so payment state and generated PDFs survive restarts, for example:
+  /var/data/mindscore
+- If DATA_DIR is not set, the backend falls back to server/data inside the app container, which is instance-local and can be lost across deploys or restarts.
 - Stripe webhook endpoint to register in Stripe Dashboard:
   https://YOUR_RENDER_BACKEND_URL/api/stripe/webhook
