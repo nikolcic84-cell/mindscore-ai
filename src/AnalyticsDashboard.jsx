@@ -57,74 +57,27 @@ export default function AnalyticsDashboard({ data }) {
   const growthDimension = [...safeData].sort((a, b) => a.score - b.score)[0];
 
   return (
-    <section
-      className="analytics-dashboard"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.9rem",
-        width: "100%",
-        maxWidth: "100%",
-        padding: "0.25rem 0",
-      }}
-    >
-      <div
-        className="analytics-heading"
-        style={{
-          background: "linear-gradient(135deg, #132a54 0%, #2b5ee4 100%)",
-          borderRadius: "18px",
-          padding: "1rem",
-          color: "#ffffff",
-          boxShadow: "0 10px 28px rgba(19, 42, 84, 0.18)",
-        }}
-      >
-        <p
-          className="analytics-label"
-          style={{ margin: 0, fontSize: "0.8rem", letterSpacing: "0.16em", opacity: 0.9 }}
-        >
-          PERSONALIZED ANALYSIS
-        </p>
-        <h2
-          style={{
-            color: "#ffffff",
-            margin: "0.35rem 0 0.25rem",
-            fontSize: "clamp(1.15rem, 3.2vw, 1.5rem)",
-            lineHeight: 1.2,
-          }}
-        >
-          Your Psychological Profile
-        </h2>
-        <p style={{ margin: 0, fontSize: "0.95rem", lineHeight: 1.45, color: "#e8eeff" }}>
-          A simple overview of your five assessment dimensions.
-        </p>
+    <section className="analytics-dashboard">
+      <div className="analytics-heading">
+        <p className="analytics-label">Personalized analysis</p>
+        <h2>Your profile breakdown</h2>
+        <p>A clear snapshot of your strongest patterns and highest-growth areas.</p>
       </div>
 
-      <div
-        style={{
-          background: "#ffffff",
-          borderRadius: "16px",
-          padding: "0.95rem",
-          boxShadow: "0 8px 22px rgba(16, 32, 70, 0.08)",
-          border: "1px solid #e9eefc",
-        }}
-      >
-        <h3 style={{ margin: "0 0 0.4rem", fontSize: "1rem", color: "#142a52" }}>
-          Your Psychological Profile
-        </h3>
-        <p style={{ margin: "0 0 0.7rem", fontSize: "0.92rem", lineHeight: 1.45, color: "#56627a" }}>
-          A clear snapshot of your current strengths and the areas that may need more attention.
-        </p>
-        <div style={{ display: "grid", gap: "0.45rem", fontSize: "0.93rem", color: "#22314f" }}>
-          <div style={{ wordBreak: "break-word" }}>
-            <strong>Strongest dimension:</strong> {strongestDimension?.name || "—"}
+      <div className="analytics-summary">
+        <h3>Your psychological profile</h3>
+        <p>A concise overview of your current strengths and areas that may need more attention.</p>
+        <div className="analytics-summary-grid">
+          <div>
+            <strong>Strongest dimension:</strong> {strongestDimension?.name || "N/A"}
           </div>
-          <div style={{ wordBreak: "break-word" }}>
-            <strong>Highest growth potential:</strong> {growthDimension?.name || "—"}
+          <div>
+            <strong>Highest growth potential:</strong> {growthDimension?.name || "N/A"}
           </div>
         </div>
       </div>
 
-      <div className="dimension-cards" style={{ display: "grid", gap: "0.75rem", width: "100%" }}>
+      <div className="dimension-cards">
         {safeData.map((dimension, index) => {
           const safeScore = Math.max(0, Math.min(100, Number(dimension.score) || 0));
           const status = getStatus(safeScore);
@@ -132,80 +85,27 @@ export default function AnalyticsDashboard({ data }) {
           const animatedScore = animatedScores[index] ?? 0;
 
           return (
-            <article
-              className="dimension-card"
-              key={dimension.name}
-              style={{
-                background: "#ffffff",
-                borderRadius: "16px",
-                padding: "0.9rem",
-                boxShadow: "0 8px 22px rgba(16, 32, 70, 0.08)",
-                border: "1px solid #e9eefc",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.6rem",
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: "0.6rem",
-                }}
-              >
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: "1rem",
-                    lineHeight: 1.3,
-                    color: "#142a52",
-                    wordBreak: "break-word",
-                    overflowWrap: "anywhere",
-                    flex: 1,
-                  }}
-                >
-                  {dimension.name}
-                </h3>
+            <article className="dimension-card" key={dimension.name}>
+              <div className="dimension-card-head">
+                <h3>{dimension.name}</h3>
                 <span className={`status-badge ${statusClass}`}>
                   {status}
                 </span>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "0.6rem",
-                  flexWrap: "wrap",
-                }}
-              >
-                <strong style={{ fontSize: "1.05rem", color: "#142a52" }}>{safeScore}/100</strong>
+              <div className="dimension-score-row">
+                <strong>{safeScore}/100</strong>
               </div>
 
-              <div
-                style={{
-                  width: "100%",
-                  height: "12px",
-                  background: "#e9eefc",
-                  borderRadius: "999px",
-                  overflow: "hidden",
-                  minHeight: "12px",
-                }}
-              >
+              <div className="dimension-progress-wrap">
                 <div
+                  className="dimension-progress-bar"
                   style={{
                     width: `${animatedScore}%`,
-                    height: "100%",
                     background: getProgressColor(safeScore),
-                    borderRadius: "999px",
-                    transition: "width 0.8s ease",
                   }}
                 />
               </div>
-
             </article>
           );
         })}

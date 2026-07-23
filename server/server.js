@@ -640,6 +640,8 @@ app.get("/api/payment-session/:sessionId/verify", async (req, res) => {
       ready,
       customerEmail,
       fulfillmentStatus: refreshedPurchase?.fulfillmentStatus || "unknown",
+      emailSent: Boolean(refreshedPurchase?.emailSentAt),
+      emailError: toSafeText(refreshedPurchase?.emailError),
       downloadUrl: ready
         ? `/api/premium-report/download?token=${encodeURIComponent(
             createDownloadToken(sessionId, customerEmail)

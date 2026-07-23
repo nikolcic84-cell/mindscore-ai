@@ -1,321 +1,336 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import AnalyticsDashboard from "./AnalyticsDashboard";
 import { calculateDimensions } from "./psychology/dimensions";
 import "./App.css";
-import AnalyticsDashboard from "./AnalyticsDashboard";
 
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || "";
+const API_BASE = "/api";
+const LEGAL_LAST_UPDATED = "July 24, 2026";
+const PREMIUM_PRICE_EUR = "4.99";
+const DRAFT_KEY = "mindscore_assessment_draft_v2";
 
 const apiUrl = (path) => `${BACKEND_URL}${path}`;
-const API_BASE = "/api";
 
 const tests = {
   mental: {
-    title: "Mental Strength Score",
-    subtitle: "Discover how resilient, focused and emotionally strong you are.",
-    icon: "🧠",
+    title: "Mental Strength",
+    subtitle: "Measure resilience, emotional control and consistency under pressure.",
+    icon: "M",
+    category: "Core Resilience",
+    minutes: "2-3 min",
     questions: [
-  "You spend months working toward an important goal, but just before reaching it, you fail. What best describes your usual reaction?",
-  "Someone publicly criticizes your work in front of other people. What is your most natural response?",
-  "You wake up feeling completely unmotivated, but you have important responsibilities. What do you usually do?",
-  "A situation develops where you have very little information and must make an important decision. How do you usually respond?",
-  "A close friend or colleague suddenly disappoints you. What is your first reaction?",
-  "Several stressful problems happen during the same week. What usually happens to your ability to function?",
-  "You notice that someone else receives recognition for work you also contributed to. How do you usually react internally?",
-  "You realize you made a serious mistake that cannot be undone. What is your typical approach afterward?",
-  "You are offered an easy reward today, but accepting it could reduce your chances of achieving a much bigger long-term goal. What do you usually choose?",
-  "People around you become anxious or panic during a difficult situation. How do you usually behave?",
-  "You repeatedly face obstacles while trying to achieve something important. What best describes your long-term behavior?",
-  "At the end of a very difficult day, when you feel emotionally exhausted, how likely are you to continue acting according to your values instead of your emotions?"
-],
+      "You spend months working toward an important goal, but just before reaching it, you fail. What best describes your usual reaction?",
+      "Someone publicly criticizes your work in front of other people. What is your most natural response?",
+      "You wake up feeling completely unmotivated, but you have important responsibilities. What do you usually do?",
+      "A situation develops where you have very little information and must make an important decision. How do you usually respond?",
+      "A close friend or colleague suddenly disappoints you. What is your first reaction?",
+      "Several stressful problems happen during the same week. What usually happens to your ability to function?",
+      "You notice that someone else receives recognition for work you also contributed to. How do you usually react internally?",
+      "You realize you made a serious mistake that cannot be undone. What is your typical approach afterward?",
+      "You are offered an easy reward today, but accepting it could reduce your chances of achieving a much bigger long-term goal. What do you usually choose?",
+      "People around you become anxious or panic during a difficult situation. How do you usually behave?",
+      "You repeatedly face obstacles while trying to achieve something important. What best describes your long-term behavior?",
+      "At the end of a very difficult day, when you feel emotionally exhausted, how likely are you to continue acting according to your values instead of your emotions?",
+    ],
   },
   stress: {
-    title: "Stress Control Score",
-    subtitle: "Find out how well you handle pressure and emotional overload.",
-    icon: "⚡",
+    title: "Stress Control",
+    subtitle: "Understand how you regulate pressure, uncertainty and overload.",
+    icon: "S",
+    category: "Emotional Balance",
+    minutes: "2-3 min",
     questions: [
-"Three urgent problems demand your attention at the same time, and each person expects an immediate response. What best describes how you usually react?",
-
-"You receive a message that could contain bad news, but you cannot open it for several hours. How do you typically handle the uncertainty?",
-
-"A carefully planned day suddenly falls apart because of circumstances outside your control. What is your most natural response?",
-
-"You are already exhausted when someone adds another important responsibility to your workload. How do you usually manage the situation?",
-
-"During a tense disagreement, the other person becomes emotional and raises their voice. What usually happens to your own emotional state?",
-
-"You make a small mistake at work, but your mind keeps returning to it long after the situation has ended. What best describes your usual reaction?",
-
-"You have several unfinished tasks before going to bed, and none of them can be completed that evening. How easily can you mentally disconnect?",
-
-"An important result is delayed, and you have no control over when you will receive an answer. How do you usually respond during the waiting period?",
-
-"After several stressful days in a row, you finally have free time. What are you most likely to do with it?",
-
-"Someone unexpectedly questions your competence while you are already under pressure. How do you usually protect your focus and emotional balance?",
-
-"Your body begins showing signs of stress, such as tension, rapid breathing or restlessness, during an important situation. What do you typically do next?",
-
-"When stress lasts for weeks rather than hours, what best describes your ability to maintain healthy routines, clear thinking and emotional stability?"
+      "Three urgent problems demand your attention at the same time, and each person expects an immediate response. What best describes how you usually react?",
+      "You receive a message that could contain bad news, but you cannot open it for several hours. How do you typically handle the uncertainty?",
+      "A carefully planned day suddenly falls apart because of circumstances outside your control. What is your most natural response?",
+      "You are already exhausted when someone adds another important responsibility to your workload. How do you usually manage the situation?",
+      "During a tense disagreement, the other person becomes emotional and raises their voice. What usually happens to your own emotional state?",
+      "You make a small mistake at work, but your mind keeps returning to it long after the situation has ended. What best describes your usual reaction?",
+      "You have several unfinished tasks before going to bed, and none of them can be completed that evening. How easily can you mentally disconnect?",
+      "An important result is delayed, and you have no control over when you will receive an answer. How do you usually respond during the waiting period?",
+      "After several stressful days in a row, you finally have free time. What are you most likely to do with it?",
+      "Someone unexpectedly questions your competence while you are already under pressure. How do you usually protect your focus and emotional balance?",
+      "Your body begins showing signs of stress, such as tension, rapid breathing or restlessness, during an important situation. What do you typically do next?",
+      "When stress lasts for weeks rather than hours, what best describes your ability to maintain healthy routines, clear thinking and emotional stability?",
     ],
   },
   sleep: {
-    title: "Sleep Quality Score",
-    subtitle: "Understand how strong your sleep habits really are.",
-    icon: "🌙",
+    title: "Sleep Quality",
+    subtitle: "Explore recovery quality, sleep consistency and daytime clarity.",
+    icon: "Q",
+    category: "Recovery",
+    minutes: "2-3 min",
     questions: [
-"When you wake up after what should have been a full night's sleep, how refreshed do you usually feel?",
-
-"If you wake up during the night, how easily do you fall back asleep?",
-
-"After an emotionally difficult day, how well are you able to sleep that night?",
-
-"How often do your thoughts keep running when you are trying to fall asleep?",
-
-"During the day, how often do you feel mentally tired even after sleeping enough hours?",
-
-"If you have an important event the next morning, how much does it affect your sleep?",
-
-"How often do you wake up before your alarm and cannot fall asleep again?",
-
-"After waking up, how quickly does your mind become clear and focused?",
-
-"How often do you rely on caffeine or stimulants just to feel fully awake?",
-
-"If your sleep schedule changes for one or two days, how quickly does your body recover?",
-
-"How often do you feel sleepy during quiet activities such as reading, studying or watching TV?",
-
-"Overall, how confident are you that your current sleep is allowing your brain and body to recover at their best?"
-]
+      "When you wake up after what should have been a full night's sleep, how refreshed do you usually feel?",
+      "If you wake up during the night, how easily do you fall back asleep?",
+      "After an emotionally difficult day, how well are you able to sleep that night?",
+      "How often do your thoughts keep running when you are trying to fall asleep?",
+      "During the day, how often do you feel mentally tired even after sleeping enough hours?",
+      "If you have an important event the next morning, how much does it affect your sleep?",
+      "How often do you wake up before your alarm and cannot fall asleep again?",
+      "After waking up, how quickly does your mind become clear and focused?",
+      "How often do you rely on caffeine or stimulants just to feel fully awake?",
+      "If your sleep schedule changes for one or two days, how quickly does your body recover?",
+      "How often do you feel sleepy during quiet activities such as reading, studying or watching TV?",
+      "Overall, how confident are you that your current sleep is allowing your brain and body to recover at their best?",
+    ],
   },
   leadership: {
-    title: "Leadership Potential Score",
-    subtitle: "Discover your confidence, clarity and decision-making power.",
-    icon: "🚀",
+    title: "Personal Strengths",
+    subtitle: "Assess confidence, decision quality and leadership potential.",
+    icon: "P",
+    category: "Potential",
+    minutes: "2-3 min",
     questions: [
-"When a group faces confusion or uncertainty, what do you naturally tend to do?",
-
-"You notice a serious mistake that nobody else has seen. What is your first reaction?",
-
-"A team project starts falling apart because people disagree. How do you usually respond?",
-
-"You must make an important decision without having all the information. How comfortable are you doing that?",
-
-"When someone on your team performs poorly, what is your natural instinct?",
-
-"You receive criticism about a decision you made. What best describes your usual reaction?",
-
-"Two people in your group are in conflict. How likely are you to step in and help resolve it?",
-
-"When you believe the majority is making the wrong decision, how willing are you to respectfully disagree?",
-
-"You are given responsibility for a difficult task with no clear instructions. How do you usually react?",
-
-"After making a mistake that affects other people, what do you typically do first?",
-
-"When people around you become anxious or lose confidence, how often do they look to you for direction or reassurance?",
-
-"Imagine you could lead a team tomorrow. How confident are you that you could earn trust, make sound decisions and help others perform at their best?"
-]
+      "When a group faces confusion or uncertainty, what do you naturally tend to do?",
+      "You notice a serious mistake that nobody else has seen. What is your first reaction?",
+      "A team project starts falling apart because people disagree. How do you usually respond?",
+      "You must make an important decision without having all the information. How comfortable are you doing that?",
+      "When someone on your team performs poorly, what is your natural instinct?",
+      "You receive criticism about a decision you made. What best describes your usual reaction?",
+      "Two people in your group are in conflict. How likely are you to step in and help resolve it?",
+      "When you believe the majority is making the wrong decision, how willing are you to respectfully disagree?",
+      "You are given responsibility for a difficult task with no clear instructions. How do you usually react?",
+      "After making a mistake that affects other people, what do you typically do first?",
+      "When people around you become anxious or lose confidence, how often do they look to you for direction or reassurance?",
+      "Imagine you could lead a team tomorrow. How confident are you that you could earn trust, make sound decisions and help others perform at their best?",
+    ],
   },
 };
 
 const answers = [
-  { icon: "🔥", text: "This describes me perfectly", points: 5 },
-  { icon: "🙂", text: "Mostly true for me", points: 4 },
-  { icon: "😐", text: "Sometimes true", points: 3 },
-  { icon: "🤔", text: "Rarely true", points: 2 },
-  { icon: "❌", text: "Not like me at all", points: 1 },
+  { text: "This describes me very well", points: 5 },
+  { text: "Mostly true for me", points: 4 },
+  { text: "Sometimes true", points: 3 },
+  { text: "Rarely true", points: 2 },
+  { text: "Not true for me", points: 1 },
 ];
 
-const LEGAL_LAST_UPDATED = "July 23, 2026";
+const faqItems = [
+  {
+    question: "Are the assessments free?",
+    answer:
+      "Yes. Every assessment includes a free score with useful insight. The Premium Report is an optional one-time purchase.",
+  },
+  {
+    question: "What is included in the Premium Report?",
+    answer:
+      "You receive a personalized AI profile, detailed score interpretation, strengths and risk patterns, practical recommendations, and a clear action plan in a downloadable PDF sent to your email.",
+  },
+  {
+    question: "Is this a medical diagnosis?",
+    answer:
+      "No. MindScore AI provides educational and informational self-assessment content and does not provide diagnosis, treatment or emergency care.",
+  },
+  {
+    question: "How is my payment processed?",
+    answer:
+      "Payments are processed securely through Stripe. MindScore AI does not store your card details.",
+  },
+  {
+    question: "When will I receive my report?",
+    answer:
+      "In most cases your Premium PDF is available immediately after payment verification and a copy is sent to your email.",
+  },
+  {
+    question: "What happens if the PDF does not arrive?",
+    answer:
+      "Use the download button on your success page first. If email delivery fails or there is any issue, contact support and include your payment email.",
+  },
+  {
+    question: "Can I request deletion of my data?",
+    answer:
+      "Yes. You can request access, correction or deletion by emailing support.",
+  },
+  {
+    question: "How do I contact support?",
+    answer:
+      "Email aimindscore@gmail.com and include a short description of your issue and the email used during checkout.",
+  },
+];
+
+function SeoHead({ title, description }) {
+  useEffect(() => {
+    document.title = title;
+
+    const setMeta = (name, content, property = false) => {
+      const attr = property ? "property" : "name";
+      let tag = document.head.querySelector(`meta[${attr}='${name}']`);
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute(attr, name);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
+
+    setMeta("description", description);
+    setMeta("og:title", title, true);
+    setMeta("og:description", description, true);
+    setMeta("twitter:title", title);
+    setMeta("twitter:description", description);
+  }, [title, description]);
+
+  return null;
+}
 
 function SiteFooter() {
   return (
     <footer className="site-footer" aria-label="Legal and support links">
-      <p>MindScore AI</p>
-      <nav className="site-footer-links">
-        <a href="/privacy">Privacy Policy</a>
-        <a href="/terms">Terms of Service</a>
-        <a href="/support">Support</a>
-      </nav>
+      <div className="footer-grid">
+        <div>
+          <p className="footer-brand">MindScore AI</p>
+          <p className="footer-note">
+            Educational and informational self-assessment platform. Not medical diagnosis or treatment.
+          </p>
+        </div>
+        <nav className="site-footer-links" aria-label="Footer navigation">
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/support">Support</a>
+          <a href="mailto:aimindscore@gmail.com">aimindscore@gmail.com</a>
+        </nav>
+      </div>
+      <p className="footer-copyright">(c) {new Date().getFullYear()} MindScore AI</p>
     </footer>
+  );
+}
+
+function LegalPageLayout({ title, badge, children }) {
+  return (
+    <>
+      <SeoHead
+        title={`${title} | MindScore AI`}
+        description="MindScore AI legal and support information."
+      />
+      <main className="page legal-page">
+        <section className="content-panel legal-panel">
+          <div className="badge">{badge}</div>
+          <h1>{title}</h1>
+          <p className="legal-last-updated">Last updated: {LEGAL_LAST_UPDATED}</p>
+          <div className="legal-content">{children}</div>
+          <a className="secondary-btn" href="/">
+            Back to Home
+          </a>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 
 function PrivacyPolicyPage() {
   return (
-    <>
-      <main className="page page-with-footer">
-        <section className="result-card legal-card">
-          <div className="badge">Legal</div>
-          <h1>Privacy Policy</h1>
-          <p className="legal-last-updated">Last updated: {LEGAL_LAST_UPDATED}</p>
+    <LegalPageLayout title="Privacy Policy" badge="Legal">
+      <p>
+        MindScore AI collects information that you provide through the service. This includes assessment answers and,
+        when you purchase a premium report, your email address for secure delivery.
+      </p>
 
-          <div className="legal-content">
-            <p>
-              MindScore AI collects information that you provide directly through the service. This includes your
-              self-assessment answers and, when you choose to purchase a premium report, your email address.
-            </p>
+      <h2>How We Use Your Data</h2>
+      <p>
+        Your assessment data may be processed to generate AI-powered informational reports. This processing supports
+        score summaries, profile insights and premium PDF generation.
+      </p>
 
-            <h3>How We Use Your Data</h3>
-            <p>
-              Your assessment data may be processed to generate AI-powered informational reports. We use this
-              processing to provide test scores, profile insights, and premium PDF report content.
-            </p>
+      <h2>Third-Party Processors</h2>
+      <p>
+        Payments are processed by Stripe. Email delivery is handled through secure SMTP. Hosting and infrastructure
+        services are provided through Render.
+      </p>
 
-            <h3>Third-Party Processors</h3>
-            <p>
-              Payments are processed by Stripe. Email delivery for premium reports is handled through Gmail/SMTP.
-              Hosting and infrastructure are provided through Render.
-            </p>
+      <h2>Retention and Security</h2>
+      <p>
+        We retain data only as long as needed to deliver purchased reports, resolve support requests and meet legal
+        obligations. Reasonable safeguards are used to protect stored data.
+      </p>
 
-            <h3>Retention and Security</h3>
-            <p>
-              We retain data only as long as needed to operate the service, fulfill paid report delivery, resolve
-              support issues, and meet legal obligations. We apply reasonable technical and organizational safeguards
-              to protect stored assessment and transaction data.
-            </p>
+      <h2>Your Rights</h2>
+      <p>
+        You may request access, correction or deletion of personal data at any time. Contact:
+        <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
+          aimindscore@gmail.com
+        </a>
+      </p>
 
-            <h3>Your Rights</h3>
-            <p>
-              You may request access, correction, or deletion of your personal data. You may also submit privacy
-              concerns or deletion requests at any time by contacting us.
-            </p>
-
-            <h3>Important Notice</h3>
-            <p>
-              MindScore AI is not a medical service and does not provide diagnosis or treatment. Content is for
-              educational and informational use only.
-            </p>
-
-            <h3>Contact</h3>
-            <p>
-              For privacy questions or deletion requests, contact:
-              <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
-                aimindscore@gmail.com
-              </a>
-            </p>
-          </div>
-
-          <a className="secondary-btn" href="/">
-            Back to Home
-          </a>
-        </section>
-      </main>
-      <SiteFooter />
-    </>
+      <h2>Important Notice</h2>
+      <p>
+        MindScore AI is not a medical service and does not provide diagnosis, treatment, psychiatric care or emergency
+        assistance.
+      </p>
+    </LegalPageLayout>
   );
 }
 
 function TermsOfServicePage() {
   return (
-    <>
-      <main className="page page-with-footer">
-        <section className="result-card legal-card">
-          <div className="badge">Legal</div>
-          <h1>Terms of Service</h1>
-          <p className="legal-last-updated">Last updated: {LEGAL_LAST_UPDATED}</p>
+    <LegalPageLayout title="Terms of Service" badge="Legal">
+      <p>
+        MindScore AI provides self-assessment tools and AI-generated informational reports. By using this service,
+        you agree to these terms.
+      </p>
 
-          <div className="legal-content">
-            <p>
-              MindScore AI provides self-assessment tools and AI-generated informational PDF reports. By using this
-              service, you agree to these terms.
-            </p>
+      <h2>Informational Use Only</h2>
+      <p>
+        Results and reports are educational and informational. They are not medical advice, diagnosis or treatment.
+      </p>
 
-            <h3>Informational Use Only</h3>
-            <p>
-              Results and reports are for educational and informational purposes only. MindScore AI does not provide
-              medical, psychological, psychiatric, or emergency care.
-            </p>
+      <h2>Payments and Delivery</h2>
+      <p>
+        Premium reports are paid digital products processed by Stripe. Delivery is provided digitally through download
+        and email when available.
+      </p>
 
-            <h3>Payments and Digital Delivery</h3>
-            <p>
-              Premium reports are paid digital products processed through Stripe. Delivery is provided digitally by
-              secure download and email when available.
-            </p>
+      <h2>Acceptable Use</h2>
+      <p>
+        You agree not to misuse the service, attempt unauthorized access, interfere with platform operation, or
+        submit unlawful content.
+      </p>
 
-            <h3>Acceptable Use</h3>
-            <p>
-              You agree not to misuse the service, attempt unauthorized access, interfere with platform operations,
-              or submit unlawful content.
-            </p>
+      <h2>Service Availability</h2>
+      <p>
+        We aim for reliable service but cannot guarantee uninterrupted access. Temporary outages may occur due to
+        maintenance or infrastructure providers.
+      </p>
 
-            <h3>Intellectual Property</h3>
-            <p>
-              The MindScore AI platform, branding, design, and generated report formats are protected intellectual
-              property. You may use purchased reports for personal use unless otherwise agreed in writing.
-            </p>
+      <h2>Liability</h2>
+      <p>
+        To the maximum extent permitted by law, MindScore AI is not liable for indirect or consequential damages
+        resulting from use of informational report content.
+      </p>
 
-            <h3>Service Availability</h3>
-            <p>
-              We work to keep the service available but do not guarantee uninterrupted operation. Maintenance,
-              provider outages, or infrastructure issues may temporarily affect access.
-            </p>
-
-            <h3>Limitation of Liability</h3>
-            <p>
-              To the maximum extent permitted by law, MindScore AI is not liable for indirect, incidental, or
-              consequential damages arising from use of the service or reliance on informational report content.
-            </p>
-
-            <h3>Contact</h3>
-            <p>
-              Questions about these terms:
-              <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
-                aimindscore@gmail.com
-              </a>
-            </p>
-          </div>
-
-          <a className="secondary-btn" href="/">
-            Back to Home
-          </a>
-        </section>
-      </main>
-      <SiteFooter />
-    </>
+      <h2>Contact</h2>
+      <p>
+        Questions about terms can be sent to:
+        <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
+          aimindscore@gmail.com
+        </a>
+      </p>
+    </LegalPageLayout>
   );
 }
 
 function SupportPage() {
   return (
-    <>
-      <main className="page page-with-footer">
-        <section className="result-card legal-card">
-          <div className="badge">Support</div>
-          <h1>Customer Support</h1>
-          <p className="legal-last-updated">Last updated: {LEGAL_LAST_UPDATED}</p>
+    <LegalPageLayout title="Customer Support" badge="Support">
+      <p>
+        Contact support at
+        <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
+          aimindscore@gmail.com
+        </a>
+        for help with payment, PDF delivery or privacy requests.
+      </p>
+      <p>To help us resolve your request faster, include the email used during payment and a short issue summary.</p>
 
-          <div className="legal-content">
-            <p>
-              Contact our support team at
-              <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
-                aimindscore@gmail.com
-              </a>
-              .
-            </p>
-            <p>
-              To help us resolve your request faster, include the email used for payment and a short description of
-              the problem.
-            </p>
-
-            <h3>Common Help Topics</h3>
-            <ul>
-              <li>Payment completed but report not received</li>
-              <li>PDF download problems</li>
-              <li>Duplicate payment</li>
-              <li>Deletion/privacy request</li>
-            </ul>
-          </div>
-
-          <a className="secondary-btn" href="/">
-            Back to Home
-          </a>
-        </section>
-      </main>
-      <SiteFooter />
-    </>
+      <h2>Common Topics</h2>
+      <ul>
+        <li>Payment completed but report not available</li>
+        <li>PDF download issue</li>
+        <li>Email delivery problem</li>
+        <li>Duplicate payment</li>
+        <li>Privacy and deletion request</li>
+      </ul>
+    </LegalPageLayout>
   );
 }
 
@@ -324,9 +339,13 @@ function PaymentSuccessPage() {
     loading: true,
     paid: false,
     ready: false,
+    fulfillmentStatus: "pending",
     customerEmail: "",
     downloadUrl: "",
     isDownloading: false,
+    emailSent: false,
+    emailError: "",
+    attempts: 0,
     error: "",
   });
 
@@ -348,18 +367,9 @@ function PaymentSuccessPage() {
 
       try {
         const verifySessionUrl = `${API_BASE}/payment-session/${encodeURIComponent(sessionId)}/verify`;
-
         const response = await fetch(verifySessionUrl);
         const rawBody = await response.text();
-
-        let data;
-        try {
-          data = rawBody ? JSON.parse(rawBody) : {};
-        } catch {
-          throw new Error(
-            `Payment verification endpoint returned non-JSON response from ${verifySessionUrl}.`
-          );
-        }
+        const data = rawBody ? JSON.parse(rawBody) : {};
 
         if (!response.ok) {
           throw new Error(data.error || "Payment verification failed.");
@@ -367,14 +377,19 @@ function PaymentSuccessPage() {
 
         if (cancelled) return;
 
-        setState({
+        setState((previous) => ({
+          ...previous,
           loading: false,
           paid: Boolean(data.paid),
           ready: Boolean(data.ready),
+          fulfillmentStatus: data.fulfillmentStatus || "unknown",
           customerEmail: data.customerEmail || "",
           downloadUrl: data.downloadUrl || "",
+          emailSent: Boolean(data.emailSent),
+          emailError: data.emailError || "",
+          attempts: previous.attempts + 1,
           error: "",
-        });
+        }));
 
         if (data.paid && !data.ready) {
           timerId = window.setTimeout(verify, 3000);
@@ -398,21 +413,13 @@ function PaymentSuccessPage() {
   }, [sessionId]);
 
   const handleDownloadPdf = async () => {
-    console.log("[download-click] handler start", {
-      sessionId,
-      ready: state.ready,
-      hasDownloadUrl: Boolean(state.downloadUrl),
-    });
-
     if (!state.downloadUrl) {
       setState((previous) => ({
         ...previous,
-        error: "Download URL is missing. Please refresh the page and try again.",
+        error: "Download URL is missing. Refresh and try again.",
       }));
       return;
     }
-
-    console.log("[download-click] requested URL", state.downloadUrl);
 
     setState((previous) => ({
       ...previous,
@@ -432,10 +439,6 @@ function PaymentSuccessPage() {
 
       if (!contentType.includes("application/pdf")) {
         throw new Error("Download endpoint did not return a PDF file.");
-      }
-
-      if (!contentDisposition.toLowerCase().includes("attachment")) {
-        throw new Error("Download response is missing attachment headers.");
       }
 
       const blob = await response.blob();
@@ -468,46 +471,88 @@ function PaymentSuccessPage() {
     }
   };
 
+  const delayed = state.paid && !state.ready && state.attempts >= 6;
+  const showRecoverableError = !state.loading && !state.ready && Boolean(state.error);
+
   return (
     <>
-      <main className="page page-with-footer">
-        <section className="result-card payment-status-card">
-          <div className="badge">Payment status</div>
-          <h1>Payment successful</h1>
-          <p>Your Premium PDF is being prepared</p>
+      <SeoHead
+        title="Payment Success | MindScore AI"
+        description="Verify payment, generate your premium report, and download your PDF securely."
+      />
+      <main className="page payment-page">
+        <section className="content-panel payment-panel">
+          <div className="badge">Premium checkout</div>
+          <h1>Your payment is confirmed</h1>
+          <p>
+            We are verifying fulfillment and preparing your personalized Premium PDF. This page updates
+            automatically.
+          </p>
 
-          <div className="email-box">
-            <h3>Customer email</h3>
-            <p className="payment-email-value">{state.customerEmail || "Waiting for confirmation..."}</p>
+          <div className="status-grid" aria-live="polite">
+            <div className={`status-item ${state.loading ? "active" : "done"}`}>
+              <strong>Verifying payment</strong>
+              <span>{state.loading ? "In progress" : state.paid ? "Completed" : "Pending"}</span>
+            </div>
+            <div className={`status-item ${state.paid && !state.ready ? "active" : state.ready ? "done" : ""}`}>
+              <strong>Generating report</strong>
+              <span>{state.ready ? "Completed" : state.paid ? "In progress" : "Waiting for payment"}</span>
+            </div>
+            <div className={`status-item ${state.ready ? "done" : ""}`}>
+              <strong>Report ready</strong>
+              <span>{state.ready ? "Ready to download" : "Not ready yet"}</span>
+            </div>
+            <div
+              className={`status-item ${
+                state.ready && state.emailSent ? "done" : state.ready && !state.emailSent ? "attention" : ""
+              }`}
+            >
+              <strong>Email delivery</strong>
+              <span>
+                {state.ready && state.emailSent
+                  ? "Sent to your inbox"
+                  : state.ready && !state.emailSent
+                    ? "Download available, email needs retry"
+                    : "Pending"}
+              </span>
+            </div>
           </div>
 
-          {state.loading && <p>Verifying payment and fulfillment status...</p>}
-          {!state.loading && !state.paid && !state.error && (
-            <p>Payment has not been confirmed yet. This page will refresh automatically.</p>
+          <div className="email-confirmation">
+            <h2>Delivery email</h2>
+            <p>{state.customerEmail || "Waiting for confirmation..."}</p>
+          </div>
+
+          {delayed && (
+            <p className="status-note">
+              Report generation is taking longer than usual. Keep this page open. Your download button will appear as
+              soon as processing completes.
+            </p>
           )}
 
-          {state.error && <p className="payment-error">{state.error}</p>}
+          {state.ready && state.emailError && (
+            <p className="status-note warning">
+              Email delivery was not confirmed yet: {state.emailError}. Your download is still available below.
+            </p>
+          )}
+
+          {showRecoverableError && (
+            <p className="status-note warning">
+              {state.error} You can refresh this page or contact support: aimindscore@gmail.com
+            </p>
+          )}
 
           <div className="result-actions">
-            {state.ready ? (
-              <button className="primary-btn" onClick={handleDownloadPdf} disabled={state.isDownloading}>
-                {state.isDownloading ? "Downloading..." : "Download Premium PDF"}
-              </button>
-            ) : (
-              <button className="primary-btn" disabled>
-                Download Premium PDF
-              </button>
-            )}
+            <button className="primary-btn" onClick={handleDownloadPdf} disabled={!state.ready || state.isDownloading}>
+              {state.isDownloading ? "Downloading..." : "Download Premium PDF"}
+            </button>
+            <a className="secondary-btn" href="/support">
+              Contact Support
+            </a>
+            <a className="ghost-btn" href="/">
+              Return Home
+            </a>
           </div>
-
-          <button
-            className="secondary-btn"
-            onClick={() => {
-              window.location.href = "/";
-            }}
-          >
-            Back to Home
-          </button>
         </section>
       </main>
       <SiteFooter />
@@ -518,19 +563,264 @@ function PaymentSuccessPage() {
 function PaymentCancelledPage() {
   return (
     <>
-      <main className="page page-with-footer">
-        <section className="result-card payment-status-card">
-          <div className="badge">Payment cancelled</div>
+      <SeoHead
+        title="Payment Cancelled | MindScore AI"
+        description="Your payment was cancelled. Return to your assessment when you are ready."
+      />
+      <main className="page payment-page">
+        <section className="content-panel payment-panel">
+          <div className="badge">Checkout update</div>
           <h1>Payment was cancelled</h1>
-          <p>No charge was made. You can return and complete checkout when ready.</p>
-          <button
-            className="primary-btn"
-            onClick={() => {
-              window.location.href = "/";
-            }}
-          >
-            Return to Assessment
-          </button>
+          <p>No charge was made. You can return to your assessment and continue whenever you are ready.</p>
+          <a className="primary-btn" href="/">
+            Return to Home
+          </a>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
+  );
+}
+
+function AssessmentCard({ item, onStart }) {
+  return (
+    <button className={`assessment-card ${item.key}`} onClick={() => onStart(item.key)}>
+      <div className="assessment-card-top">
+        <span className="assessment-icon" aria-hidden="true">
+          {item.icon}
+        </span>
+        <span className="assessment-tag">{item.category}</span>
+      </div>
+      <h3>{item.title}</h3>
+      <p>{item.subtitle}</p>
+      <ul>
+        <li>{item.minutes}</li>
+        <li>Free result available</li>
+        <li>Premium analysis available</li>
+      </ul>
+      <span className="assessment-cta">Start assessment</span>
+    </button>
+  );
+}
+
+function Homepage({ onStartAssessment }) {
+  const assessments = Object.entries(tests).map(([key, value]) => ({ key, ...value }));
+
+  return (
+    <>
+      <SeoHead
+        title="MindScore AI | Premium Self-Assessment Platform"
+        description="Complete intelligent self-assessments and unlock a personalized premium AI report with secure Stripe checkout and instant PDF delivery."
+      />
+      <header className="site-header">
+        <div className="brand-wrap">
+          <a href="/" className="brand-link" aria-label="MindScore AI Home">
+            <span className="brand-mark" aria-hidden="true">
+              M
+            </span>
+            <span>MindScore AI</span>
+          </a>
+        </div>
+        <nav className="site-nav" aria-label="Primary navigation">
+          <a href="#assessments">Assessments</a>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#premium-report">Premium Report</a>
+          <a href="#faq">FAQ</a>
+          <a href="/support">Support</a>
+        </nav>
+        <button className="header-cta" onClick={() => onStartAssessment("mental")}>Start Free Assessment</button>
+      </header>
+
+      <main className="homepage">
+        <section className="hero-section">
+          <div className="hero-copy">
+            <p className="hero-label">AI-powered personal development insights</p>
+            <h1>Understand Your Mind. Strengthen Your Life.</h1>
+            <p>
+              Complete intelligent self-assessments and receive clear, personalized insights into your mindset,
+              stress patterns, sleep quality and personal strengths.
+            </p>
+            <div className="hero-actions">
+              <button className="primary-btn" onClick={() => onStartAssessment("mental")}>Start Free Assessment</button>
+              <a className="secondary-btn" href="#premium-report">
+                See What You Get
+              </a>
+            </div>
+            <div className="trust-strip" aria-label="Value highlights">
+              <span>Free basic results</span>
+              <span>Personalized AI analysis</span>
+              <span>Secure Stripe payment</span>
+              <span>Instant PDF report</span>
+              <span>Private and confidential</span>
+              <span>Informational, not medical</span>
+            </div>
+          </div>
+
+          <aside className="hero-visual" aria-label="Platform preview">
+            <div className="visual-card main">
+              <p>AI Analysis Overview</p>
+              <div className="score-ring">
+                <strong>84</strong>
+                <span>Overall score</span>
+              </div>
+              <div className="mini-bars">
+                <i style={{ width: "88%" }} />
+                <i style={{ width: "72%" }} />
+                <i style={{ width: "79%" }} />
+                <i style={{ width: "66%" }} />
+              </div>
+            </div>
+            <div className="visual-card">
+              <p>Top strength</p>
+              <h3>Resilience</h3>
+              <small>Calm, durable and recovery-oriented pattern</small>
+            </div>
+            <div className="visual-card">
+              <p>Growth focus</p>
+              <h3>Stress tolerance</h3>
+              <small>Action plan with practical weekly steps</small>
+            </div>
+          </aside>
+        </section>
+
+        <section className="section" id="assessments">
+          <div className="section-heading">
+            <h2>Assessments Designed for Real Insight</h2>
+            <p>Short, focused questionnaires built for clarity and practical self-development guidance.</p>
+          </div>
+          <div className="assessment-grid">
+            {assessments.map((item) => (
+              <AssessmentCard key={item.key} item={item} onStart={onStartAssessment} />
+            ))}
+          </div>
+        </section>
+
+        <section className="section steps" id="how-it-works">
+          <div className="section-heading">
+            <h2>How It Works</h2>
+            <p>Clear from start to finish in four simple steps.</p>
+          </div>
+          <div className="steps-grid">
+            <article>
+              <span>1</span>
+              <h3>Choose an assessment</h3>
+              <p>Select the area you want to understand first.</p>
+            </article>
+            <article>
+              <span>2</span>
+              <h3>Answer the questions</h3>
+              <p>Complete a short questionnaire with clear answer options.</p>
+            </article>
+            <article>
+              <span>3</span>
+              <h3>View your free results</h3>
+              <p>Get your overall score, profile snapshot and key interpretation.</p>
+            </article>
+            <article>
+              <span>4</span>
+              <h3>Unlock Premium Report</h3>
+              <p>Receive a complete personalized PDF and email delivery.</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="section premium-section" id="premium-report">
+          <div className="section-heading">
+            <h2>Why the Premium Report Is Worth It</h2>
+            <p>Move from scores to structured understanding and practical next steps.</p>
+          </div>
+          <div className="premium-grid">
+            <article className="premium-features">
+              <ul>
+                <li>Personalized AI profile based on your answers</li>
+                <li>Detailed interpretation of every score area</li>
+                <li>Strengths and risk pattern analysis</li>
+                <li>Practical recommendations in clear language</li>
+                <li>Action plan you can apply immediately</li>
+                <li>Downloadable premium PDF</li>
+                <li>Email delivery to your inbox</li>
+                <li>Secure one-time payment via Stripe</li>
+              </ul>
+              <button className="primary-btn" onClick={() => onStartAssessment("mental")}>Unlock Your Premium Report</button>
+            </article>
+            <article className="premium-preview">
+              <div className="report-page">
+                <h3>Page 1</h3>
+                <p>Executive summary and score interpretation</p>
+                <div className="line-group">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+              <div className="report-page">
+                <h3>Page 2</h3>
+                <p>Dimension breakdown and pattern analysis</p>
+                <div className="bar-group">
+                  <i style={{ width: "82%" }} />
+                  <i style={{ width: "66%" }} />
+                  <i style={{ width: "74%" }} />
+                </div>
+              </div>
+              <div className="report-page">
+                <h3>Page 3</h3>
+                <p>Practical recommendations and 30-day action plan</p>
+                <div className="line-group">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section className="section why-section" id="why-mindscore">
+          <div className="section-heading">
+            <h2>Why MindScore AI</h2>
+            <p>Built for people who want guidance they can use, not generic quiz text.</p>
+          </div>
+          <div className="comparison-grid">
+            <article>
+              <h3>Typical online quiz</h3>
+              <ul>
+                <li>Generic feedback</li>
+                <li>Minimal explanation</li>
+                <li>Limited practical steps</li>
+              </ul>
+            </article>
+            <article className="highlighted">
+              <h3>MindScore AI</h3>
+              <ul>
+                <li>Personalized analysis based on your answers</li>
+                <li>Clear language instead of jargon</li>
+                <li>Immediate results and actionable recommendations</li>
+                <li>Accessible anywhere, on any device</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section className="section safety-section">
+          <h2>Safety and Disclaimer</h2>
+          <p>
+            MindScore AI provides educational and informational self-assessment content. It does not provide medical
+            diagnosis, psychological treatment, psychiatric care or emergency assistance.
+          </p>
+        </section>
+
+        <section className="section faq-section" id="faq">
+          <div className="section-heading">
+            <h2>Frequently Asked Questions</h2>
+          </div>
+          <div className="faq-list">
+            {faqItems.map((item) => (
+              <details key={item.question}>
+                <summary>{item.question}</summary>
+                <p>{item.answer}</p>
+              </details>
+            ))}
+          </div>
         </section>
       </main>
       <SiteFooter />
@@ -541,219 +831,193 @@ function PaymentCancelledPage() {
 function AssessmentApp() {
   const [selectedTest, setSelectedTest] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [score, setScore] = useState(0);
   const [email, setEmail] = useState("");
   const [isCheckoutRedirecting, setIsCheckoutRedirecting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [isAnswering, setIsAnswering] = useState(false);
   const [userAnswers, setUserAnswers] = useState([]);
 
   const test = selectedTest ? tests[selectedTest] : null;
-  const dashboardScores =
-    selectedTest && userAnswers.length > 0
-      ? calculateDimensions(userAnswers)
-      : [];
 
-const startPremiumCheckout = async () => {
-  try {
-    setCheckoutError("");
-
-    if (!test) {
-      throw new Error("Assessment state is missing.");
-    }
-
-    if (!email || !/.+@.+\..+/.test(email.trim())) {
-      throw new Error("Please enter a valid email address before checkout.");
-    }
-
-    const finalScore = Math.round((score / (test.questions.length * 5)) * 100);
-    const profileDimensions =
-      dashboardScores.length > 0 ? dashboardScores : calculateDimensions(userAnswers);
-
-    setIsCheckoutRedirecting(true);
-
-    const checkoutSessionUrl = apiUrl(`${API_BASE}/create-checkout-session`);
-
-    const response = await fetch(checkoutSessionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        customerEmail: email.trim(),
-        assessmentType: selectedTest || test.title,
-        testName: test.title,
-        score: finalScore,
-        answers: userAnswers,
-        dimensions: profileDimensions,
-      }),
-    });
-
-    const rawBody = await response.text();
-    let data;
-
+  useEffect(() => {
     try {
-      data = rawBody ? JSON.parse(rawBody) : {};
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (!draft?.selectedTest || !tests[draft.selectedTest]) return;
+
+      setSelectedTest(draft.selectedTest);
+      setCurrentQuestion(Math.max(0, Number(draft.currentQuestion) || 0));
+      setUserAnswers(Array.isArray(draft.userAnswers) ? draft.userAnswers : []);
+      setEmail(typeof draft.email === "string" ? draft.email : "");
     } catch {
-      throw new Error(
-        `Checkout endpoint returned non-JSON response from ${checkoutSessionUrl}.`
-      );
+      window.localStorage.removeItem(DRAFT_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTest) {
+      window.localStorage.removeItem(DRAFT_KEY);
+      return;
     }
 
-    if (!response.ok) {
-      throw new Error(data.error || "Unable to create checkout session.");
-    }
+    const draft = {
+      selectedTest,
+      currentQuestion,
+      userAnswers,
+      email,
+    };
+    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  }, [selectedTest, currentQuestion, userAnswers, email]);
 
-    if (!data.url) {
-      throw new Error("Stripe checkout URL is missing.");
-    }
+  const score = useMemo(() => userAnswers.reduce((sum, value) => sum + (Number(value) || 0), 0), [userAnswers]);
 
-    window.location.href = data.url;
-  } catch (error) {
-    setCheckoutError(error.message || "Checkout failed.");
-    setIsCheckoutRedirecting(false);
-  }
-};
+  const dashboardScores = useMemo(
+    () => (selectedTest && userAnswers.length > 0 ? calculateDimensions(userAnswers) : []),
+    [selectedTest, userAnswers]
+  );
 
-function startTest(key) {
-  setSelectedTest(key);
-  setCurrentQuestion(0);
-  setScore(0);
-  setEmail("");
-  setCheckoutError("");
-  setIsCheckoutRedirecting(false);
-  setUserAnswers([]);
-}
-
-  function answer(points) {
-    const newScore = score + points;
-    setUserAnswers((previousAnswers) => [
-  ...previousAnswers,
-  points,
-]);
-
-    if (currentQuestion < test.questions.length - 1) {
-      setScore(newScore);
-      setCurrentQuestion(currentQuestion + 1);
-    } else {
-      setScore(newScore);
-      setCurrentQuestion(test.questions.length);
-    }
-  }
-
-  function restart() {
-    setSelectedTest(null);
+  const startTest = (key) => {
+    setSelectedTest(key);
     setCurrentQuestion(0);
-    setScore(0);
     setEmail("");
     setCheckoutError("");
     setIsCheckoutRedirecting(false);
-  }
-function getLevel(finalScore) {
-  if (finalScore >= 90) return "Elite Mental Strength";
-  if (finalScore >= 80) return "Exceptional Profile";
-  if (finalScore >= 65) return "Strong Foundation";
-  if (finalScore >= 50) return "Developing Resilience";
-  if (finalScore >= 30) return "Growth Potential";
-  return "Starting Your Journey";
-}
+    setIsAnswering(false);
+    setUserAnswers([]);
+  };
 
-  function getMessage(finalScore) {
+  const restart = () => {
+    setSelectedTest(null);
+    setCurrentQuestion(0);
+    setEmail("");
+    setCheckoutError("");
+    setIsCheckoutRedirecting(false);
+    setIsAnswering(false);
+    setUserAnswers([]);
+  };
+
+  const answerQuestion = (points) => {
+    if (!test || isAnswering) return;
+    setIsAnswering(true);
+
+    setUserAnswers((previous) => {
+      const next = [...previous];
+      next[currentQuestion] = points;
+      return next;
+    });
+
+    window.setTimeout(() => {
+      setCurrentQuestion((previousQuestion) => {
+        if (previousQuestion < test.questions.length - 1) {
+          return previousQuestion + 1;
+        }
+        return test.questions.length;
+      });
+      setIsAnswering(false);
+    }, 160);
+  };
+
+  const goBackQuestion = () => {
+    setCheckoutError("");
+    setCurrentQuestion((previous) => Math.max(0, previous - 1));
+  };
+
+  const getLevel = (finalScore) => {
+    if (finalScore >= 85) return "Strong and consistent profile";
+    if (finalScore >= 70) return "Healthy baseline with growth opportunities";
+    if (finalScore >= 50) return "Developing foundation";
+    return "Early growth stage";
+  };
+
+  const getSummary = (finalScore) => {
     if (finalScore >= 80) {
-      return [
-        "Your result shows a powerful internal structure and strong self-control.",
-        "You appear capable of staying focused even when pressure increases.",
-        "Your answers suggest above-average resilience and emotional regulation.",
-        "Your next level is refinement, not survival.",
-        "The full report can reveal your hidden strengths and advanced growth areas.",
-      ];
+      return {
+        strengths: "You show consistent self-regulation, focus and recovery under pressure.",
+        improve: "Continue refining routines to keep this level stable in high-demand periods.",
+        recommendation: "Use the premium plan to translate strengths into a long-term performance strategy.",
+      };
     }
-
     if (finalScore >= 60) {
-      return [
-        "You have a strong base and clear potential for further growth.",
-        "You can handle pressure, but some situations may still affect your consistency.",
-        "Your answers suggest discipline, awareness and emotional intelligence.",
-        "The next step is building stronger routines during difficult periods.",
-        "The full report can show which patterns are limiting your next level.",
-      ];
+      return {
+        strengths: "You have a solid base and clear signs of resilience in everyday demands.",
+        improve: "Your consistency may drop in prolonged stress or uncertainty.",
+        recommendation: "Structured weekly habits can raise your reliability and confidence quickly.",
+      };
     }
+    return {
+      strengths: "You show useful self-awareness and potential for meaningful progress.",
+      improve: "Current stress patterns may be reducing clarity, energy or emotional balance.",
+      recommendation: "Start with focused routines and monitor improvement using clear milestones.",
+    };
+  };
 
-    if (finalScore >= 40) {
-      return [
-        "Your result shows potential, but also several areas that need more structure.",
-        "Stress, uncertainty or self-doubt may sometimes slow your progress.",
-        "You are not weak — your system simply needs better habits and clearer direction.",
-        "With consistent practice, this score can improve significantly.",
-        "The full report can give you a practical plan for improvement.",
-      ];
+  const startPremiumCheckout = async () => {
+    try {
+      setCheckoutError("");
+
+      if (!test) throw new Error("Assessment state is missing.");
+
+      if (!email || !/.+@.+\..+/.test(email.trim())) {
+        throw new Error("Please enter a valid email address before checkout.");
+      }
+
+      const finalScore = Math.round((score / (test.questions.length * 5)) * 100);
+      const profileDimensions =
+        dashboardScores.length > 0 ? dashboardScores : calculateDimensions(userAnswers);
+
+      setIsCheckoutRedirecting(true);
+      const checkoutSessionUrl = apiUrl(`${API_BASE}/create-checkout-session`);
+
+      const response = await fetch(checkoutSessionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerEmail: email.trim(),
+          assessmentType: selectedTest || test.title,
+          testName: test.title,
+          score: finalScore,
+          answers: userAnswers,
+          dimensions: profileDimensions,
+        }),
+      });
+
+      const rawBody = await response.text();
+      const data = rawBody ? JSON.parse(rawBody) : {};
+
+      if (!response.ok) throw new Error(data.error || "Unable to create checkout session.");
+      if (!data.url) throw new Error("Stripe checkout URL is missing.");
+
+      window.location.href = data.url;
+    } catch (error) {
+      setCheckoutError(error.message || "Checkout failed.");
+      setIsCheckoutRedirecting(false);
     }
-
-    return [
-      "Your answers suggest that pressure may currently affect your daily performance.",
-      "You may need more recovery, structure and emotional support.",
-      "This result is not a diagnosis and it does not define you.",
-      "It is only a starting point for building stronger habits.",
-      "The full report can help you understand where to begin.",
-    ];
-  }
+  };
 
   if (!selectedTest) {
+    return <Homepage onStartAssessment={startTest} />;
+  }
+
+  if (!test) {
     return (
-      <>
-        <main className="page page-with-footer">
-          <section className="hero-card">
-            <div className="badge">AI-powered self-assessment platform</div>
-
-<h1>🧠 MindScore AI</h1>
-
-<h2 className="slogan">
-  Know Yourself. Build Yourself. Become Stronger.
-</h2>
-
-<h2 className="section-title">
-  Choose Your Assessment
-</h2>
-          <p>
-            Discover your mindset, stress patterns, sleep quality and personal
-            strengths through short intelligent tests.
-          </p>
-          <p className="free-text">
-  ✓ Free basic results • AI report available
-</p>
-<div className="feature-row">
-  <span>⭐ AI Powered</span>
-  <span>🔒 Secure & Private</span>
-  <span>⚡ Instant Results</span>
-</div>
-    <div className="social-proof">
-  <p className="trusted-text">
-    Join thousands discovering their true mental potential.
-  </p>
-</div>      
-
-          <div className="test-grid">
-            {Object.entries(tests).map(([key, item]) => (
-              <button className="test-card" key={key} onClick={() => startTest(key)}>
-                <span>{item.icon}</span>
-                <strong>{item.title}</strong>
-                <small>{item.subtitle}</small>
-              </button>
-            ))}
-          </div>
-          <p className="bottom-cta">
-  Start with a free test and unlock your personalized AI report in less than 2 minutes.
-</p>
-          </section>
-        </main>
-        <SiteFooter />
-      </>
+      <main className="page">
+        <section className="content-panel">
+          <h1>Assessment unavailable</h1>
+          <button className="primary-btn" onClick={restart}>
+            Return Home
+          </button>
+        </section>
+      </main>
     );
   }
 
   if (currentQuestion === test.questions.length) {
     const finalScore = Math.round((score / (test.questions.length * 5)) * 100);
-      const resultLevel = getLevel(finalScore);
-    const resultMessage = getMessage(finalScore);
+    const resultLevel = getLevel(finalScore);
+    const summary = getSummary(finalScore);
     const strongestDimension =
       dashboardScores.length > 0
         ? [...dashboardScores].sort((a, b) => Number(b.score) - Number(a.score))[0]
@@ -765,127 +1029,83 @@ function getLevel(finalScore) {
 
     return (
       <>
-        <main className="page page-with-footer">
-          <section className="result-card">
-            <div className="badge">Your result is ready</div>
-
-          <h1>{test.icon} {test.title}</h1>
-
-          <div className="score-circle">
-            <span>{finalScore}</span>
-            <small>/100</small>
-          </div>
-
-          <h3
-  style={{
-    marginTop: "18px",
-    marginBottom: "18px",
-    fontSize: "28px",
-    lineHeight: "1.1",
-    fontWeight: "800"
-  }}
->
-  {resultLevel}
-</h3>
-
-          <div className="result-message">
-            {resultMessage.map((line) => (
-              <p key={line}>{line}</p>
-            ))}
-          </div>
-
-          <div className="email-box">
-            <h3>Unlock Your Personalized AI Report</h3>
-
-<p>
-  Enter your email to receive your personalized AI report instantly after payment.
-</p>
-
-<input
-  type="email"
-  placeholder="name@example.com"
-  value={email}
-  onChange={(e) => setEmail(e.target.value)}
-/>
-
-<p className="email-privacy">
-  🔒 We never share your email.
-</p>
-          </div>
-
-          <div className="premium-offer-card">
-            <div className="premium-offer-header">
-              <span className="premium-pill">Premium</span>
-              <h3>Unlock Premium AI Report</h3>
+        <SeoHead
+          title={`${test.title} Results | MindScore AI`}
+          description="View your free assessment results and unlock a personalized premium report."
+        />
+        <main className="page assessment-page">
+          <section className="content-panel result-panel">
+            <div className="result-head">
+              <div className="badge">Free result</div>
+              <h1>{test.title} Results</h1>
+              <p>{resultLevel}</p>
             </div>
-            <p className="premium-offer-copy">
-              A polished, downloadable report tailored to your assessment results.
-            </p>
-            <div className="premium-offer-meta">
-              <span>€4.99</span>
-              <span>Instant access</span>
-              <span>Downloadable PDF</span>
+
+            <div className="score-card">
+              <div className="score-circle" aria-label={`Overall score ${finalScore} out of 100`}>
+                <span>{finalScore}</span>
+                <small>/100</small>
+              </div>
+              <div className="score-copy">
+                <h2>Overall Score</h2>
+                <p>{summary.strengths}</p>
+              </div>
             </div>
-            <div className="premium-offer-grid">
-              <div className="premium-benefits-card">
-                <h4>What’s included</h4>
+
+            <div className="result-insights">
+              <article>
+                <h3>Key strengths</h3>
+                <p>{strongestDimension ? `${strongestDimension.name}: ${strongestDimension.score}/100.` : summary.strengths}</p>
+              </article>
+              <article>
+                <h3>Areas to improve</h3>
+                <p>{growthDimension ? `${growthDimension.name}: ${growthDimension.score}/100.` : summary.improve}</p>
+              </article>
+              <article>
+                <h3>Short recommendation</h3>
+                <p>{summary.recommendation}</p>
+              </article>
+            </div>
+
+            {dashboardScores.length > 0 && <AnalyticsDashboard data={dashboardScores} />}
+
+            <section className="premium-cta-panel" aria-label="Premium report offer">
+              <div className="premium-cta-copy">
+                <h2>Unlock Your Premium Report</h2>
+                <p>
+                  One-time payment of EUR {PREMIUM_PRICE_EUR}. Includes personalized AI interpretation, actionable
+                  recommendations, downloadable PDF, and email delivery.
+                </p>
                 <ul>
-                  <li>Full five-dimension breakdown</li>
-                  <li>Personalized AI interpretation</li>
-                  <li>Strengths and blind spots</li>
-                  <li>Practical recommendations</li>
-                  <li>Personalized 30-day action plan</li>
-                  <li>Downloadable premium PDF</li>
+                  <li>Exact price: EUR {PREMIUM_PRICE_EUR}</li>
+                  <li>One-time payment, no subscription</li>
+                  <li>Immediate PDF availability after payment verification</li>
+                  <li>Email delivery included</li>
+                  <li>Secure checkout powered by Stripe</li>
                 </ul>
               </div>
-              <div className="premium-preview-card">
-                <p className="preview-label">Preview of your premium report</p>
-                <div className="preview-cover">
-                  <div className="preview-cover-top">Premium Report</div>
-                  <div className="preview-cover-body">
-                    <div className="preview-score">{finalScore}/100</div>
-                    <div className="preview-meta">{strongestDimension?.name || "—"}</div>
-                  </div>
-                </div>
-                <div className="preview-bars">
-                  <div className="preview-bar-row"><span></span><i></i></div>
-                  <div className="preview-bar-row"><span></span><i></i></div>
-                  <div className="preview-bar-row"><span></span><i></i></div>
-                </div>
-                <div className="preview-plan">30-day action plan</div>
+              <div className="premium-cta-form">
+                <label htmlFor="report-email">Email for secure report delivery</label>
+                <input
+                  id="report-email"
+                  type="email"
+                  value={email}
+                  placeholder="name@example.com"
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+                <button className="primary-btn" onClick={startPremiumCheckout} disabled={isCheckoutRedirecting}>
+                  {isCheckoutRedirecting ? "Redirecting to secure checkout..." : "Unlock Premium Report"}
+                </button>
+                {checkoutError && <p className="inline-error">{checkoutError}</p>}
+                <p className="support-line">Questions? aimindscore@gmail.com</p>
               </div>
-            </div>
-          </div>
-          <div className="result-summary">
-            <div className="result-summary-item">
-              <span>Strongest dimension</span>
-              <strong>{strongestDimension?.name || "—"}</strong>
-            </div>
-            <div className="result-summary-item">
-              <span>Growth opportunity</span>
-              <strong>{growthDimension?.name || "—"}</strong>
-            </div>
-          </div>
-          {dashboardScores.length > 0 && (
-  <AnalyticsDashboard data={dashboardScores} />
-)}
+            </section>
 
             <div className="result-actions">
-            <button
-  className="primary-btn"
-  onClick={startPremiumCheckout}
-  disabled={isCheckoutRedirecting}
->
-  {isCheckoutRedirecting ? "Redirecting to secure checkout..." : "Unlock Premium AI Report"}
-</button>
+              <button className="secondary-btn" onClick={restart}>
+                Back to all assessments
+              </button>
             </div>
-          {checkoutError && <p className="payment-error">{checkoutError}</p>}
-          <p className="premium-supporting-line">€4.99 • Instant access • Downloadable PDF</p>
-          <p className="premium-trust-line">Secure payment powered by Stripe</p>
-
-            <button className="secondary-btn" onClick={restart}>
-              Back to all tests
-            </button>
           </section>
         </main>
         <SiteFooter />
@@ -894,38 +1114,57 @@ function getLevel(finalScore) {
   }
 
   const progress = ((currentQuestion + 1) / test.questions.length) * 100;
+  const selectedOption = userAnswers[currentQuestion];
 
   return (
     <>
-      <main className="page page-with-footer">
-        <section className="quiz-card question-animation">
-          <div className="quiz-top">
-          <span>
-            Question {currentQuestion + 1} of {test.questions.length}
-          </span>
-          <span>{Math.round(progress)}%</span>
+      <SeoHead
+        title={`${test.title} Assessment | MindScore AI`}
+        description="Complete your assessment with a clear, mobile-friendly questionnaire and progress tracking."
+      />
+      <main className="page assessment-page">
+        <section className="content-panel quiz-panel">
+          <div className="quiz-header-row">
+            <button className="ghost-btn" onClick={restart}>
+              Home
+            </button>
+            <p>{test.title}</p>
+            <button className="ghost-btn" onClick={goBackQuestion} disabled={currentQuestion === 0 || isAnswering}>
+              Back
+            </button>
           </div>
 
-        <div className="progress">
-          <div
-            className="progress-fill"
-            style={{ width: `${progress}%` }}
-          ></div>
-        </div>
+          <div className="quiz-top">
+            <span>
+              Question {currentQuestion + 1} of {test.questions.length}
+            </span>
+            <span>{Math.round(progress)}%</span>
+          </div>
 
-        <h1>{test.icon}</h1>
-        <h2 className="question-title">
-  {test.questions[currentQuestion]}
-</h2>
+          <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+            <div className="progress-fill" style={{ width: `${progress}%` }} />
+          </div>
 
-        <div className="answers">
-          {answers.map((item) => (
-            <button key={item.text} onClick={() => answer(item.points)}>
-              <span>{item.icon}</span>
-              <strong>{item.text}</strong>
-            </button>
-          ))}
-        </div>
+          <h1 className="question-title">{test.questions[currentQuestion]}</h1>
+
+          <div className="answers" role="group" aria-label="Answer options">
+            {answers.map((item) => {
+              const isSelected = selectedOption === item.points;
+              return (
+                <button
+                  key={item.text}
+                  onClick={() => answerQuestion(item.points)}
+                  disabled={isAnswering}
+                  className={isSelected ? "selected" : ""}
+                  aria-pressed={isSelected}
+                >
+                  <strong>{item.text}</strong>
+                </button>
+              );
+            })}
+          </div>
+
+          {isAnswering && <p className="micro-status">Saving answer...</p>}
         </section>
       </main>
       <SiteFooter />
