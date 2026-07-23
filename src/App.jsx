@@ -625,7 +625,7 @@ function AssessmentCard({ item, onStart }) {
           {iconMap[item.key] || item.icon}
         </span>
         <span className="assessment-arrow" aria-hidden="true">
-          →
+          {">"}
         </span>
       </div>
       <h3>{item.title}</h3>
@@ -645,6 +645,7 @@ function Homepage({ onStartAssessment }) {
   const assessments = Object.entries(tests).map(([key, value]) => ({ key, ...value }));
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 12);
@@ -710,14 +711,25 @@ function Homepage({ onStartAssessment }) {
             <span>MindScore AI</span>
           </a>
         </div>
-        <nav className="site-nav" aria-label="Primary navigation">
-          <a className={activeSection === "assessments" ? "active" : ""} href="#assessments">Assessments</a>
-          <a className={activeSection === "how-it-works" ? "active" : ""} href="#how-it-works">How It Works</a>
-          <a className={activeSection === "premium-report" ? "active" : ""} href="#premium-report">Premium Report</a>
-          <a className={activeSection === "faq" ? "active" : ""} href="#faq">FAQ</a>
-          <a href="/support">Support</a>
+        <button
+          className={`mobile-menu-toggle ${isMobileMenuOpen ? "open" : ""}`}
+          type="button"
+          aria-label="Toggle navigation menu"
+          aria-expanded={isMobileMenuOpen}
+          onClick={() => setIsMobileMenuOpen((previous) => !previous)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+        <nav className={`site-nav ${isMobileMenuOpen ? "open" : ""}`} aria-label="Primary navigation">
+          <a className={activeSection === "assessments" ? "active" : ""} href="#assessments" onClick={() => setIsMobileMenuOpen(false)}>Assessments</a>
+          <a className={activeSection === "how-it-works" ? "active" : ""} href="#how-it-works" onClick={() => setIsMobileMenuOpen(false)}>How It Works</a>
+          <a className={activeSection === "premium-report" ? "active" : ""} href="#premium-report" onClick={() => setIsMobileMenuOpen(false)}>Premium Report</a>
+          <a className={activeSection === "faq" ? "active" : ""} href="#faq" onClick={() => setIsMobileMenuOpen(false)}>FAQ</a>
+          <a href="/support" onClick={() => setIsMobileMenuOpen(false)}>Support</a>
         </nav>
-        <button className="header-cta" onClick={() => onStartAssessment("mental")}>Start Free Assessment</button>
+        <button className="header-cta header-cta-desktop" onClick={() => { setIsMobileMenuOpen(false); onStartAssessment("mental"); }}>Start Free Assessment</button>
       </header>
 
       <main className="homepage">
