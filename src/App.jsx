@@ -149,6 +149,16 @@ const faqItems = [
   },
 ];
 
+const trustItems = [
+  "Secure Stripe Payments",
+  "AI Powered",
+  "Private",
+  "Instant PDF",
+  "Email Delivery",
+  "GDPR Friendly",
+  "Educational Only",
+];
+
 function SeoHead({ title, description }) {
   useEffect(() => {
     document.title = title;
@@ -178,18 +188,36 @@ function SiteFooter() {
   return (
     <footer className="site-footer" aria-label="Legal and support links">
       <div className="footer-grid">
-        <div>
+        <div className="footer-col brand">
           <p className="footer-brand">MindScore AI</p>
           <p className="footer-note">
             Educational and informational self-assessment platform. Not medical diagnosis or treatment.
           </p>
         </div>
-        <nav className="site-footer-links" aria-label="Footer navigation">
-          <a href="/privacy">Privacy Policy</a>
-          <a href="/terms">Terms of Service</a>
-          <a href="/support">Support</a>
-          <a href="mailto:aimindscore@gmail.com">aimindscore@gmail.com</a>
+
+        <nav className="footer-col" aria-label="Legal links">
+          <p className="footer-col-title">Legal</p>
+          <div className="site-footer-links">
+            <a href="/privacy">Privacy Policy</a>
+            <a href="/terms">Terms of Service</a>
+          </div>
         </nav>
+
+        <nav className="footer-col" aria-label="Support links">
+          <p className="footer-col-title">Support</p>
+          <div className="site-footer-links">
+            <a href="/support">Customer Support</a>
+            <a href="mailto:aimindscore@gmail.com">aimindscore@gmail.com</a>
+          </div>
+        </nav>
+
+        <div className="footer-col" aria-label="Product notes">
+          <p className="footer-col-title">Product</p>
+          <div className="site-footer-links">
+            <a href="/#assessments">Assessments</a>
+            <a href="/#premium-report">Premium Report</a>
+          </div>
+        </div>
       </div>
       <p className="footer-copyright">(c) {new Date().getFullYear()} MindScore AI</p>
     </footer>
@@ -583,11 +611,18 @@ function PaymentCancelledPage() {
 }
 
 function AssessmentCard({ item, onStart }) {
+  const iconMap = {
+    mental: "RS",
+    stress: "SC",
+    sleep: "SQ",
+    leadership: "PS",
+  };
+
   return (
     <button className={`assessment-card ${item.key}`} onClick={() => onStart(item.key)}>
       <div className="assessment-card-top">
         <span className="assessment-icon" aria-hidden="true">
-          {item.icon}
+          {iconMap[item.key] || item.icon}
         </span>
         <span className="assessment-tag">{item.category}</span>
       </div>
@@ -605,6 +640,27 @@ function AssessmentCard({ item, onStart }) {
 
 function Homepage({ onStartAssessment }) {
   const assessments = Object.entries(tests).map(([key, value]) => ({ key, ...value }));
+
+  useEffect(() => {
+    const revealElements = document.querySelectorAll(".reveal");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      {
+        threshold: 0.15,
+      }
+    );
+
+    revealElements.forEach((element) => observer.observe(element));
+
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <>
@@ -632,8 +688,8 @@ function Homepage({ onStartAssessment }) {
       </header>
 
       <main className="homepage">
-        <section className="hero-section">
-          <div className="hero-copy">
+        <section className="hero-section reveal">
+          <div className="hero-copy reveal">
             <p className="hero-label">AI-powered personal development insights</p>
             <h1>Understand Your Mind. Strengthen Your Life.</h1>
             <p>
@@ -656,34 +712,88 @@ function Homepage({ onStartAssessment }) {
             </div>
           </div>
 
-          <aside className="hero-visual" aria-label="Platform preview">
-            <div className="visual-card main">
-              <p>AI Analysis Overview</p>
-              <div className="score-ring">
-                <strong>84</strong>
-                <span>Overall score</span>
+          <aside className="hero-visual reveal" aria-label="Platform preview">
+            <div className="hero-neural-brain" aria-hidden="true">
+              <div className="brain-orbit orbit-one" />
+              <div className="brain-orbit orbit-two" />
+              <div className="brain-orbit orbit-three" />
+
+              <div className="brain-core">
+                <span className="brain-core-label">AI Core</span>
               </div>
-              <div className="mini-bars">
-                <i style={{ width: "88%" }} />
-                <i style={{ width: "72%" }} />
-                <i style={{ width: "79%" }} />
-                <i style={{ width: "66%" }} />
+
+              <span className="brain-node node-a" />
+              <span className="brain-node node-b" />
+              <span className="brain-node node-c" />
+              <span className="brain-node node-d" />
+              <span className="brain-node node-e" />
+              <span className="brain-node node-f" />
+
+              <span className="brain-link link-a" />
+              <span className="brain-link link-b" />
+              <span className="brain-link link-c" />
+              <span className="brain-link link-d" />
+              <span className="brain-link link-e" />
+            </div>
+
+            <div className="visual-dashboard reveal">
+              <div className="visual-dashboard-head">
+                <p>MindScore analysis panel</p>
+                <span>Live preview</span>
+              </div>
+
+              <div className="visual-dashboard-grid">
+                <div className="visual-dashboard-score">
+                  <strong>84</strong>
+                  <small>Overall score</small>
+                </div>
+                <div className="visual-dashboard-bars">
+                  <div>
+                    <span>Resilience</span>
+                    <i style={{ width: "88%" }} className="bar-anim-one" />
+                  </div>
+                  <div>
+                    <span>Emotional Control</span>
+                    <i style={{ width: "72%" }} className="bar-anim-two" />
+                  </div>
+                  <div>
+                    <span>Stress Tolerance</span>
+                    <i style={{ width: "66%" }} className="bar-anim-three" />
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="visual-card">
-              <p>Top strength</p>
-              <h3>Resilience</h3>
-              <small>Calm, durable and recovery-oriented pattern</small>
-            </div>
-            <div className="visual-card">
-              <p>Growth focus</p>
-              <h3>Stress tolerance</h3>
-              <small>Action plan with practical weekly steps</small>
+
+            <div className="hero-metrics">
+              <article className="visual-card float-a reveal">
+                <p>Top strength</p>
+                <h3>Resilience</h3>
+                <small>Calm, durable and recovery-oriented pattern</small>
+              </article>
+              <article className="visual-card float-b reveal">
+                <p>Growth focus</p>
+                <h3>Stress tolerance</h3>
+                <small>Action plan with practical weekly steps</small>
+              </article>
             </div>
           </aside>
         </section>
 
-        <section className="section" id="assessments">
+        <section className="section trust-section reveal" id="trust">
+          <div className="section-heading">
+            <h2>Trusted Infrastructure, Responsible AI Experience</h2>
+            <p>Built for clarity, security and immediate access to practical self-assessment insights.</p>
+          </div>
+          <div className="trust-grid">
+            {trustItems.map((item) => (
+              <article key={item} className="trust-chip">
+                <span>{item}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="section reveal" id="assessments">
           <div className="section-heading">
             <h2>Assessments Designed for Real Insight</h2>
             <p>Short, focused questionnaires built for clarity and practical self-development guidance.</p>
@@ -695,12 +805,12 @@ function Homepage({ onStartAssessment }) {
           </div>
         </section>
 
-        <section className="section steps" id="how-it-works">
+        <section className="section steps reveal" id="how-it-works">
           <div className="section-heading">
             <h2>How It Works</h2>
             <p>Clear from start to finish in four simple steps.</p>
           </div>
-          <div className="steps-grid">
+          <div className="steps-grid timeline-grid">
             <article>
               <span>1</span>
               <h3>Choose an assessment</h3>
@@ -724,7 +834,7 @@ function Homepage({ onStartAssessment }) {
           </div>
         </section>
 
-        <section className="section premium-section" id="premium-report">
+        <section className="section premium-section reveal" id="premium-report">
           <div className="section-heading">
             <h2>Why the Premium Report Is Worth It</h2>
             <p>Move from scores to structured understanding and practical next steps.</p>
@@ -775,7 +885,7 @@ function Homepage({ onStartAssessment }) {
           </div>
         </section>
 
-        <section className="section why-section" id="why-mindscore">
+        <section className="section why-section reveal" id="why-mindscore">
           <div className="section-heading">
             <h2>Why MindScore AI</h2>
             <p>Built for people who want guidance they can use, not generic quiz text.</p>
@@ -801,7 +911,7 @@ function Homepage({ onStartAssessment }) {
           </div>
         </section>
 
-        <section className="section safety-section">
+        <section className="section safety-section reveal">
           <h2>Safety and Disclaimer</h2>
           <p>
             MindScore AI provides educational and informational self-assessment content. It does not provide medical
@@ -809,7 +919,7 @@ function Homepage({ onStartAssessment }) {
           </p>
         </section>
 
-        <section className="section faq-section" id="faq">
+        <section className="section faq-section reveal" id="faq">
           <div className="section-heading">
             <h2>Frequently Asked Questions</h2>
           </div>
@@ -817,7 +927,9 @@ function Homepage({ onStartAssessment }) {
             {faqItems.map((item) => (
               <details key={item.question}>
                 <summary>{item.question}</summary>
-                <p>{item.answer}</p>
+                <div className="faq-answer">
+                  <p>{item.answer}</p>
+                </div>
               </details>
             ))}
           </div>
