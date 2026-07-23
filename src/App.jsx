@@ -4,7 +4,6 @@ import { generatePremiumPdf } from "./premiumPdfGenerator";
 import "./App.css";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 
-const SHOW_TEST_REPORT_BUTTON = true;
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 const apiUrl = (path) => `${BACKEND_URL}${path}`;
@@ -138,6 +137,197 @@ const loadingMessages = [
   "Building your 30-day action plan…",
   "Preparing your premium PDF…",
 ];
+
+const LEGAL_LAST_UPDATED = "July 23, 2026";
+
+function SiteFooter() {
+  return (
+    <footer className="site-footer" aria-label="Legal and support links">
+      <p>MindScore AI</p>
+      <nav className="site-footer-links">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
+        <a href="/support">Support</a>
+      </nav>
+    </footer>
+  );
+}
+
+function PrivacyPolicyPage() {
+  return (
+    <>
+      <main className="page page-with-footer">
+        <section className="result-card legal-card">
+          <div className="badge">Legal</div>
+          <h1>Privacy Policy</h1>
+          <p className="legal-last-updated">Last updated: {LEGAL_LAST_UPDATED}</p>
+
+          <div className="legal-content">
+            <p>
+              MindScore AI collects information that you provide directly through the service. This includes your
+              self-assessment answers and, when you choose to purchase a premium report, your email address.
+            </p>
+
+            <h3>How We Use Your Data</h3>
+            <p>
+              Your assessment data may be processed to generate AI-powered informational reports. We use this
+              processing to provide test scores, profile insights, and premium PDF report content.
+            </p>
+
+            <h3>Third-Party Processors</h3>
+            <p>
+              Payments are processed by Stripe. Email delivery for premium reports is handled through Gmail/SMTP.
+              Hosting and infrastructure are provided through Render.
+            </p>
+
+            <h3>Retention and Security</h3>
+            <p>
+              We retain data only as long as needed to operate the service, fulfill paid report delivery, resolve
+              support issues, and meet legal obligations. We apply reasonable technical and organizational safeguards
+              to protect stored assessment and transaction data.
+            </p>
+
+            <h3>Your Rights</h3>
+            <p>
+              You may request access, correction, or deletion of your personal data. You may also submit privacy
+              concerns or deletion requests at any time by contacting us.
+            </p>
+
+            <h3>Important Notice</h3>
+            <p>
+              MindScore AI is not a medical service and does not provide diagnosis or treatment. Content is for
+              educational and informational use only.
+            </p>
+
+            <h3>Contact</h3>
+            <p>
+              For privacy questions or deletion requests, contact:
+              <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
+                aimindscore@gmail.com
+              </a>
+            </p>
+          </div>
+
+          <a className="secondary-btn" href="/">
+            Back to Home
+          </a>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
+  );
+}
+
+function TermsOfServicePage() {
+  return (
+    <>
+      <main className="page page-with-footer">
+        <section className="result-card legal-card">
+          <div className="badge">Legal</div>
+          <h1>Terms of Service</h1>
+          <p className="legal-last-updated">Last updated: {LEGAL_LAST_UPDATED}</p>
+
+          <div className="legal-content">
+            <p>
+              MindScore AI provides self-assessment tools and AI-generated informational PDF reports. By using this
+              service, you agree to these terms.
+            </p>
+
+            <h3>Informational Use Only</h3>
+            <p>
+              Results and reports are for educational and informational purposes only. MindScore AI does not provide
+              medical, psychological, psychiatric, or emergency care.
+            </p>
+
+            <h3>Payments and Digital Delivery</h3>
+            <p>
+              Premium reports are paid digital products processed through Stripe. Delivery is provided digitally by
+              secure download and email when available.
+            </p>
+
+            <h3>Acceptable Use</h3>
+            <p>
+              You agree not to misuse the service, attempt unauthorized access, interfere with platform operations,
+              or submit unlawful content.
+            </p>
+
+            <h3>Intellectual Property</h3>
+            <p>
+              The MindScore AI platform, branding, design, and generated report formats are protected intellectual
+              property. You may use purchased reports for personal use unless otherwise agreed in writing.
+            </p>
+
+            <h3>Service Availability</h3>
+            <p>
+              We work to keep the service available but do not guarantee uninterrupted operation. Maintenance,
+              provider outages, or infrastructure issues may temporarily affect access.
+            </p>
+
+            <h3>Limitation of Liability</h3>
+            <p>
+              To the maximum extent permitted by law, MindScore AI is not liable for indirect, incidental, or
+              consequential damages arising from use of the service or reliance on informational report content.
+            </p>
+
+            <h3>Contact</h3>
+            <p>
+              Questions about these terms:
+              <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
+                aimindscore@gmail.com
+              </a>
+            </p>
+          </div>
+
+          <a className="secondary-btn" href="/">
+            Back to Home
+          </a>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
+  );
+}
+
+function SupportPage() {
+  return (
+    <>
+      <main className="page page-with-footer">
+        <section className="result-card legal-card">
+          <div className="badge">Support</div>
+          <h1>Customer Support</h1>
+          <p className="legal-last-updated">Last updated: {LEGAL_LAST_UPDATED}</p>
+
+          <div className="legal-content">
+            <p>
+              Contact our support team at
+              <a className="inline-mail-link" href="mailto:aimindscore@gmail.com">
+                aimindscore@gmail.com
+              </a>
+              .
+            </p>
+            <p>
+              To help us resolve your request faster, include the email used for payment and a short description of
+              the problem.
+            </p>
+
+            <h3>Common Help Topics</h3>
+            <ul>
+              <li>Payment completed but report not received</li>
+              <li>PDF download problems</li>
+              <li>Duplicate payment</li>
+              <li>Deletion/privacy request</li>
+            </ul>
+          </div>
+
+          <a className="secondary-btn" href="/">
+            Back to Home
+          </a>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
+  );
+}
 
 function PaymentSuccessPage() {
   const [state, setState] = useState({
@@ -289,66 +479,72 @@ function PaymentSuccessPage() {
   };
 
   return (
-    <main className="page">
-      <section className="result-card payment-status-card">
-        <div className="badge">Payment status</div>
-        <h1>Payment successful</h1>
-        <p>Your Premium PDF is being prepared</p>
+    <>
+      <main className="page page-with-footer">
+        <section className="result-card payment-status-card">
+          <div className="badge">Payment status</div>
+          <h1>Payment successful</h1>
+          <p>Your Premium PDF is being prepared</p>
 
-        <div className="email-box">
-          <h3>Customer email</h3>
-          <p className="payment-email-value">{state.customerEmail || "Waiting for confirmation..."}</p>
-        </div>
+          <div className="email-box">
+            <h3>Customer email</h3>
+            <p className="payment-email-value">{state.customerEmail || "Waiting for confirmation..."}</p>
+          </div>
 
-        {state.loading && <p>Verifying payment and fulfillment status...</p>}
-        {!state.loading && !state.paid && !state.error && (
-          <p>Payment has not been confirmed yet. This page will refresh automatically.</p>
-        )}
-
-        {state.error && <p className="payment-error">{state.error}</p>}
-
-        <div className="result-actions">
-          {state.ready ? (
-            <button className="primary-btn" onClick={handleDownloadPdf} disabled={state.isDownloading}>
-              {state.isDownloading ? "Downloading..." : "Download Premium PDF"}
-            </button>
-          ) : (
-            <button className="primary-btn" disabled>
-              Download Premium PDF
-            </button>
+          {state.loading && <p>Verifying payment and fulfillment status...</p>}
+          {!state.loading && !state.paid && !state.error && (
+            <p>Payment has not been confirmed yet. This page will refresh automatically.</p>
           )}
-        </div>
 
-        <button
-          className="secondary-btn"
-          onClick={() => {
-            window.location.href = "/";
-          }}
-        >
-          Back to Home
-        </button>
-      </section>
-    </main>
+          {state.error && <p className="payment-error">{state.error}</p>}
+
+          <div className="result-actions">
+            {state.ready ? (
+              <button className="primary-btn" onClick={handleDownloadPdf} disabled={state.isDownloading}>
+                {state.isDownloading ? "Downloading..." : "Download Premium PDF"}
+              </button>
+            ) : (
+              <button className="primary-btn" disabled>
+                Download Premium PDF
+              </button>
+            )}
+          </div>
+
+          <button
+            className="secondary-btn"
+            onClick={() => {
+              window.location.href = "/";
+            }}
+          >
+            Back to Home
+          </button>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 
 function PaymentCancelledPage() {
   return (
-    <main className="page">
-      <section className="result-card payment-status-card">
-        <div className="badge">Payment cancelled</div>
-        <h1>Payment was cancelled</h1>
-        <p>No charge was made. You can return and complete checkout when ready.</p>
-        <button
-          className="primary-btn"
-          onClick={() => {
-            window.location.href = "/";
-          }}
-        >
-          Return to Assessment
-        </button>
-      </section>
-    </main>
+    <>
+      <main className="page page-with-footer">
+        <section className="result-card payment-status-card">
+          <div className="badge">Payment cancelled</div>
+          <h1>Payment was cancelled</h1>
+          <p>No charge was made. You can return and complete checkout when ready.</p>
+          <button
+            className="primary-btn"
+            onClick={() => {
+              window.location.href = "/";
+            }}
+          >
+            Return to Assessment
+          </button>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 
@@ -612,9 +808,10 @@ function getLevel(finalScore) {
 
   if (!selectedTest) {
     return (
-      <main className="page">
-        <section className="hero-card">
-          <div className="badge">AI-powered self-assessment platform</div>
+      <>
+        <main className="page page-with-footer">
+          <section className="hero-card">
+            <div className="badge">AI-powered self-assessment platform</div>
 
 <h1>🧠 MindScore AI</h1>
 
@@ -655,8 +852,10 @@ function getLevel(finalScore) {
           <p className="bottom-cta">
   Start with a free test and unlock your personalized AI report in less than 2 minutes.
 </p>
-        </section>
-      </main>
+          </section>
+        </main>
+        <SiteFooter />
+      </>
     );
   }
 
@@ -674,9 +873,10 @@ function getLevel(finalScore) {
         : null;
 
     return (
-      <main className="page">
-        <section className="result-card">
-          <div className="badge">Your result is ready</div>
+      <>
+        <main className="page page-with-footer">
+          <section className="result-card">
+            <div className="badge">Your result is ready</div>
 
           <h1>{test.icon} {test.title}</h1>
 
@@ -779,7 +979,7 @@ function getLevel(finalScore) {
   <AnalyticsDashboard data={dashboardScores} />
 )}
 
-          <div className="result-actions">
+            <div className="result-actions">
             <button
   className="primary-btn"
   onClick={startPremiumCheckout}
@@ -787,16 +987,7 @@ function getLevel(finalScore) {
 >
   {isCheckoutRedirecting ? "Redirecting to secure checkout..." : "Unlock Premium AI Report"}
 </button>
-{SHOW_TEST_REPORT_BUTTON && (
-  <button
-  className="secondary-btn test-report-button"
-  onClick={testAiReport}
-  disabled={isGenerating}
->
-  {isGenerating ? "Generating report..." : "Development/Test: Test AI Report"}
-</button>
-)}
-          </div>
+            </div>
           {checkoutError && <p className="payment-error">{checkoutError}</p>}
           <p className="premium-supporting-line">€4.99 • Instant access • Downloadable PDF</p>
           <p className="premium-trust-line">Secure payment powered by Stripe</p>
@@ -826,25 +1017,28 @@ function getLevel(finalScore) {
   </div>
 )}
 
-          <button className="secondary-btn" onClick={restart}>
-            Back to all tests
-          </button>
-        </section>
-      </main>
+            <button className="secondary-btn" onClick={restart}>
+              Back to all tests
+            </button>
+          </section>
+        </main>
+        <SiteFooter />
+      </>
     );
   }
 
   const progress = ((currentQuestion + 1) / test.questions.length) * 100;
 
   return (
-    <main className="page">
-      <section className="quiz-card question-animation">
-        <div className="quiz-top">
+    <>
+      <main className="page page-with-footer">
+        <section className="quiz-card question-animation">
+          <div className="quiz-top">
           <span>
             Question {currentQuestion + 1} of {test.questions.length}
           </span>
           <span>{Math.round(progress)}%</span>
-        </div>
+          </div>
 
         <div className="progress">
           <div
@@ -866,13 +1060,27 @@ function getLevel(finalScore) {
             </button>
           ))}
         </div>
-      </section>
-    </main>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 
 function App() {
   const pathname = window.location.pathname;
+
+  if (pathname === "/privacy") {
+    return <PrivacyPolicyPage />;
+  }
+
+  if (pathname === "/terms") {
+    return <TermsOfServicePage />;
+  }
+
+  if (pathname === "/support") {
+    return <SupportPage />;
+  }
 
   if (pathname === "/payment-success") {
     return <PaymentSuccessPage />;
