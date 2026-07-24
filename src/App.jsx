@@ -646,6 +646,42 @@ function Homepage({ onStartAssessment }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [areAssessmentCardsHighlighted, setAreAssessmentCardsHighlighted] = useState(false);
+
+  const guideToAssessments = () => {
+    const section = document.getElementById("assessments");
+    setIsMobileMenuOpen(false);
+    if (!section) return;
+
+    setAreAssessmentCardsHighlighted(false);
+
+    const triggerHighlight = () => {
+      setAreAssessmentCardsHighlighted(true);
+    };
+
+    const rect = section.getBoundingClientRect();
+    const isAlreadyVisible = rect.top <= window.innerHeight * 0.6 && rect.bottom >= window.innerHeight * 0.2;
+
+    if (isAlreadyVisible) {
+      window.setTimeout(triggerHighlight, 40);
+    } else {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const isVisible = entries.some((entry) => entry.isIntersecting);
+          if (isVisible) {
+            observer.disconnect();
+            triggerHighlight();
+          }
+        },
+        { threshold: 0.15 }
+      );
+
+      observer.observe(section);
+      window.setTimeout(() => observer.disconnect(), 2200);
+    }
+
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 12);
@@ -696,6 +732,16 @@ function Homepage({ onStartAssessment }) {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (!areAssessmentCardsHighlighted) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setAreAssessmentCardsHighlighted(false);
+    }, 460);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [areAssessmentCardsHighlighted]);
+
   return (
     <>
       <SeoHead
@@ -729,7 +775,7 @@ function Homepage({ onStartAssessment }) {
           <a className={activeSection === "faq" ? "active" : ""} href="#faq" onClick={() => setIsMobileMenuOpen(false)}>FAQ</a>
           <a href="/support" onClick={() => setIsMobileMenuOpen(false)}>Support</a>
         </nav>
-        <button className="header-cta header-cta-desktop" onClick={() => { setIsMobileMenuOpen(false); onStartAssessment("mental"); }}>Start Free Assessment</button>
+        <button className="header-cta header-cta-desktop" onClick={guideToAssessments}>Start Free Assessment</button>
       </header>
 
       <main className="homepage">
@@ -742,7 +788,7 @@ function Homepage({ onStartAssessment }) {
               stress patterns, sleep quality and personal strengths.
             </p>
             <div className="hero-actions">
-              <button className="primary-btn" onClick={() => onStartAssessment("mental")}>Start Free Assessment</button>
+              <button className="primary-btn" onClick={guideToAssessments}>Start Free Assessment</button>
               <a className="secondary-btn" href="#premium-report">
                 See What You Get
               </a>
@@ -852,7 +898,7 @@ function Homepage({ onStartAssessment }) {
             <h2>Assessments Designed for Real Insight</h2>
             <p>Short, focused questionnaires built for clarity and practical self-development guidance.</p>
           </div>
-          <div className="assessment-grid">
+          <div className={`assessment-grid ${areAssessmentCardsHighlighted ? "cards-guided" : ""}`}>
             {assessments.map((item) => (
               <AssessmentCard key={item.key} item={item} onStart={onStartAssessment} />
             ))}

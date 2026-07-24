@@ -934,6 +934,37 @@ input:focus-visible {
   background: rgba(113, 216, 255, 0.16);
 }
 
+.assessment-grid.cards-guided .assessment-card {
+  animation: assessmentCardGuidePulse 420ms ease-out;
+}
+
+@keyframes assessmentCardGuidePulse {
+  0% {
+    transform: translateY(0) scale(1);
+    border-color: var(--border-soft);
+    box-shadow: 0 12px 28px rgba(2, 12, 30, 0.24);
+  }
+  45% {
+    transform: translateY(-4px) scale(1.01);
+    border-color: rgba(141, 225, 255, 0.72);
+    box-shadow:
+      0 20px 40px rgba(9, 24, 58, 0.44),
+      0 0 0 1px rgba(141, 225, 255, 0.18),
+      0 0 20px rgba(123, 179, 255, 0.2);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    border-color: var(--border-soft);
+    box-shadow: 0 12px 28px rgba(2, 12, 30, 0.24);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assessment-grid.cards-guided .assessment-card {
+    animation: none;
+  }
+}
+
 .trust-section {
   background: linear-gradient(155deg, rgba(11, 39, 79, 0.76), rgba(10, 33, 66, 0.9));
 }
