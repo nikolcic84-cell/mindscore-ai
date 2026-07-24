@@ -8,6 +8,7 @@ const API_BASE = "/api";
 const LEGAL_LAST_UPDATED = "July 24, 2026";
 const PREMIUM_PRICE_EUR = "4.99";
 const DRAFT_KEY = "mindscore_assessment_draft_v2";
+const COMPLETED_ASSESSMENT_KEY = "mindscore_completed_assessment_v1";
 
 const apiUrl = (path) => `${BACKEND_URL}${path}`;
 
@@ -641,12 +642,13 @@ function AssessmentCard({ item, onStart }) {
   );
 }
 
-function Homepage({ onStartAssessment }) {
+function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessment }) {
   const assessments = Object.entries(tests).map(([key, value]) => ({ key, ...value }));
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [areAssessmentCardsHighlighted, setAreAssessmentCardsHighlighted] = useState(false);
+  const [showPremiumGuidanceMessage, setShowPremiumGuidanceMessage] = useState(false);
 
   const guideToAssessments = () => {
     const section = document.getElementById("assessments");
@@ -681,6 +683,16 @@ function Homepage({ onStartAssessment }) {
     }
 
     section.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handlePremiumReportCta = () => {
+    if (hasCompletedAssessment) {
+      onPremiumReportCta();
+      return;
+    }
+
+    setShowPremiumGuidanceMessage(true);
+    guideToAssessments();
   };
 
   useEffect(() => {
@@ -741,6 +753,16 @@ function Homepage({ onStartAssessment }) {
 
     return () => window.clearTimeout(timeoutId);
   }, [areAssessmentCardsHighlighted]);
+
+  useEffect(() => {
+    if (!showPremiumGuidanceMessage) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setShowPremiumGuidanceMessage(false);
+    }, 3200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [showPremiumGuidanceMessage]);
 
   return (
     <>
@@ -898,6 +920,11 @@ function Homepage({ onStartAssessment }) {
             <h2>Assessments Designed for Real Insight</h2>
             <p>Short, focused questionnaires built for clarity and practical self-development guidance.</p>
           </div>
+          {showPremiumGuidanceMessage && (
+            <p className="assessment-guidance-message" role="status" aria-live="polite">
+              Complete a free assessment first to unlock your personalized Premium Report.
+            </p>
+          )}
           <div className={`assessment-grid ${areAssessmentCardsHighlighted ? "cards-guided" : ""}`}>
             {assessments.map((item) => (
               <AssessmentCard key={item.key} item={item} onStart={onStartAssessment} />
@@ -951,7 +978,7 @@ function Homepage({ onStartAssessment }) {
                 <li>Email delivery to your inbox</li>
                 <li>Secure one-time payment via Stripe</li>
               </ul>
-              <button className="primary-btn" onClick={() => onStartAssessment("mental")}>Unlock Your Premium Report</button>
+              <button className="primary-btn" onClick={handlePremiumReportCta}>Unlock Your Premium Report</button>
             </article>
             <article className="premium-preview pdf-preview">
               <div className="pdf-preview-header">
@@ -1109,8 +1136,29 @@ function AssessmentApp() {
   const [checkoutError, setCheckoutError] = useState("");
   const [isAnswering, setIsAnswering] = useState(false);
   const [userAnswers, setUserAnswers] = useState([]);
+  const [completedAssessment, setCompletedAssessment] = useState(null);
 
   const test = selectedTest ? tests[selectedTest] : null;
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COMPLETED_ASSESSMENT_KEY);
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw);
+      if (!parsed?.selectedTest || !tests[parsed.selectedTest]) return;
+
+      const testLength = tests[parsed.selectedTest].questions.length;
+      if (!Array.isArray(parsed.userAnswers) || parsed.userAnswers.length !== testLength) return;
+
+      setCompletedAssessment({
+        selectedTest: parsed.selectedTest,
+        userAnswers: parsed.userAnswers,
+      });
+    } catch {
+      window.localStorage.removeItem(COMPLETED_ASSESSMENT_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -1143,6 +1191,29 @@ function AssessmentApp() {
     window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   }, [selectedTest, currentQuestion, userAnswers, email]);
 
+  useEffect(() => {
+    if (!selectedTest || !test) return;
+
+    const isCompleted =
+      currentQuestion === test.questions.length &&
+      Array.isArray(userAnswers) &&
+      userAnswers.length === test.questions.length;
+
+    if (!isCompleted) return;
+
+    const payload = {
+      selectedTest,
+      userAnswers,
+      completedAt: new Date().toISOString(),
+    };
+
+    window.localStorage.setItem(COMPLETED_ASSESSMENT_KEY, JSON.stringify(payload));
+    setCompletedAssessment({
+      selectedTest,
+      userAnswers,
+    });
+  }, [selectedTest, test, currentQuestion, userAnswers]);
+
   const score = useMemo(() => userAnswers.reduce((sum, value) => sum + (Number(value) || 0), 0), [userAnswers]);
 
   const dashboardScores = useMemo(
@@ -1168,6 +1239,29 @@ function AssessmentApp() {
     setIsCheckoutRedirecting(false);
     setIsAnswering(false);
     setUserAnswers([]);
+  };
+
+  const openPremiumFlowFromCompletedAssessment = () => {
+    if (!completedAssessment?.selectedTest || !tests[completedAssessment.selectedTest]) {
+      startTest("mental");
+      return;
+    }
+
+    const restoredTest = tests[completedAssessment.selectedTest];
+    const restoredAnswers = Array.isArray(completedAssessment.userAnswers) ? completedAssessment.userAnswers : [];
+
+    if (restoredAnswers.length !== restoredTest.questions.length) {
+      startTest(completedAssessment.selectedTest);
+      return;
+    }
+
+    setSelectedTest(completedAssessment.selectedTest);
+    setCurrentQuestion(restoredTest.questions.length);
+    setUserAnswers(restoredAnswers);
+    setEmail("");
+    setCheckoutError("");
+    setIsCheckoutRedirecting(false);
+    setIsAnswering(false);
   };
 
   const answerQuestion = (points) => {
@@ -1271,7 +1365,13 @@ function AssessmentApp() {
   };
 
   if (!selectedTest) {
-    return <Homepage onStartAssessment={startTest} />;
+    return (
+      <Homepage
+        onStartAssessment={startTest}
+        onPremiumReportCta={openPremiumFlowFromCompletedAssessment}
+        hasCompletedAssessment={Boolean(completedAssessment)}
+      />
+    );
   }
 
   if (!test) {
