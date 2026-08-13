@@ -2242,13 +2242,8 @@ input:focus-visible {
   }
 
   .premium-cta-panel {
-    position: sticky;
-    bottom: 12px;
-    z-index: 4;
     margin-top: 18px;
     padding: 14px;
-    backdrop-filter: blur(14px);
-    box-shadow: 0 16px 38px rgba(2, 10, 26, 0.32);
   }
 
   .premium-cta-copy h2 {
@@ -2434,5 +2429,20 @@ input:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

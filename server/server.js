@@ -29,6 +29,22 @@ const STORE_PATH = path.join(DATA_DIR, "payments-store.json");
 const REPORTS_DIR = path.join(DATA_DIR, "reports");
 const DOWNLOAD_TOKEN_TTL_MS = 1000 * 60 * 60 * 4;
 
+const isValidAssessmentPayload = ({ score, answers, dimensions }) => {
+  if (!Number.isInteger(score) || score < 0 || score > 100) return false;
+  if (!Array.isArray(answers) || answers.length !== 12) return false;
+  if (answers.some((answer) => !Number.isInteger(answer) || answer < 1 || answer > 5)) return false;
+  if (!Array.isArray(dimensions) || dimensions.length > 10) return false;
+  return dimensions.every(
+    (dimension) =>
+      dimension &&
+      typeof dimension.name === "string" &&
+      dimension.name.length <= 80 &&
+      Number.isInteger(dimension.score) &&
+      dimension.score >= 0 &&
+      dimension.score <= 100
+  );
+};
+
 const REQUIRED_ENV = [
   "OPENAI_API_KEY",
   "STRIPE_SECRET_KEY",
@@ -301,7 +317,9 @@ const sendPdfEmail = async ({ toEmail, assessmentType, pdfBuffer }) => {
   });
 };
 
-const fulfillCheckoutSession = async (session, eventId = "") => {
+const fulfillmentLocks = new Map();
+
+const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
   const sessionId = toSafeText(session.id);
   if (!sessionId) throw new Error("Missing session id in webhook event");
   const eventKey = toSafeText(eventId, `session_${sessionId}`);
@@ -323,6 +341,20 @@ const fulfillCheckoutSession = async (session, eventId = "") => {
   }
 
   if (existingPurchase?.fulfillmentStatus === "completed") {
+    if (existingPurchase.emailError && existingPurchase.pdfPath && existingPurchase.customerEmail) {
+      try {
+        const pdfBuffer = await fs.readFile(existingPurchase.pdfPath);
+        await sendPdfEmail({
+          toEmail: existingPurchase.customerEmail,
+          assessmentType: existingPurchase.assessmentType,
+          pdfBuffer,
+        });
+        existingPurchase.emailSentAt = new Date().toISOString();
+        delete existingPurchase.emailError;
+      } catch (error) {
+        console.error("[fulfillment] email retry failed", { sessionId, message: error.message });
+      }
+    }
     store.processedEventIds[eventKey] = new Date().toISOString();
     await writeStore(store);
     console.log("[stripe] idempotent skip: purchase already fulfilled", { sessionId, eventId: eventKey });
@@ -432,6 +464,19 @@ const fulfillCheckoutSession = async (session, eventId = "") => {
   }
 };
 
+const fulfillCheckoutSession = (session, eventId = "") => {
+  const sessionId = toSafeText(session?.id);
+  const existingLock = sessionId ? fulfillmentLocks.get(sessionId) : null;
+  if (existingLock) return existingLock;
+
+  const task = fulfillCheckoutSessionInternal(session, eventId).finally(() => {
+    if (sessionId) fulfillmentLocks.delete(sessionId);
+  });
+
+  if (sessionId) fulfillmentLocks.set(sessionId, task);
+  return task;
+};
+
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
@@ -472,26 +517,6 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post("/api/generate-report", async (req, res) => {
-  try {
-    const { testName, score, answers, dimensions = [] } = req.body;
-
-    if (!testName || typeof score !== "number" || !Array.isArray(answers)) {
-      return res.status(400).json({
-        error: "Missing testName, score or answers.",
-      });
-    }
-
-    const report = await createAiReport({ testName, score, answers, dimensions });
-    res.json({ report });
-  } catch (error) {
-    console.error("OpenAI error:", error);
-    res.status(500).json({
-      error: "Report could not be generated right now.",
-    });
-  }
-});
-
 app.post("/api/create-checkout-session", async (req, res) => {
   try {
     if (!FRONTEND_BASE_URL) {
@@ -513,7 +538,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
       return res.status(400).json({ error: "Valid customerEmail is required." });
     }
 
-    if (!testName || typeof score !== "number" || !Array.isArray(answers)) {
+    if (!testName || !isValidAssessmentPayload({ score, answers, dimensions })) {
       return res.status(400).json({ error: "Missing assessment payload." });
     }
 

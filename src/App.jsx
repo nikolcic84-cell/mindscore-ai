@@ -3,14 +3,14 @@ import AnalyticsDashboard from "./AnalyticsDashboard";
 import { calculateDimensions } from "./psychology/dimensions";
 import "./App.css";
 
-const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || "";
+const BACKEND_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const API_BASE = "/api";
 const LEGAL_LAST_UPDATED = "July 24, 2026";
 const PREMIUM_PRICE_EUR = "4.99";
 const DRAFT_KEY = "mindscore_assessment_draft_v2";
 const COMPLETED_ASSESSMENT_KEY = "mindscore_completed_assessment_v1";
 
-const apiUrl = (path) => `${BACKEND_URL}${path}`;
+const apiUrl = (path) => (/^https?:\/\//i.test(path) ? path : `${BACKEND_URL}${path}`);
 
 const tests = {
   mental: {
@@ -396,7 +396,7 @@ function PaymentSuccessPage() {
 
       try {
         const verifySessionUrl = `${API_BASE}/payment-session/${encodeURIComponent(sessionId)}/verify`;
-        const response = await fetch(verifySessionUrl);
+        const response = await fetch(apiUrl(verifySessionUrl));
         const rawBody = await response.text();
         const data = rawBody ? JSON.parse(rawBody) : {};
 
@@ -457,7 +457,7 @@ function PaymentSuccessPage() {
     }));
 
     try {
-      const response = await fetch(state.downloadUrl);
+      const response = await fetch(apiUrl(state.downloadUrl));
       const contentType = (response.headers.get("content-type") || "").toLowerCase();
       const contentDisposition = response.headers.get("content-disposition") || "";
 
@@ -986,7 +986,7 @@ function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessmen
                   <p>Premium PDF preview</p>
                   <h3>Professional report layout</h3>
                 </div>
-                <span>3 pages</span>
+                <span>Long-form PDF</span>
               </div>
 
               <div className="pdf-preview-grid">
@@ -1168,8 +1168,12 @@ function AssessmentApp() {
       if (!draft?.selectedTest || !tests[draft.selectedTest]) return;
 
       setSelectedTest(draft.selectedTest);
-      setCurrentQuestion(Math.max(0, Number(draft.currentQuestion) || 0));
-      setUserAnswers(Array.isArray(draft.userAnswers) ? draft.userAnswers : []);
+      const testLength = tests[draft.selectedTest].questions.length;
+      const restoredAnswers = Array.isArray(draft.userAnswers)
+        ? draft.userAnswers.map((answer) => (Number.isFinite(answer) && answer >= 1 && answer <= 5 ? answer : null))
+        : [];
+      setCurrentQuestion(Math.min(testLength, Math.max(0, Number(draft.currentQuestion) || 0)));
+      setUserAnswers(restoredAnswers.slice(0, testLength));
       setEmail(typeof draft.email === "string" ? draft.email : "");
     } catch {
       window.localStorage.removeItem(DRAFT_KEY);
@@ -1217,7 +1221,7 @@ function AssessmentApp() {
   const score = useMemo(() => userAnswers.reduce((sum, value) => sum + (Number(value) || 0), 0), [userAnswers]);
 
   const dashboardScores = useMemo(
-    () => (selectedTest && userAnswers.length > 0 ? calculateDimensions(userAnswers) : []),
+    () => (selectedTest && userAnswers.length > 0 ? calculateDimensions(userAnswers, selectedTest) : []),
     [selectedTest, userAnswers]
   );
 
@@ -1331,7 +1335,7 @@ function AssessmentApp() {
 
       const finalScore = Math.round((score / (test.questions.length * 5)) * 100);
       const profileDimensions =
-        dashboardScores.length > 0 ? dashboardScores : calculateDimensions(userAnswers);
+        dashboardScores.length > 0 ? dashboardScores : calculateDimensions(userAnswers, selectedTest);
 
       setIsCheckoutRedirecting(true);
       const checkoutSessionUrl = apiUrl(`${API_BASE}/create-checkout-session`);
@@ -1415,7 +1419,11 @@ function AssessmentApp() {
             </div>
 
             <div className="score-card">
-              <div className="score-circle" aria-label={`Overall score ${finalScore} out of 100`}>
+              <div
+                className="score-circle"
+                role="img"
+                aria-label={`Overall score ${finalScore} out of 100`}
+              >
                 <span>{finalScore}</span>
                 <small>/100</small>
               </div>
@@ -1464,12 +1472,18 @@ function AssessmentApp() {
                   type="email"
                   value={email}
                   placeholder="name@example.com"
+                  aria-invalid={Boolean(checkoutError)}
+                  aria-describedby={checkoutError ? "report-email-error" : undefined}
                   onChange={(event) => setEmail(event.target.value)}
                 />
                 <button className="primary-btn" onClick={startPremiumCheckout} disabled={isCheckoutRedirecting}>
                   {isCheckoutRedirecting ? "Redirecting to secure checkout..." : "Unlock Premium Report"}
                 </button>
-                {checkoutError && <p className="inline-error">{checkoutError}</p>}
+                {checkoutError && (
+                  <p className="inline-error" id="report-email-error" role="alert">
+                    {checkoutError}
+                  </p>
+                )}
                 <p className="support-line">Questions? aimindscore@gmail.com</p>
               </div>
             </section>

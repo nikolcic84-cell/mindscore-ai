@@ -26,17 +26,10 @@ const COLORS = {
 };
 
 const REQUIRED_SUBSECTIONS = [
-  "Executive Insight",
   "Deep Behavioral Analysis",
-  "Psychological Interpretation",
-  "Real Life Examples",
   "Risk Analysis",
-  "Hidden Strengths",
-  "Blind Spots",
   "Professional Recommendations",
   "Weekly Action Plan",
-  "AI Coaching Notes",
-  "Reflection Questions",
   "Progress Indicators",
 ];
 
@@ -605,25 +598,24 @@ const drawSubsectionTitle = (flow, text) => {
 
 const drawParagraph = (flow, text) => {
   const width = CONTENT_WIDTH;
-  const preview = writeWrappedText(flow.doc, text, MARGIN_LEFT, flow.y, width, {
-    size: 12.2,
-    lineHeight: 7.1,
-    style: "normal",
-    color: COLORS.text,
-  });
+  const lineHeight = 7.1;
+  flow.doc.setFont("helvetica", "normal");
+  flow.doc.setFontSize(12.2);
+  const linesRaw = flow.doc.splitTextToSize(toSafeText(text, ""), width);
+  const lines = Array.isArray(linesRaw) ? linesRaw : [toSafeText(linesRaw, "")];
+  const height = lines.length * lineHeight;
 
-  if (flow.y + preview.height > CONTENT_BOTTOM) {
+  if (flow.y + height > CONTENT_BOTTOM) {
     startBodyPage(flow, flow.headerTitle, flow.headerSubtitle);
   }
 
-  const rendered = writeWrappedText(flow.doc, text, MARGIN_LEFT, flow.y, width, {
+  writeWrappedText(flow.doc, text, MARGIN_LEFT, flow.y, width, {
     size: 12.2,
-    lineHeight: 7.1,
+    lineHeight,
     style: "normal",
     color: COLORS.text,
   });
-
-  flow.y = rendered.nextY + 4.4;
+  flow.y += height + 4.4;
 };
 
 const drawMiniProgressBar = (flow, label, score, color) => {
@@ -845,8 +837,6 @@ const renderMajorSections = (flow, sections, context, tocEntries) => {
 
     major.subsections.forEach((subsection, subsectionIndex) => {
       drawSubsectionTitle(flow, subsection.title);
-      tocEntries.push({ level: 2, title: subsection.title, page: flow.doc.getNumberOfPages() });
-
       drawMiniProgressBar(
         flow,
         `${major.shortTitle} Progress`,
