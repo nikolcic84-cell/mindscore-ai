@@ -16,6 +16,7 @@ The following routes are available and must remain enabled:
 - POST /api/stripe/webhook
 - GET /api/payment-session/:sessionId/verify
 - GET /api/premium-report/download
+- POST /api/premium-report/resend-email
 - GET /health
 
 ## Required Environment Variables

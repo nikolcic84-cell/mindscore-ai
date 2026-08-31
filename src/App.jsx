@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 import { calculateDimensions } from "./psychology/dimensions";
+import { calculateSleepScore, calculateSleepResult } from "./psychology/sleepScoring";
 import "./App.css";
 
 const BACKEND_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
@@ -57,23 +58,23 @@ const tests = {
   },
   sleep: {
     title: "Sleep Quality",
-    subtitle: "Explore recovery quality, sleep consistency and daytime clarity.",
+    subtitle: "Explore sleep quality, consistency and daytime clarity.",
     icon: "Q",
     category: "Recovery",
     minutes: "2-3 min",
     questions: [
-      "When you wake up after what should have been a full night's sleep, how refreshed do you usually feel?",
-      "If you wake up during the night, how easily do you fall back asleep?",
-      "After an emotionally difficult day, how well are you able to sleep that night?",
-      "How often do your thoughts keep running when you are trying to fall asleep?",
-      "During the day, how often do you feel mentally tired even after sleeping enough hours?",
-      "If you have an important event the next morning, how much does it affect your sleep?",
-      "How often do you wake up before your alarm and cannot fall asleep again?",
-      "After waking up, how quickly does your mind become clear and focused?",
-      "How often do you rely on caffeine or stimulants just to feel fully awake?",
-      "If your sleep schedule changes for one or two days, how quickly does your body recover?",
-      "How often do you feel sleepy during quiet activities such as reading, studying or watching TV?",
-      "Overall, how confident are you that your current sleep is allowing your brain and body to recover at their best?",
+      "I usually wake up feeling refreshed after what should have been a full night's sleep.",
+      "If I wake up during the night, I usually fall back asleep easily.",
+      "After an emotionally difficult day, I am still able to sleep well that night.",
+      "My thoughts keep running when I am trying to fall asleep.",
+      "During the day, I often feel mentally tired even after getting enough sleep.",
+      "An important event the next morning significantly affects my sleep.",
+      "I often wake up before my alarm and cannot fall asleep again.",
+      "My mind becomes clear and focused quickly after I wake up.",
+      "I rely on caffeine or other stimulants to feel fully awake during the day.",
+      "My body recovers quickly after my sleep schedule changes for one or two days.",
+      "I often feel sleepy during quiet activities such as reading, studying, or watching TV.",
+      "I am confident that my current sleep allows my brain and body to recover at their best.",
     ],
   },
   leadership: {
@@ -105,6 +106,26 @@ const answers = [
   { text: "Sometimes true", points: 3 },
   { text: "Rarely true", points: 2 },
   { text: "Not true for me", points: 1 },
+];
+
+// Labels shown as locked/blurred in the Premium Preview until Premium is purchased.
+const PREMIUM_INSIGHT_CARDS = [
+  "Recovery Stability",
+  "Cognitive Recovery",
+];
+
+const PREMIUM_REPORT_CHECKLIST = [
+  "Personalized AI interpretation",
+  "Hidden strengths",
+  "Recovery roadmap",
+  "Daily action plan",
+  "Professional PDF report",
+];
+
+const PREMIUM_TRUST_BADGES = [
+  { icon: "🔒", label: "Secure payment" },
+  { icon: "⚡", label: "Instant access" },
+  { icon: "📄", label: "PDF included" },
 ];
 
 const faqItems = [
@@ -148,16 +169,6 @@ const faqItems = [
     answer:
       "Email aimindscore@gmail.com and include a short description of your issue and the email used during checkout.",
   },
-];
-
-const trustItems = [
-  "Secure Stripe Payments",
-  "AI Powered",
-  "Private",
-  "Instant PDF",
-  "Email Delivery",
-  "GDPR Friendly",
-  "Educational Only",
 ];
 
 function SeoHead({ title, description }) {
@@ -366,12 +377,15 @@ function SupportPage() {
 function PaymentSuccessPage() {
   const [state, setState] = useState({
     loading: true,
+    status: "PAYMENT_VERIFIED",
     paid: false,
     ready: false,
-    fulfillmentStatus: "pending",
+    reportStatus: "PENDING_PAYMENT",
     customerEmail: "",
     downloadUrl: "",
     isDownloading: false,
+    isResendingEmail: false,
+    resendMessage: "",
     emailSent: false,
     emailError: "",
     attempts: 0,
@@ -406,21 +420,25 @@ function PaymentSuccessPage() {
 
         if (cancelled) return;
 
+        const reportStatus = data.reportStatus || "unknown";
+        const generationFailed = data.status === "FAILED" || reportStatus === "FAILED";
+
         setState((previous) => ({
           ...previous,
           loading: false,
+          status: data.status || previous.status,
           paid: Boolean(data.paid),
           ready: Boolean(data.ready),
-          fulfillmentStatus: data.fulfillmentStatus || "unknown",
+          reportStatus,
           customerEmail: data.customerEmail || "",
           downloadUrl: data.downloadUrl || "",
           emailSent: Boolean(data.emailSent),
           emailError: data.emailError || "",
           attempts: previous.attempts + 1,
-          error: "",
+          error: generationFailed ? data.error || "Report generation failed." : "",
         }));
 
-        if (data.paid && !data.ready) {
+        if (data.paid && !data.ready && !generationFailed) {
           timerId = window.setTimeout(verify, 3000);
         }
       } catch (error) {
@@ -500,6 +518,41 @@ function PaymentSuccessPage() {
     }
   };
 
+  const handleResendEmail = async () => {
+    const token = new URLSearchParams(state.downloadUrl.split("?")[1] || "").get("token");
+    if (!token) {
+      setState((previous) => ({ ...previous, resendMessage: "Download link is missing. Refresh and try again." }));
+      return;
+    }
+
+    setState((previous) => ({ ...previous, isResendingEmail: true, resendMessage: "" }));
+
+    try {
+      const response = await fetch(apiUrl(`${API_BASE}/premium-report/resend-email`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data = await response.json();
+
+      setState((previous) => ({
+        ...previous,
+        emailSent: Boolean(data.emailSent),
+        emailError: data.emailSent ? "" : data.error || "",
+        resendMessage: data.emailSent
+          ? "Email resent successfully."
+          : data.error || "Could not resend the email. Please try again.",
+      }));
+    } catch (error) {
+      setState((previous) => ({
+        ...previous,
+        resendMessage: error.message || "Could not resend the email. Please try again.",
+      }));
+    } finally {
+      setState((previous) => ({ ...previous, isResendingEmail: false }));
+    }
+  };
+
   const delayed = state.paid && !state.ready && state.attempts >= 6;
   const showRecoverableError = !state.loading && !state.ready && Boolean(state.error);
 
@@ -511,77 +564,179 @@ function PaymentSuccessPage() {
       />
       <main className="page payment-page">
         <section className="content-panel payment-panel">
-          <div className="badge">Premium checkout</div>
-          <h1>Your payment is confirmed</h1>
-          <p>
-            We are verifying fulfillment and preparing your personalized Premium PDF. This page updates
-            automatically.
-          </p>
+          {!state.loading && state.paid && !state.ready && state.reportStatus !== "FAILED" ? (
+            <div className="payment-success-hero" aria-live="polite">
+              <div className="payment-success-icon" aria-hidden="true">
+                <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="40" cy="40" r="37" stroke="currentColor" strokeWidth="4" />
+                  <path
+                    d="M24 41.5 35 52.5 56 28.5"
+                    stroke="currentColor"
+                    strokeWidth="5.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <h1>Payment Successful!</h1>
+              <p className="payment-success-subtitle">Thank you! Your payment has been confirmed.</p>
 
-          <div className="status-grid" aria-live="polite">
-            <div className={`status-item ${state.loading ? "active" : "done"}`}>
-              <strong>Verifying payment</strong>
-              <span>{state.loading ? "In progress" : state.paid ? "Completed" : "Pending"}</span>
-            </div>
-            <div className={`status-item ${state.paid && !state.ready ? "active" : state.ready ? "done" : ""}`}>
-              <strong>Generating report</strong>
-              <span>{state.ready ? "Completed" : state.paid ? "In progress" : "Waiting for payment"}</span>
-            </div>
-            <div className={`status-item ${state.ready ? "done" : ""}`}>
-              <strong>Report ready</strong>
-              <span>{state.ready ? "Ready to download" : "Not ready yet"}</span>
-            </div>
-            <div
-              className={`status-item ${
-                state.ready && state.emailSent ? "done" : state.ready && !state.emailSent ? "attention" : ""
-              }`}
-            >
-              <strong>Email delivery</strong>
-              <span>
-                {state.ready && state.emailSent
-                  ? "Sent to your inbox"
-                  : state.ready && !state.emailSent
-                    ? "Download available, email needs retry"
-                    : "Pending"}
-              </span>
-            </div>
-          </div>
+              <div className="payment-status-card">
+                <div className="payment-status-row">
+                  <span className="payment-status-icon payment-status-icon-check" aria-hidden="true">✓</span>
+                  <span>Payment verified</span>
+                </div>
+                <div className="payment-status-row">
+                  <span className="payment-status-icon payment-status-icon-gear" aria-hidden="true">⚙️</span>
+                  <span>AI report generation in progress</span>
+                </div>
+                <div className="payment-status-eta">Estimated time: 10–30 seconds</div>
+              </div>
 
-          <div className="email-confirmation">
-            <h2>Delivery email</h2>
-            <p>{state.customerEmail || "Waiting for confirmation..."}</p>
-          </div>
+              <div className="payment-loading-ring" role="status" aria-label="Generating your report">
+                <span className="sr-only">Generating your report…</span>
+              </div>
 
-          {delayed && (
-            <p className="status-note">
-              Report generation is taking longer than usual. Keep this page open. Your download button will appear as
-              soon as processing completes.
-            </p>
+              {delayed && (
+                <p className="status-note">
+                  Report generation is taking longer than usual. Keep this page open. Your download button will
+                  appear as soon as processing completes.
+                </p>
+              )}
+
+              <p className="payment-success-warning">
+                Please don't close this page while we prepare your personalized AI report.
+              </p>
+            </div>
+          ) : state.ready ? (
+            <div className="payment-success-hero" aria-live="polite">
+              <div className="payment-success-icon" aria-hidden="true">
+                <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="40" cy="40" r="37" stroke="currentColor" strokeWidth="4" />
+                  <path
+                    d="M24 41.5 35 52.5 56 28.5"
+                    stroke="currentColor"
+                    strokeWidth="5.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <h1>Your AI Report Is Ready!</h1>
+              <p className="payment-success-subtitle">
+                Your personalized AI sleep report has been successfully generated.
+              </p>
+
+              <div className="payment-status-card">
+                <div className="payment-status-row">
+                  <span className="payment-status-icon payment-status-icon-check" aria-hidden="true">✓</span>
+                  <span>PDF generated</span>
+                </div>
+                <div className="payment-status-row">
+                  <span className="payment-status-icon payment-status-icon-check" aria-hidden="true">✓</span>
+                  <span>Payment confirmed</span>
+                </div>
+                <div className="payment-status-row">
+                  <span
+                    className={`payment-status-icon ${
+                      state.emailSent ? "payment-status-icon-check" : "payment-status-icon-warning"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {state.emailSent ? "✓" : "!"}
+                  </span>
+                  <span>{state.emailSent ? "Email sent successfully" : "Email delivery pending"}</span>
+                </div>
+              </div>
+
+              {state.emailError && (
+                <p className="status-note warning">
+                  Email delivery was not confirmed yet: {state.emailError}. Your download is still available below.
+                </p>
+              )}
+
+              <div className="result-actions payment-ready-actions">
+                <button className="primary-btn" onClick={handleDownloadPdf} disabled={state.isDownloading}>
+                  {state.isDownloading ? "Downloading..." : "Download My AI Report"}
+                </button>
+                <a className="secondary-btn" href="/">
+                  Return to Assessments
+                </a>
+              </div>
+
+              {!state.emailSent && (
+                <button
+                  className="ghost-btn payment-resend-btn"
+                  onClick={handleResendEmail}
+                  disabled={state.isResendingEmail}
+                >
+                  {state.isResendingEmail ? "Resending..." : "Resend Email"}
+                </button>
+              )}
+
+              {state.resendMessage && <p className="payment-success-note">{state.resendMessage}</p>}
+
+              <p className="payment-success-note">A copy of your report has also been sent to your email.</p>
+            </div>
+          ) : (
+            <>
+              <div className="badge">Premium checkout</div>
+              <h1>Your payment is confirmed</h1>
+              <p>
+                We are verifying fulfillment and preparing your personalized Premium PDF. This page updates
+                automatically.
+              </p>
+
+              <div className="status-grid" aria-live="polite">
+                <div className={`status-item ${state.loading ? "active" : "done"}`}>
+                  <strong>Verifying payment</strong>
+                  <span>{state.loading ? "In progress" : state.paid ? "Completed" : "Pending"}</span>
+                </div>
+                <div className={`status-item ${state.paid && !state.ready ? "active" : state.ready ? "done" : ""}`}>
+                  <strong>Generating report</strong>
+                  <span>{state.ready ? "Completed" : state.paid ? "In progress" : "Waiting for payment"}</span>
+                </div>
+                <div className={`status-item ${state.ready ? "done" : ""}`}>
+                  <strong>Report ready</strong>
+                  <span>{state.ready ? "Ready to download" : "Not ready yet"}</span>
+                </div>
+                <div
+                  className={`status-item ${
+                    state.ready && state.emailSent ? "done" : state.ready && !state.emailSent ? "attention" : ""
+                  }`}
+                >
+                  <strong>Email delivery</strong>
+                  <span>
+                    {state.ready && state.emailSent
+                      ? "Sent to your inbox"
+                      : state.ready && !state.emailSent
+                        ? "Download available, email needs retry"
+                        : "Pending"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="email-confirmation">
+                <h2>Delivery email</h2>
+                <p>{state.customerEmail || "Waiting for confirmation..."}</p>
+              </div>
+
+              {showRecoverableError && (
+                <p className="status-note warning">
+                  {state.error} You can refresh this page or contact support: aimindscore@gmail.com
+                </p>
+              )}
+
+              <div className="result-actions">
+                <a className="secondary-btn" href="/support">
+                  Contact Support
+                </a>
+                <a className="ghost-btn" href="/">
+                  Return Home
+                </a>
+              </div>
+            </>
           )}
-
-          {state.ready && state.emailError && (
-            <p className="status-note warning">
-              Email delivery was not confirmed yet: {state.emailError}. Your download is still available below.
-            </p>
-          )}
-
-          {showRecoverableError && (
-            <p className="status-note warning">
-              {state.error} You can refresh this page or contact support: aimindscore@gmail.com
-            </p>
-          )}
-
-          <div className="result-actions">
-            <button className="primary-btn" onClick={handleDownloadPdf} disabled={!state.ready || state.isDownloading}>
-              {state.isDownloading ? "Downloading..." : "Download Premium PDF"}
-            </button>
-            <a className="secondary-btn" href="/support">
-              Contact Support
-            </a>
-            <a className="ghost-btn" href="/">
-              Return Home
-            </a>
-          </div>
         </section>
       </main>
       <SiteFooter />
@@ -611,48 +766,15 @@ function PaymentCancelledPage() {
   );
 }
 
-function AssessmentCard({ item, onStart }) {
-  const iconMap = {
-    mental: "RS",
-    stress: "SC",
-    sleep: "SQ",
-    leadership: "PS",
-  };
-
-  return (
-    <button className={`assessment-card ${item.key}`} onClick={() => onStart(item.key)}>
-      <div className="assessment-card-top">
-        <span className="assessment-icon" aria-hidden="true">
-          {iconMap[item.key] || item.icon}
-        </span>
-        <span className="assessment-arrow" aria-hidden="true">
-          {">"}
-        </span>
-      </div>
-      <h3>{item.title}</h3>
-      <p>{item.subtitle}</p>
-      <div className="assessment-meta">
-        <span className="assessment-pill time">Estimated {item.minutes}</span>
-        <span className="assessment-pill free">Free result</span>
-        <span className="assessment-pill premium">Premium report</span>
-      </div>
-      <p className="assessment-time">{item.category}</p>
-      <span className="assessment-cta">Start assessment</span>
-    </button>
-  );
-}
-
-function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessment }) {
-  const assessments = Object.entries(tests).map(([key, value]) => ({ key, ...value }));
+function Homepage({ onStartAssessment }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [areAssessmentCardsHighlighted, setAreAssessmentCardsHighlighted] = useState(false);
   const [showPremiumGuidanceMessage, setShowPremiumGuidanceMessage] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const guideToAssessments = () => {
     const section = document.getElementById("assessments");
-    setIsMobileMenuOpen(false);
     if (!section) return;
 
     setAreAssessmentCardsHighlighted(false);
@@ -683,16 +805,6 @@ function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessmen
     }
 
     section.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  const handlePremiumReportCta = () => {
-    if (hasCompletedAssessment) {
-      onPremiumReportCta();
-      return;
-    }
-
-    setShowPremiumGuidanceMessage(true);
-    guideToAssessments();
   };
 
   useEffect(() => {
@@ -767,8 +879,8 @@ function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessmen
   return (
     <>
       <SeoHead
-        title="MindScore AI | Premium Self-Assessment Platform"
-        description="Complete intelligent self-assessments and unlock a personalized premium AI report with secure Stripe checkout and instant PDF delivery."
+        title="Sleep Assessment | MindScore AI"
+        description="Discover what your sleep is telling you in just 2 minutes using AI-powered sleep analysis."
       />
       <header className={`site-header ${isScrolled ? "header-scrolled" : ""}`}>
         <div className="brand-wrap">
@@ -779,55 +891,41 @@ function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessmen
             <span>MindScore AI</span>
           </a>
         </div>
-        <button
-          className={`mobile-menu-toggle ${isMobileMenuOpen ? "open" : ""}`}
-          type="button"
-          aria-label="Toggle navigation menu"
-          aria-expanded={isMobileMenuOpen}
-          onClick={() => setIsMobileMenuOpen((previous) => !previous)}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
-        <nav className={`site-nav ${isMobileMenuOpen ? "open" : ""}`} aria-label="Primary navigation">
-          <a className={activeSection === "assessments" ? "active" : ""} href="#assessments" onClick={() => setIsMobileMenuOpen(false)}>Assessments</a>
-          <a className={activeSection === "how-it-works" ? "active" : ""} href="#how-it-works" onClick={() => setIsMobileMenuOpen(false)}>How It Works</a>
-          <a className={activeSection === "premium-report" ? "active" : ""} href="#premium-report" onClick={() => setIsMobileMenuOpen(false)}>Premium Report</a>
-          <a className={activeSection === "faq" ? "active" : ""} href="#faq" onClick={() => setIsMobileMenuOpen(false)}>FAQ</a>
-          <a href="/support" onClick={() => setIsMobileMenuOpen(false)}>Support</a>
+        <nav className="site-nav" aria-label="Primary navigation">
+          <a className={activeSection === "assessments" ? "active" : ""} href="#assessments">Sleep Assessment</a>
+          <a className={activeSection === "how-it-works" ? "active" : ""} href="#how-it-works">How It Works</a>
+          <a className={activeSection === "premium-report" ? "active" : ""} href="#premium-report">AI Report</a>
+          <a className={activeSection === "faq" ? "active" : ""} href="#faq">FAQ</a>
+          <a href="/support">Support</a>
         </nav>
-        <button className="header-cta header-cta-desktop" onClick={guideToAssessments}>Start Free Assessment</button>
+        <span className="header-private"><span aria-hidden="true">L</span> 100% Private</span>
+        <button className="header-cta header-cta-desktop" onClick={guideToAssessments}>Start Free Sleep Test</button>
       </header>
 
       <main className="homepage">
         <section className="hero-section reveal">
           <div className="hero-copy reveal">
-            <p className="hero-label">AI-powered personal development insights</p>
-            <h1>Understand Your Mind. Strengthen Your Life.</h1>
-            <p>
-              Complete intelligent self-assessments and receive clear, personalized insights into your mindset,
-              stress patterns, sleep quality and personal strengths.
-            </p>
+            <p className="hero-label">AI-POWERED SLEEP ANALYSIS</p>
+            <h1><span>Sleep</span><span>Assessment</span></h1>
+            <p className="hero-subtitle">Discover what your sleep is telling you in just 2 minutes using our AI-powered sleep analysis.</p>
             <div className="hero-actions">
-              <button className="primary-btn" onClick={guideToAssessments}>Start Free Assessment</button>
-              <a className="secondary-btn" href="#premium-report">
-                See What You Get
-              </a>
+              <button className="primary-btn hero-primary-btn" onClick={() => onStartAssessment("sleep")}>Start Free Sleep Test</button>
             </div>
-            <div className="trust-strip hero-trust" aria-label="Value highlights">
-              <span>Free basic results</span>
-              <span>Personalized AI analysis</span>
-              <span>Secure Stripe payment</span>
-              <span>Instant PDF report</span>
-              <span>Private and confidential</span>
-              <span>Informational, not medical</span>
+            <div className="hero-trust" aria-label="Assessment assurances">
+              <span><i className="trust-icon lock-icon" aria-hidden="true" />🔒 100% Private</span>
+              <span><i className="trust-icon bolt-icon" aria-hidden="true" />⚡ Instant Result</span>
+              <span><i className="trust-icon user-icon" aria-hidden="true" />👤 No Signup</span>
             </div>
           </div>
 
-          <aside className="hero-visual reveal" aria-label="Platform preview">
+          <aside className="hero-visual reveal" aria-label="Sleep analysis preview">
             <div className="hero-neural-brain" aria-hidden="true">
               <div className="particle-cloud">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
                 <span />
                 <span />
                 <span />
@@ -841,172 +939,51 @@ function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessmen
               <div className="brain-orbit orbit-three" />
 
               <div className="brain-core">
-                <span className="brain-core-label">AI Core</span>
+                <span className="brain-core-label">AI</span>
               </div>
-
-              <span className="brain-node node-a" />
-              <span className="brain-node node-b" />
-              <span className="brain-node node-c" />
-              <span className="brain-node node-d" />
-              <span className="brain-node node-e" />
-              <span className="brain-node node-f" />
-
-              <span className="brain-link link-a" />
-              <span className="brain-link link-b" />
-              <span className="brain-link link-c" />
-              <span className="brain-link link-d" />
-              <span className="brain-link link-e" />
-            </div>
-
-            <div className="visual-dashboard reveal">
-              <div className="visual-dashboard-head">
-                <p>MindScore analysis panel</p>
-                <span>Live preview</span>
-              </div>
-
-              <div className="visual-dashboard-grid">
-                <div className="visual-dashboard-score">
-                  <strong>84</strong>
-                  <small>Overall score</small>
-                </div>
-                <div className="visual-dashboard-bars">
-                  <div>
-                    <span>Resilience</span>
-                    <i style={{ width: "88%" }} className="bar-anim-one" />
-                  </div>
-                  <div>
-                    <span>Emotional Control</span>
-                    <i style={{ width: "72%" }} className="bar-anim-two" />
-                  </div>
-                  <div>
-                    <span>Stress Tolerance</span>
-                    <i style={{ width: "66%" }} className="bar-anim-three" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="hero-metrics">
-              <article className="visual-card float-a reveal">
-                <p>Top strength</p>
-                <h3>Resilience</h3>
-                <small>Calm, durable and recovery-oriented pattern</small>
-              </article>
-              <article className="visual-card float-b reveal">
-                <p>Growth focus</p>
-                <h3>Stress tolerance</h3>
-                <small>Action plan with practical weekly steps</small>
-              </article>
+              <span className="brain-core-subtitle">Sleep Intelligence</span>
             </div>
           </aside>
         </section>
 
-        <section className="section trust-section reveal" id="trust">
+        <section className="section how-it-works-section reveal" id="assessments">
           <div className="section-heading">
-            <h2>Trusted Infrastructure, Responsible AI Experience</h2>
-            <p>Built for clarity, security and immediate access to practical self-assessment insights.</p>
-          </div>
-          <div className="trust-grid">
-            {trustItems.map((item) => (
-              <article key={item} className="trust-chip">
-                <span>{item}</span>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="section reveal" id="assessments">
-          <div className="section-heading">
-            <h2>Assessments Designed for Real Insight</h2>
-            <p>Short, focused questionnaires built for clarity and practical self-development guidance.</p>
+            <h2 id="how-it-works">How It Works</h2>
+            <p>One focused assessment, one instant result, one premium AI report.</p>
           </div>
           {showPremiumGuidanceMessage && (
             <p className="assessment-guidance-message" role="status" aria-live="polite">
               Complete a free assessment first to unlock your personalized Premium Report.
             </p>
           )}
-          <div className={`assessment-grid ${areAssessmentCardsHighlighted ? "cards-guided" : ""}`}>
-            {assessments.map((item) => (
-              <AssessmentCard key={item.key} item={item} onStart={onStartAssessment} />
-            ))}
-          </div>
-        </section>
-
-        <section className="section steps reveal" id="how-it-works">
-          <div className="section-heading">
-            <h2>How It Works</h2>
-            <p>Clear from start to finish in four simple steps.</p>
-          </div>
-          <div className="steps-grid timeline-grid">
-            <article>
-              <span>1</span>
-              <h3>Choose an assessment</h3>
-              <p>Select the area you want to understand first.</p>
-            </article>
-            <article>
-              <span>2</span>
-              <h3>Answer the questions</h3>
-              <p>Complete a short questionnaire with clear answer options.</p>
-            </article>
-            <article>
-              <span>3</span>
-              <h3>View your free results</h3>
-              <p>Get your overall score, profile snapshot and key interpretation.</p>
-            </article>
-            <article>
-              <span>4</span>
-              <h3>Unlock Premium Report</h3>
-              <p>Receive a complete personalized PDF and email delivery.</p>
-            </article>
+          <div className="how-it-works-grid">
+            <div className="compact-steps">
+              <article><span className="step-icon" aria-hidden="true"><svg className="step-svg" viewBox="0 0 64 64" focusable="false"><rect x="17" y="15" width="30" height="39" rx="4" /><rect x="25" y="10" width="14" height="8" rx="3" /><path d="m23 29 3 3 6-7M34 29h8M23 39l3 3 6-7M34 39h8" /><path className="step-accent" d="m22 48 6 6 14-16" /></svg></span><div><h3>Choose Assessment</h3><p>Start your focused sleep check.</p></div></article>
+              <article><span className="step-icon" aria-hidden="true"><svg className="step-svg" viewBox="0 0 64 64" focusable="false"><path d="M12 29c0-10 9-17 20-17s20 7 20 17-9 17-20 17c-3 0-6-.5-9-1.5L15 50l2-9c-3-3-5-7-5-12Z" /><path className="step-accent" d="M24 25c0-3 2-5 5-5s5 2 5 5-2 4-5 6c0 2 1 3 1 4M30 40h.1M38 25c0-3 2-5 5-5s5 2 5 5-2 4-5 6c0 2 1 3 1 4M44 40h.1" /></svg></span><div><h3>Answer 12 Questions</h3><p>Complete a science-based assessment in about 2 minutes.</p></div></article>
+              <article><span className="step-icon" aria-hidden="true"><svg className="step-svg" viewBox="0 0 64 64" focusable="false"><rect x="13" y="12" width="38" height="40" rx="5" /><path d="M20 22h24M20 46h24" /><path className="step-accent" d="M20 39 27 32l6 4 10-12" /><path d="M20 28h3M26 28h3M32 28h3" /></svg></span><div><h3>Get Instant Result</h3><p>Receive your free sleep score immediately.</p></div></article>
+            </div>
+            <div className="step-arrow step-arrow-left" aria-hidden="true">›</div>
+            <div className="step-arrow step-arrow-right" aria-hidden="true">›</div>
           </div>
         </section>
 
         <section className="section premium-section reveal" id="premium-report">
           <div className="section-heading">
-            <h2>Why the Premium Report Is Worth It</h2>
-            <p>Move from scores to structured understanding and practical next steps.</p>
+            <h2>Premium PDF Report</h2>
           </div>
           <div className="premium-grid">
-            <article className="premium-features">
-              <ul>
-                <li>Personalized AI profile based on your answers</li>
-                <li>Detailed interpretation of every score area</li>
-                <li>Strengths and risk pattern analysis</li>
-                <li>Practical recommendations in clear language</li>
-                <li>Action plan you can apply immediately</li>
-                <li>Downloadable premium PDF</li>
-                <li>Email delivery to your inbox</li>
-                <li>Secure one-time payment via Stripe</li>
-              </ul>
-              <button className="primary-btn" onClick={handlePremiumReportCta}>Unlock Your Premium Report</button>
-            </article>
             <article className="premium-preview pdf-preview">
-              <div className="pdf-preview-header">
-                <div>
-                  <p>Premium PDF preview</p>
-                  <h3>Professional report layout</h3>
+              <div className="reference-pdf-cards">
+                <div className="pdf-page premium-cover-page">
+                  <strong className="cover-score"><span className="cover-score-number">82</span><span className="cover-score-scale">/100</span></strong>
+                  <span className="cover-progress-ring" aria-hidden="true" />
+                  <span className="cover-score-label">SLEEP SCORE</span>
+                  <span className="cover-overthinker-badge">OVERTHINKER</span>
+                  <div className="cover-report-title"><span>Personalized</span><span>Sleep</span><span>Recovery</span><span>Report</span></div>
+                  <span className="cover-ai-badge">AI GENERATED REPORT</span>
                 </div>
-                <span>Long-form PDF</span>
-              </div>
-
-              <div className="pdf-preview-grid">
-                <div className="pdf-page pdf-page-one">
-                  <span>Page 1</span>
-                  <h4>Executive Summary</h4>
-                  <div className="pdf-summary-card">
-                    <strong>84</strong>
-                    <small>Overall score</small>
-                  </div>
-                  <div className="pdf-copy-lines">
-                    <i />
-                    <i />
-                    <i />
-                  </div>
-                </div>
-
                 <div className="pdf-page pdf-page-two">
-                  <span>Page 2</span>
-                  <h4>Charts</h4>
+                  <span>Sleep Cycle</span>
                   <div className="radar-wrap" aria-hidden="true">
                     <div className="radar-chart" />
                   </div>
@@ -1018,68 +995,45 @@ function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessmen
                 </div>
 
                 <div className="pdf-page pdf-page-three">
-                  <span>Page 3</span>
-                  <h4>Action Plan</h4>
+                  <span>Daytime Energy Insights</span>
+                  <div className="energy-bars" aria-hidden="true"><i /><i /><i /><i /><i /></div>
                   <div className="recommendation-cards">
-                    <article>
-                      <strong>Focus</strong>
-                      <p>Weekly habits</p>
-                    </article>
-                    <article>
-                      <strong>Practice</strong>
-                      <p>Stress regulation</p>
-                    </article>
-                    <article>
-                      <strong>Track</strong>
-                      <p>Progress markers</p>
-                    </article>
+                    <article><strong>Actionable AI Recommendations</strong><p>Personalized guidance for better sleep.</p></article>
                   </div>
                 </div>
               </div>
+              <div className="pdf-caption-grid"><div><h3>15+ Page Personalized PDF</h3><p>A comprehensive deep-dive into your sleep signals and recovery.</p></div><div><h3>Detailed Growth Roadmap</h3><p>Includes habit patterns, daytime energy insights, and actionable AI recommendations.</p></div></div>
+              <div className="secure-report-row"><span className="secure-report-icon" aria-hidden="true" /><div><h3>Secure &amp; Professional</h3><p>High-quality report layout delivered instantly via secure payment.</p></div></div>
             </article>
           </div>
         </section>
 
-        <section className="section why-section reveal" id="why-mindscore">
-          <div className="section-heading">
-            <h2>Why MindScore AI</h2>
-            <p>Built for people who want guidance they can use, not generic quiz text.</p>
+        {isPreviewOpen && (
+          <div className="preview-modal" role="dialog" aria-modal="true" aria-labelledby="preview-modal-title">
+            <div className="preview-modal-backdrop" onClick={() => setIsPreviewOpen(false)} />
+            <div className="preview-modal-content">
+              <div className="preview-modal-header">
+                <div>
+                  <p>Premium PDF preview</p>
+                  <h2 id="preview-modal-title">Three-page report</h2>
+                </div>
+                <button className="preview-close-btn" type="button" aria-label="Close preview" onClick={() => setIsPreviewOpen(false)}>×</button>
+              </div>
+              <div className="preview-modal-pages">
+                <div className="pdf-page premium-cover-page" />
+                <div className="pdf-page pdf-page-two"><span>Page 2</span><h4>Sleep Signals</h4><div className="radar-wrap" aria-hidden="true"><div className="radar-chart" /></div><div className="pdf-score-bars"><div><b /> <i style={{ width: "84%" }} /></div><div><b /> <i style={{ width: "71%" }} /></div><div><b /> <i style={{ width: "77%" }} /></div></div></div>
+                <div className="pdf-page pdf-page-three"><span>Page 3</span><h4>Sleep Plan</h4><div className="recommendation-cards"><article><strong>Focus</strong><p>Better habits</p></article><article><strong>Practice</strong><p>Deeper recovery</p></article><article><strong>Track</strong><p>Energy markers</p></article></div></div>
+              </div>
+            </div>
           </div>
-          <div className="comparison-grid">
-            <article>
-              <h3>Typical online quiz</h3>
-              <ul>
-                <li>Generic feedback</li>
-                <li>Minimal explanation</li>
-                <li>Limited practical steps</li>
-              </ul>
-            </article>
-            <article className="highlighted">
-              <h3>MindScore AI</h3>
-              <ul>
-                <li>Personalized analysis based on your answers</li>
-                <li>Clear language instead of jargon</li>
-                <li>Immediate results and actionable recommendations</li>
-                <li>Accessible anywhere, on any device</li>
-              </ul>
-            </article>
-          </div>
-        </section>
-
-        <section className="section safety-section reveal">
-          <h2>Safety and Disclaimer</h2>
-          <p>
-            MindScore AI provides educational and informational self-assessment content. It does not provide medical
-            diagnosis, psychological treatment, psychiatric care or emergency assistance.
-          </p>
-        </section>
+        )}
 
         <section className="section faq-section reveal" id="faq">
           <div className="section-heading">
             <h2>Frequently Asked Questions</h2>
           </div>
           <div className="faq-list">
-            {faqItems.map((item) => (
+            {[faqItems[0], faqItems[1], faqItems[2], faqItems[4], faqItems[5]].map((item) => (
               <details key={item.question}>
                 <summary>{item.question}</summary>
                 <div className="faq-answer">
@@ -1100,10 +1054,12 @@ function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessmen
           </div>
 
           <nav className="footer-col" aria-label="Privacy and terms">
-            <p className="footer-col-title">Company</p>
+            <p className="footer-col-title">Legal</p>
             <div className="site-footer-links">
+              <a href="#faq">FAQ</a>
               <a href="/privacy">Privacy</a>
               <a href="/terms">Terms</a>
+              <a href="/terms">Legal</a>
             </div>
           </nav>
 
@@ -1118,7 +1074,6 @@ function Homepage({ onStartAssessment, onPremiumReportCta, hasCompletedAssessmen
           <div className="footer-col" aria-label="Copyright">
             <p className="footer-col-title">MindScore AI</p>
             <div className="site-footer-links">
-              <span>Premium self-assessment</span>
               <span>(c) {new Date().getFullYear()}</span>
             </div>
           </div>
@@ -1134,9 +1089,10 @@ function AssessmentApp() {
   const [email, setEmail] = useState("");
   const [isCheckoutRedirecting, setIsCheckoutRedirecting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [isEmailInvalid, setIsEmailInvalid] = useState(false);
   const [isAnswering, setIsAnswering] = useState(false);
   const [userAnswers, setUserAnswers] = useState([]);
-  const [completedAssessment, setCompletedAssessment] = useState(null);
+  const [_completedAssessment, setCompletedAssessment] = useState(null);
 
   const test = selectedTest ? tests[selectedTest] : null;
 
@@ -1225,6 +1181,24 @@ function AssessmentApp() {
     [selectedTest, userAnswers]
   );
 
+  // Sleep uses a dedicated 0-100 scoring engine (reverse-scored negative statements);
+  // every other test keeps the original points-based percentage formula.
+  const finalScore = useMemo(() => {
+    if (!test) return 0;
+    if (selectedTest === "sleep") {
+      const answerIndexes = userAnswers.map((points) => 5 - Number(points));
+      return calculateSleepScore(answerIndexes);
+    }
+    return Math.round((score / (test.questions.length * 5)) * 100);
+  }, [selectedTest, test, userAnswers, score]);
+
+  // AI Sleep Profile / Subtype / Confidence, derived purely from the answer pattern.
+  const sleepAIResult = useMemo(() => {
+    if (selectedTest !== "sleep" || userAnswers.length === 0) return null;
+    const answerIndexes = userAnswers.map((points) => 5 - Number(points));
+    return calculateSleepResult(answerIndexes);
+  }, [selectedTest, userAnswers]);
+
   const startTest = (key) => {
     setSelectedTest(key);
     setCurrentQuestion(0);
@@ -1243,29 +1217,6 @@ function AssessmentApp() {
     setIsCheckoutRedirecting(false);
     setIsAnswering(false);
     setUserAnswers([]);
-  };
-
-  const openPremiumFlowFromCompletedAssessment = () => {
-    if (!completedAssessment?.selectedTest || !tests[completedAssessment.selectedTest]) {
-      startTest("mental");
-      return;
-    }
-
-    const restoredTest = tests[completedAssessment.selectedTest];
-    const restoredAnswers = Array.isArray(completedAssessment.userAnswers) ? completedAssessment.userAnswers : [];
-
-    if (restoredAnswers.length !== restoredTest.questions.length) {
-      startTest(completedAssessment.selectedTest);
-      return;
-    }
-
-    setSelectedTest(completedAssessment.selectedTest);
-    setCurrentQuestion(restoredTest.questions.length);
-    setUserAnswers(restoredAnswers);
-    setEmail("");
-    setCheckoutError("");
-    setIsCheckoutRedirecting(false);
-    setIsAnswering(false);
   };
 
   const answerQuestion = (points) => {
@@ -1326,14 +1277,15 @@ function AssessmentApp() {
   const startPremiumCheckout = async () => {
     try {
       setCheckoutError("");
+      setIsEmailInvalid(false);
 
       if (!test) throw new Error("Assessment state is missing.");
 
       if (!email || !/.+@.+\..+/.test(email.trim())) {
+        setIsEmailInvalid(true);
         throw new Error("Please enter a valid email address before checkout.");
       }
 
-      const finalScore = Math.round((score / (test.questions.length * 5)) * 100);
       const profileDimensions =
         dashboardScores.length > 0 ? dashboardScores : calculateDimensions(userAnswers, selectedTest);
 
@@ -1372,8 +1324,6 @@ function AssessmentApp() {
     return (
       <Homepage
         onStartAssessment={startTest}
-        onPremiumReportCta={openPremiumFlowFromCompletedAssessment}
-        hasCompletedAssessment={Boolean(completedAssessment)}
       />
     );
   }
@@ -1392,7 +1342,7 @@ function AssessmentApp() {
   }
 
   if (currentQuestion === test.questions.length) {
-    const finalScore = Math.round((score / (test.questions.length * 5)) * 100);
+    const isSleepResult = selectedTest === "sleep" && sleepAIResult;
     const resultLevel = getLevel(finalScore);
     const summary = getSummary(finalScore);
     const strongestDimension =
@@ -1415,40 +1365,131 @@ function AssessmentApp() {
             <div className="result-head">
               <div className="badge">Free result</div>
               <h1>{test.title} Results</h1>
-              <p>{resultLevel}</p>
+              {!isSleepResult && <p>{resultLevel}</p>}
             </div>
 
-            <div className="score-card">
-              <div
-                className="score-circle"
-                role="img"
-                aria-label={`Overall score ${finalScore} out of 100`}
-              >
-                <span>{finalScore}</span>
-                <small>/100</small>
+            {isSleepResult ? (
+              <div className="sleep-hero">
+                <div
+                  className="sleep-hero-circle"
+                  role="img"
+                  aria-label={`Overall score ${finalScore} out of 100`}
+                >
+                  <span className="sleep-hero-score">{finalScore}</span>
+                  <span className="sleep-hero-max">/100</span>
+                </div>
+                <h2 className="sleep-hero-profile">{sleepAIResult.profile}</h2>
+                <p className="sleep-hero-subtitle">Your AI Sleep Profile</p>
               </div>
-              <div className="score-copy">
-                <h2>Overall Score</h2>
-                <p>{summary.strengths}</p>
+            ) : (
+              <div className="score-card">
+                <div
+                  className="score-circle"
+                  role="img"
+                  aria-label={`Overall score ${finalScore} out of 100`}
+                >
+                  <span>{finalScore}</span>
+                  <small>/100</small>
+                </div>
+                <div className="score-copy">
+                  <h2>Overall Score</h2>
+                  <p>{summary.strengths}</p>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="result-insights">
-              <article>
-                <h3>Key strengths</h3>
-                <p>{strongestDimension ? `${strongestDimension.name}: ${strongestDimension.score}/100.` : summary.strengths}</p>
-              </article>
-              <article>
-                <h3>Areas to improve</h3>
-                <p>{growthDimension ? `${growthDimension.name}: ${growthDimension.score}/100.` : summary.improve}</p>
-              </article>
-              <article>
-                <h3>Short recommendation</h3>
-                <p>{summary.recommendation}</p>
-              </article>
-            </div>
+            {isSleepResult ? (
+              <>
+                <div className="ai-insight-grid">
+                  <article className="ai-insight-card">
+                    <span className="ai-insight-icon" aria-hidden="true">🧠</span>
+                    <h3>AI Sleep Profile</h3>
+                    <p>{sleepAIResult.profile}</p>
+                  </article>
+                  <article className="ai-insight-card">
+                    <span className="ai-insight-icon" aria-hidden="true">🧩</span>
+                    <h3>AI Subtype</h3>
+                    <p>{sleepAIResult.subtype}</p>
+                  </article>
+                  <article className="ai-insight-card">
+                    <span className="ai-insight-icon" aria-hidden="true">🎯</span>
+                    <h3>AI Confidence</h3>
+                    <p>{sleepAIResult.confidence}% Match</p>
+                  </article>
+                  <article className="ai-insight-card">
+                    <span className="ai-insight-icon" aria-hidden="true">💪</span>
+                    <h3>Strongest Pattern</h3>
+                    <p>{strongestDimension ? strongestDimension.name : "Not enough data yet"}</p>
+                  </article>
+                  <article className="ai-insight-card ai-insight-card-full ai-insight-card-compact">
+                    <span className="ai-insight-icon" aria-hidden="true">🚀</span>
+                    <h3>Biggest Opportunity</h3>
+                    <p>{growthDimension ? growthDimension.name : "Not enough data yet"}</p>
+                  </article>
+                  <article className="ai-teaser-card ai-insight-card-full">
+                    <h3>🧠 AI Insight</h3>
+                    <p>
+                      Our AI detected one hidden sleep pattern that may be reducing your recovery more than any
+                      other factor.
+                    </p>
+                    <p className="ai-teaser-cta">Unlock Premium to reveal it.</p>
+                  </article>
+                </div>
 
-            {dashboardScores.length > 0 && <AnalyticsDashboard data={dashboardScores} />}
+                <section className="premium-preview-panel" aria-label="Premium preview">
+                  <div className="analytics-heading">
+                    <p className="analytics-label">Premium preview</p>
+                    <h2>Your AI Report Is Ready</h2>
+                  </div>
+
+                  <div className="premium-locked-cards">
+                    {PREMIUM_INSIGHT_CARDS.map((title, index) => (
+                      <article
+                        className={index === 0 ? "premium-locked-card premium-locked-card-blurred" : "premium-locked-card"}
+                        key={title}
+                      >
+                        <span className="premium-locked-icon" aria-hidden="true">🔒</span>
+                        <div className="premium-locked-copy">
+                          <h3>{title}</h3>
+                          <p>Hidden AI analysis</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+
+                  <div className="premium-checklist-card">
+                    <div className="premium-checklist-header">
+                      <h3>🔥 One hidden sleep pattern detected</h3>
+                      <p>Your biggest opportunity for improvement</p>
+                    </div>
+                    <ul>
+                      {PREMIUM_REPORT_CHECKLIST.map((item) => (
+                        <li key={item}>✓ {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </section>
+              </>
+            ) : (
+              <>
+                <div className="result-insights">
+                  <article>
+                    <h3>Key strengths</h3>
+                    <p>{strongestDimension ? `${strongestDimension.name}: ${strongestDimension.score}/100.` : summary.strengths}</p>
+                  </article>
+                  <article>
+                    <h3>Areas to improve</h3>
+                    <p>{growthDimension ? `${growthDimension.name}: ${growthDimension.score}/100.` : summary.improve}</p>
+                  </article>
+                  <article>
+                    <h3>Short recommendation</h3>
+                    <p>{summary.recommendation}</p>
+                  </article>
+                </div>
+
+                {dashboardScores.length > 0 && <AnalyticsDashboard data={dashboardScores} />}
+              </>
+            )}
 
             <section className="premium-cta-panel" aria-label="Premium report offer">
               <div className="premium-cta-copy">
@@ -1466,19 +1507,51 @@ function AssessmentApp() {
                 </ul>
               </div>
               <div className="premium-cta-form">
+                {isSleepResult && (
+                  <div className="premium-trust-badges">
+                    {PREMIUM_TRUST_BADGES.map((badge) => (
+                      <span key={badge.label}>
+                        {badge.icon} {badge.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {isSleepResult && (
+                  <div className="premium-price-block">
+                    <p>One-time payment</p>
+                    <strong>€{PREMIUM_PRICE_EUR}</strong>
+                    <p>No subscription</p>
+                  </div>
+                )}
                 <label htmlFor="report-email">Email for secure report delivery</label>
                 <input
                   id="report-email"
                   type="email"
                   value={email}
                   placeholder="name@example.com"
-                  aria-invalid={Boolean(checkoutError)}
-                  aria-describedby={checkoutError ? "report-email-error" : undefined}
-                  onChange={(event) => setEmail(event.target.value)}
+                  aria-invalid={isEmailInvalid}
+                  aria-describedby={isEmailInvalid ? "report-email-error" : undefined}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setIsEmailInvalid(false);
+                  }}
                 />
-                <button className="primary-btn" onClick={startPremiumCheckout} disabled={isCheckoutRedirecting}>
-                  {isCheckoutRedirecting ? "Redirecting to secure checkout..." : "Unlock Premium Report"}
+                <button
+                  className={isSleepResult ? "primary-btn premium-unlock-btn" : "primary-btn"}
+                  onClick={startPremiumCheckout}
+                  disabled={isCheckoutRedirecting}
+                >
+                  {isCheckoutRedirecting
+                    ? "Redirecting to secure checkout..."
+                    : isSleepResult
+                    ? "Unlock My Complete AI Report"
+                    : "Unlock Premium Report"}
                 </button>
+                {isSleepResult && (
+                  <p className="premium-trust-line">
+                    Used by people who want to truly understand their sleep instead of guessing.
+                  </p>
+                )}
                 {checkoutError && (
                   <p className="inline-error" id="report-email-error" role="alert">
                     {checkoutError}
@@ -1509,17 +1582,21 @@ function AssessmentApp() {
         title={`${test.title} Assessment | MindScore AI`}
         description="Complete your assessment with a clear, mobile-friendly questionnaire and progress tracking."
       />
-      <main className="page assessment-page">
+      <main className="page assessment-page quiz-active">
         <section className="content-panel quiz-panel">
-          <div className="quiz-header-row">
-            <button className="ghost-btn" onClick={restart}>
-              Home
+          <nav className="quiz-nav-row" aria-label="Assessment navigation">
+            <button
+              type="button"
+              className="quiz-nav-btn quiz-nav-back"
+              onClick={goBackQuestion}
+              disabled={currentQuestion === 0 || isAnswering}
+            >
+              <span aria-hidden="true">←</span> Back
             </button>
-            <p>{test.title}</p>
-            <button className="ghost-btn" onClick={goBackQuestion} disabled={currentQuestion === 0 || isAnswering}>
-              Back
+            <button type="button" className="quiz-nav-btn quiz-nav-home" onClick={restart}>
+              <span aria-hidden="true">🏠</span> Home
             </button>
-          </div>
+          </nav>
 
           <div className="quiz-top">
             <span>
@@ -1554,7 +1631,6 @@ function AssessmentApp() {
           {isAnswering && <p className="micro-status">Saving answer...</p>}
         </section>
       </main>
-      <SiteFooter />
     </>
   );
 }

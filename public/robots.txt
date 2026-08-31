@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /payment-success
+Disallow: /payment-cancelled
+
+Sitemap: https://mindscore-ai.onrender.com/sitemap.xml
