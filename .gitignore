@@ -25,3 +25,6 @@ dist-ssr
 
 .env
 server/.env
+
+# Runtime payment/customer data & generated reports - never commit real PII
+server/data/
