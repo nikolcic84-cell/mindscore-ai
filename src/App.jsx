@@ -980,7 +980,7 @@ function Homepage({ onStartAssessment }) {
                   <span className="cover-score-label">SLEEP SCORE</span>
                   <span className="cover-overthinker-badge">OVERTHINKER</span>
                   <div className="cover-report-title"><span>Personalized</span><span>Sleep</span><span>Recovery</span><span>Report</span></div>
-                  <span className="cover-ai-badge">AI GENERATED REPORT</span>
+                  <span className="cover-ai-badge">PERSONALIZED PREMIUM REPORT</span>
                 </div>
                 <div className="pdf-page pdf-page-two">
                   <span>Sleep Cycle</span>
@@ -1002,8 +1002,8 @@ function Homepage({ onStartAssessment }) {
                   </div>
                 </div>
               </div>
-              <div className="pdf-caption-grid"><div><h3>15+ Page Personalized PDF</h3><p>A comprehensive deep-dive into your sleep signals and recovery.</p></div><div><h3>Detailed Growth Roadmap</h3><p>Includes habit patterns, daytime energy insights, and actionable AI recommendations.</p></div></div>
-              <div className="secure-report-row"><span className="secure-report-icon" aria-hidden="true" /><div><h3>Secure &amp; Professional</h3><p>High-quality report layout delivered instantly via secure payment.</p></div></div>
+              <div className="pdf-caption-grid"><div><h3>Personalized Premium Report</h3><p>Your results, key sleep patterns, practical insights, and a clear action plan — personalized to your assessment.</p></div><div><h3>Detailed Growth Roadmap</h3><p>Understand your strongest areas, your main opportunity, and the practical steps that can improve your sleep routine.</p></div></div>
+              <div className="secure-report-row"><span className="secure-report-icon" aria-hidden="true" /><div><h3>Secure &amp; Professional</h3><p>Your personalized premium report is delivered instantly after secure payment.</p></div></div>
             </article>
           </div>
         </section>

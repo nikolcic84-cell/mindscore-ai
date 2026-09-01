@@ -71,7 +71,7 @@ const toSafeText = (value, fallback = "") => {
   return fallback;
 };
 
-const countWords = (text = "") =>
+const _countWords = (text = "") =>
   toSafeText(text)
     .split(/\s+/)
     .map((w) => w.trim())
@@ -122,7 +122,7 @@ export const parseReportSections = (reportText = "") => {
   return sections;
 };
 
-const splitContent = (content = "") => {
+const _splitContent = (content = "") => {
   const paragraphs = toSafeText(content)
     .split(/\n\s*\n/)
     .map((p) => p.trim())
@@ -152,42 +152,13 @@ const developmentLevel = (score) => {
   return "Foundational Rebuild Profile";
 };
 
-const confidenceLevel = (sections, dimensions) => {
-  const textMass = sections.reduce((acc, s) => acc + countWords(s.content), 0);
-  const spread = dimensions.length
-    ? Math.max(...dimensions.map((d) => d.score)) - Math.min(...dimensions.map((d) => d.score))
-    : 0;
-  const base = clamp(68 + Math.round(textMass / 170) + Math.round(spread / 7), 74, 96);
-  return `${base}%`;
-};
-
 const normalizeDimensions = (profileDimensions = []) => {
-  const target = [
-    "Resilience",
-    "Emotional Control",
-    "Self Discipline",
-    "Decision Making",
-    "Stress Tolerance",
-  ];
+  const palette = [[56, 123, 236], [43, 161, 140], [117, 103, 232], [245, 164, 42], [225, 96, 106]];
+  const source = profileDimensions.length ? profileDimensions : [{ name: "Your score", score: 0 }];
 
-  const mapped = profileDimensions.map((d) => ({
-    rawName: toSafeText(d?.name, ""),
-    score: clamp(Math.round(Number(d?.score) || 0), 0, 100),
-  }));
-
-  const byName = (name) => {
-    const lower = name.toLowerCase();
-    return (
-      mapped.find((d) => d.rawName.toLowerCase().includes(lower)) ||
-      mapped.find((d) => lower.includes(d.rawName.toLowerCase())) ||
-      null
-    );
-  };
-
-  return target.map((name, idx) => {
-    const match = byName(name);
-    const fallback = 54 + idx * 7;
-    const score = match ? match.score : fallback;
+  return source.map((dimension, idx) => {
+    const name = toSafeText(dimension?.name, `Area ${idx + 1}`);
+    const score = clamp(Math.round(Number(dimension?.score) || 0), 0, 100);
     const tone = statusFromScore(score);
 
     return {
@@ -196,16 +167,7 @@ const normalizeDimensions = (profileDimensions = []) => {
       score,
       status: tone.label,
       statusColor: tone.color,
-      color:
-        idx === 0
-          ? [56, 123, 236]
-          : idx === 1
-            ? [43, 161, 140]
-            : idx === 2
-              ? [117, 103, 232]
-              : idx === 3
-                ? [245, 164, 42]
-                : [225, 96, 106],
+      color: palette[idx % palette.length],
     };
   });
 };
@@ -223,7 +185,7 @@ const scoreDirection = (score) => {
 const getMajorSections = (context) => {
   return context.dimensions.map((d) => ({
     key: `dimension-${d.id}`,
-    title: `${d.name} Professional Chapter`,
+    title: d.name,
     shortTitle: d.name,
     type: "dimension",
     score: d.score,
@@ -419,7 +381,7 @@ const createSubsectionText = ({ major, subsection, context, pool, seed }) => {
   return buildSubsectionNarrative({ major, subsection, context, pool, seed });
 };
 
-const createAssessmentContent = (context, pool) => {
+const _createAssessmentContent = (context, pool) => {
   const majorSections = getMajorSections(context);
 
   return majorSections.map((major, majorIndex) => {
@@ -467,17 +429,18 @@ const drawSolidPageBackground = (doc, dark = false) => {
   doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, "F");
 };
 
-const drawScoreCircle = (doc, cx, cy, score, onDark = false) => {
+const drawScoreCircle = (doc, cx, cy, score, onDark = false, radius = 29) => {
   const s = clamp(Math.round(Number(score) || 0), 0, 100);
   const status = statusFromScore(s);
   const ring = status.color;
+  const ringRadius = radius - 5;
 
   doc.setFillColor(onDark ? 22 : 238, onDark ? 50 : 247, onDark ? 113 : 255);
-  doc.circle(cx, cy, 29, "F");
+  doc.circle(cx, cy, radius, "F");
 
   doc.setDrawColor(215, 230, 250);
   doc.setLineWidth(4);
-  doc.circle(cx, cy, 24, "S");
+  doc.circle(cx, cy, ringRadius, "S");
 
   doc.setDrawColor(ring[0], ring[1], ring[2]);
   doc.setLineWidth(4.4);
@@ -485,18 +448,18 @@ const drawScoreCircle = (doc, cx, cy, score, onDark = false) => {
   for (let d = 0; d < arc; d += 3) {
     const a1 = ((-90 + d) * Math.PI) / 180;
     const a2 = ((-90 + d + 2.4) * Math.PI) / 180;
-    doc.line(cx + Math.cos(a1) * 24, cy + Math.sin(a1) * 24, cx + Math.cos(a2) * 24, cy + Math.sin(a2) * 24);
+    doc.line(cx + Math.cos(a1) * ringRadius, cy + Math.sin(a1) * ringRadius, cx + Math.cos(a2) * ringRadius, cy + Math.sin(a2) * ringRadius);
   }
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
+  doc.setFontSize(radius < 29 ? 21 : 24);
   doc.setTextColor(...(onDark ? COLORS.white : COLORS.ink));
-  doc.text(String(s), cx, cy + 2.5, { align: "center" });
+  doc.text(String(s), cx, cy + 2.2, { align: "center" });
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.8);
+  doc.setFontSize(radius < 29 ? 8.7 : 9.8);
   doc.setTextColor(...(onDark ? [214, 228, 250] : COLORS.muted));
-  doc.text("Overall Score", cx, cy + 10.7, { align: "center" });
+  doc.text("Overall Score", cx, cy + (radius < 29 ? 9.4 : 10.7), { align: "center" });
 };
 
 const drawHeader = (doc, title, subtitle) => {
@@ -527,7 +490,7 @@ const drawFooter = (doc, page, total) => {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.7);
   doc.setTextColor(...COLORS.muted);
-  doc.text("MindScore AI Confidential Psychological Assessment", MARGIN_LEFT, PAGE_HEIGHT - 6.2);
+  doc.text("MindScore AI Premium Report", MARGIN_LEFT, PAGE_HEIGHT - 6.2);
   doc.text(`Page ${page} of ${total}`, PAGE_WIDTH - MARGIN_RIGHT, PAGE_HEIGHT - 6.2, { align: "right" });
 };
 
@@ -552,11 +515,13 @@ const writeWrappedText = (doc, text, x, y, width, options = {}) => {
   };
 };
 
-const createFlowContext = (doc) => ({
+const createFlowContext = (doc, debug = false) => ({
   doc,
-  y: MARGIN_TOP + 8,
-  headerTitle: "",
-  headerSubtitle: "",
+  y: 198,
+  headerTitle: "Sleep quality insights",
+  headerSubtitle: "Your personalized report",
+  hasBodyContent: false,
+  debug,
 });
 
 const startBodyPage = (flow, title, subtitle) => {
@@ -568,13 +533,24 @@ const startBodyPage = (flow, title, subtitle) => {
   flow.headerSubtitle = subtitle;
 };
 
-const ensureSpace = (flow, heightNeeded) => {
-  if (flow.y + heightNeeded <= CONTENT_BOTTOM) return;
-  startBodyPage(flow, flow.headerTitle, flow.headerSubtitle);
+const ensureSpace = (flow, heightNeeded, blockName = "Content block") => {
+  const currentPage = flow.doc.getNumberOfPages();
+  const startY = flow.y;
+  const pageBreak = flow.y + heightNeeded > CONTENT_BOTTOM;
+  if (pageBreak) startBodyPage(flow, flow.headerTitle, flow.headerSubtitle);
+  if (flow.debug) {
+    const page = flow.doc.getNumberOfPages();
+    console.log(`[premium-pdf] PAGE ${page} | ${blockName} | START Y ${flow.y.toFixed(1)} | HEIGHT ${heightNeeded.toFixed(1)} | END Y ${(flow.y + heightNeeded).toFixed(1)} | PAGE BREAK ${pageBreak ? `YES (from ${currentPage} at ${startY.toFixed(1)})` : "NO"}`);
+  }
 };
 
-const drawSectionTitle = (flow, text) => {
-  ensureSpace(flow, 16);
+const startDimensionFlow = (flow) => {
+  flow.hasBodyContent = true;
+  return flow.doc.getNumberOfPages();
+};
+
+const drawSectionTitle = (flow, text, bottomGap = 6.5) => {
+  ensureSpace(flow, 15.5, `Heading: ${text}`);
   flow.doc.setFont("helvetica", "bold");
   flow.doc.setFontSize(19.5);
   flow.doc.setTextColor(...COLORS.ink);
@@ -584,11 +560,11 @@ const drawSectionTitle = (flow, text) => {
   flow.doc.setDrawColor(...COLORS.line);
   flow.doc.setLineWidth(0.5);
   flow.doc.line(MARGIN_LEFT, flow.y, PAGE_WIDTH - MARGIN_RIGHT, flow.y);
-  flow.y += 6.5;
+  flow.y += bottomGap;
 };
 
 const drawSubsectionTitle = (flow, text) => {
-  ensureSpace(flow, 14);
+  ensureSpace(flow, 7.5, `Subheading: ${text}`);
   flow.doc.setFont("helvetica", "bold");
   flow.doc.setFontSize(15.7);
   flow.doc.setTextColor(...COLORS.ink);
@@ -596,7 +572,7 @@ const drawSubsectionTitle = (flow, text) => {
   flow.y += 7.5;
 };
 
-const drawParagraph = (flow, text) => {
+const drawParagraph = (flow, text, bottomGap = 4.4) => {
   const width = CONTENT_WIDTH;
   const lineHeight = 7.1;
   flow.doc.setFont("helvetica", "normal");
@@ -605,9 +581,7 @@ const drawParagraph = (flow, text) => {
   const lines = Array.isArray(linesRaw) ? linesRaw : [toSafeText(linesRaw, "")];
   const height = lines.length * lineHeight;
 
-  if (flow.y + height > CONTENT_BOTTOM) {
-    startBodyPage(flow, flow.headerTitle, flow.headerSubtitle);
-  }
+  ensureSpace(flow, height + bottomGap, "Paragraph");
 
   writeWrappedText(flow.doc, text, MARGIN_LEFT, flow.y, width, {
     size: 12.2,
@@ -615,11 +589,11 @@ const drawParagraph = (flow, text) => {
     style: "normal",
     color: COLORS.text,
   });
-  flow.y += height + 4.4;
+  flow.y += height + bottomGap;
 };
 
 const drawMiniProgressBar = (flow, label, score, color) => {
-  ensureSpace(flow, 16);
+  ensureSpace(flow, 8.5, `Score bar: ${label}`);
   flow.doc.setFont("helvetica", "bold");
   flow.doc.setFontSize(10.2);
   flow.doc.setTextColor(...COLORS.muted);
@@ -645,18 +619,18 @@ const drawMiniProgressBar = (flow, label, score, color) => {
 };
 
 const drawComparisonChart = (flow, major) => {
-  ensureSpace(flow, 34);
+  ensureSpace(flow, 27.6, "Score comparison");
 
   flow.doc.setFont("helvetica", "bold");
   flow.doc.setFontSize(11.3);
   flow.doc.setTextColor(...COLORS.ink);
-  flow.doc.text("Simple Comparison Chart", MARGIN_LEFT, flow.y);
+  flow.doc.text("Your personal comparison", MARGIN_LEFT, flow.y);
   flow.y += 6;
 
   const rows = [
-    { label: "Current", value: major.score, color: major.color || COLORS.blue },
-    { label: "Executive Benchmark", value: 78, color: [110, 136, 190] },
-    { label: "Elite Benchmark", value: 88, color: [82, 111, 169] },
+    { label: "This area", value: major.score, color: major.color || COLORS.blue },
+    { label: "Overall score", value: flow.context.overallScore, color: [110, 136, 190] },
+    { label: "Strongest area", value: flow.context.strongest.score, color: flow.context.strongest.color },
   ];
 
   rows.forEach((row) => {
@@ -687,10 +661,7 @@ const drawComparisonChart = (flow, major) => {
 
   flow.y += 1.5;
 
-  drawParagraph(
-    flow,
-    `This chart is intentionally minimal. It shows where ${major.shortTitle} currently sits compared with practical executive performance references. The goal is not to compare identity, but to clarify the performance gap that can be closed through disciplined routines, stronger recovery systems, and higher-quality decision architecture.`
-  );
+  drawParagraph(flow, `This is a comparison within your own results. ${major.shortTitle} is ${Math.abs(major.score - flow.context.overallScore)} points ${major.score >= flow.context.overallScore ? "above" : "below"} your overall score.`);
 };
 
 const drawCallout = (flow, type, text) => {
@@ -704,7 +675,7 @@ const drawCallout = (flow, type, text) => {
   const contentHeight = lines.length * lineHeight;
   const boxHeight = 11 + contentHeight;
 
-  ensureSpace(flow, boxHeight + 5);
+  ensureSpace(flow, boxHeight + 4.5, `Callout: ${type}`);
 
   flow.doc.setFillColor(fill[0], fill[1], fill[2]);
   flow.doc.roundedRect(x, flow.y, width, boxHeight, 2.7, 2.7, "F");
@@ -725,23 +696,66 @@ const drawCallout = (flow, type, text) => {
   flow.y += boxHeight + 4.5;
 };
 
+const drawThreeTiles = (flow, tiles, bottomGap = 5) => {
+  const gap = 4;
+  const width = (CONTENT_WIDTH - gap * 2) / 3;
+  const height = 43;
+  ensureSpace(flow, height + bottomGap, "Action card row");
+
+  tiles.forEach((tile, index) => {
+    const x = MARGIN_LEFT + index * (width + gap);
+    flow.doc.setFillColor(...(tile.fill || COLORS.card));
+    flow.doc.roundedRect(x, flow.y, width, height, 3.4, 3.4, "F");
+    flow.doc.setDrawColor(...COLORS.line);
+    flow.doc.setLineWidth(0.3);
+    flow.doc.roundedRect(x, flow.y, width, height, 3.4, 3.4, "S");
+    flow.doc.setFont("helvetica", "bold");
+    flow.doc.setFontSize(8.1);
+    flow.doc.setTextColor(...COLORS.muted);
+    flow.doc.text(tile.label.toUpperCase(), x + 4, flow.y + 7);
+    flow.doc.setFontSize(9.4);
+    flow.doc.setTextColor(...COLORS.ink);
+    const lines = flow.doc.splitTextToSize(tile.text, width - 8);
+    flow.doc.text(lines.slice(0, 4), x + 4, flow.y + 15, { maxWidth: width - 8 });
+  });
+
+  flow.y += height + bottomGap;
+};
+
+const measureParagraphHeight = (doc, text) => {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(12.2);
+  const lines = doc.splitTextToSize(toSafeText(text, ""), CONTENT_WIDTH);
+  return lines.length * 7.1 + 4.4;
+};
+
+const sleepGuidance = (name) => {
+  const key = name.toLowerCase();
+  if (key.includes("recovery")) return { tonight: "Give yourself a calm 20 minutes before bed.", week: "Keep a simple wind-down cue for seven nights.", quick: "Leave tomorrow's first task ready before bed." };
+  if (key.includes("continuity")) return { tonight: "Keep the bedroom calm and ready for sleep.", week: "Protect the same wake-up window most days.", quick: "Move one disruption out of reach before bed." };
+  if (key.includes("wind")) return { tonight: "Put one screen away for the final 30 minutes.", week: "Start your wind-down at a repeatable time.", quick: "Write down one thought you do not need to solve tonight." };
+  if (key.includes("clarity")) return { tonight: "Set up one easier morning step before bed.", week: "Notice when you feel most clear during the day.", quick: "Get daylight early when you can." };
+  if (key.includes("consistency")) return { tonight: "Choose a realistic bedtime window for tonight.", week: "Keep bedtime within a 30-45 minute window.", quick: "Set one reminder to begin winding down." };
+  return { tonight: "Choose one calming step before bed.", week: "Repeat one sleep-supporting habit for seven days.", quick: "Make your next bedtime step easier to start." };
+};
+
 const renderCoverPage = (doc, context) => {
   drawSolidPageBackground(doc, true);
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(27);
+  doc.setFontSize(23.5);
   doc.setTextColor(...COLORS.white);
-  doc.text("MindScore AI Premium Psychological Assessment", MARGIN_LEFT, 38);
+  doc.text("MindScore AI Premium Report", MARGIN_LEFT, 31);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(12.8);
   doc.setTextColor(214, 229, 252);
-  doc.text("Executive-grade AI psychological profile", MARGIN_LEFT, 49);
+  doc.text(context.isSleep ? "Your personalized sleep quality guide" : "Your personalized assessment guide", MARGIN_LEFT, 42);
 
-  drawScoreCircle(doc, PAGE_WIDTH - 45, 58, context.overallScore, true);
+  drawScoreCircle(doc, PAGE_WIDTH - 30, 57, context.overallScore, true, 25);
 
   doc.setFillColor(15, 45, 106);
-  doc.roundedRect(MARGIN_LEFT, 62, 122, 88, 4.5, 4.5, "F");
+  doc.roundedRect(MARGIN_LEFT, 57, 128, 76, 4.5, 4.5, "F");
 
   const leftMeta = [
     ["Assessment Date", context.assessmentDate],
@@ -749,12 +763,10 @@ const renderCoverPage = (doc, context) => {
     ["Priority Level", context.priorityLevel],
     ["Strongest Dimension", context.strongest.name],
     ["Growth Opportunity", context.growth.name],
-    ["Development Level", context.developmentLevel],
-    ["AI Confidence", context.aiConfidenceLevel],
     ["Estimated Reading Time", context.readingTime],
   ];
 
-  let y = 72;
+  let y = 67;
   leftMeta.forEach(([k, v]) => {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9.2);
@@ -767,28 +779,34 @@ const renderCoverPage = (doc, context) => {
     const value = toSafeText(v, "-");
     doc.text(value, MARGIN_LEFT + 55, y, { maxWidth: 62 });
 
-    y += 9.2;
+    y += 10.2;
   });
 
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(MARGIN_LEFT, 156, CONTENT_WIDTH, 121, 5.5, 5.5, "F");
+  doc.setFillColor(230, 241, 255);
+  doc.roundedRect(MARGIN_LEFT, 148, CONTENT_WIDTH, 43, 4.5, 4.5, "F");
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(17.5);
+  doc.setFontSize(13.8);
   doc.setTextColor(...COLORS.ink);
-  doc.text("Executive Cover Brief", MARGIN_LEFT + 7, 171);
+  doc.text("YOUR RESULT AT A GLANCE", MARGIN_LEFT + 7, 158);
 
-  const coverBrief = [
-    `Your current score profile indicates a ${statusFromScore(context.overallScore).label.toLowerCase()} executive foundation with identifiable growth leverage in ${context.growth.name}.`,
-    "This report is intentionally long-form and practical. It explains not only what your score suggests, but why these patterns emerge, where they create risk, where they create advantage, and how to build reliable behavioral systems over the next 30, 60, and 90 days.",
-    "The objective is to provide a premium-grade psychological operating manual that can be implemented in daily work, leadership interactions, stress episodes, and strategic decision contexts.",
-  ].join(" ");
+  doc.setFontSize(20);
+  doc.text(`${context.overallScore}/100`, MARGIN_LEFT + 7, 174);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.4);
+  doc.setTextColor(...COLORS.text);
+  doc.text("Overall Score", MARGIN_LEFT + 47, 174);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text(`STRONGEST AREA  ${context.strongest.name} - ${context.strongest.score}/100`, MARGIN_LEFT + 7, 182);
+  doc.text(`MAIN OPPORTUNITY  ${context.growth.name} - ${context.growth.score}/100`, MARGIN_LEFT + 7, 189);
 
-  writeWrappedText(doc, coverBrief, MARGIN_LEFT + 7, 181, CONTENT_WIDTH - 14, {
-    size: 12.3,
-    lineHeight: 7.2,
+  const coverBrief = `Your results show a clear strength and one practical area to focus on. Start with a small change that supports ${context.growth.name}, then give it a week before you add more.`;
+  writeWrappedText(doc, coverBrief, MARGIN_LEFT, 205, CONTENT_WIDTH, {
+    size: 12,
+    lineHeight: 6.7,
     style: "normal",
-    color: COLORS.text,
+    color: [214, 229, 252],
   });
 };
 
@@ -798,21 +816,14 @@ const reserveTocPages = (doc, count) => {
   }
 };
 
-const renderExecutivePreface = (flow, context) => {
-  drawSectionTitle(flow, "Executive Preface");
-
-  const p1 = `This premium document is designed to read like an executive psychology brief, not a short motivational summary. It integrates behavioral science logic, applied coaching structure, and implementation-focused strategy. Your overall profile sits at ${context.overallScore}/100, which indicates meaningful capability with clear leverage points for measurable growth. The central theme is consistency under pressure: sustainable outcomes depend on whether your routines, decision architecture, and recovery systems remain functional during difficult weeks.`;
-  const p2 = `Each major chapter includes Executive Insight, Deep Behavioral Analysis, Psychological Interpretation, Real Life Examples, Risk Analysis, Hidden Strengths, Blind Spots, Professional Recommendations, Weekly Action Plan, AI Coaching Notes, Reflection Questions, and Progress Indicators. This format is intentional. It ensures you receive both deep explanation and practical execution guidance so each insight can be translated into real behavior.`;
-  const p3 = `Use this report actively: annotate it, choose one high-impact intervention per week, run personal experiments, and track outcomes through objective indicators. The objective is not perfection. The objective is reduction of behavioral variance, faster recovery after pressure, stronger leadership stability, and better long-term decision quality.`;
-
-  drawParagraph(flow, p1);
-  drawCallout(flow, "Expert Commentary", "Text is the premium product in this report. Graphics are intentionally limited so implementation insights remain central.");
-  drawParagraph(flow, p2);
-  drawCallout(flow, "Implementation Strategy", "Commit to one weekly review session where you evaluate evidence, update protocols, and remove one recurring friction source.");
-  drawParagraph(flow, p3);
+const _renderExecutivePreface = (flow, context) => {
+  drawSectionTitle(flow, "How to use your report");
+  drawParagraph(flow, `Your score is a snapshot from a short self-assessment, not a diagnosis or a prediction. It highlights the areas that appear stronger today and the areas most worth your attention.`);
+  drawParagraph(flow, `Read the chapters in any order. Start with ${context.growth.name}, choose one action that feels realistic, and revisit it for a week before adding another. Use ${context.strongest.name} as proof that you already have a useful foundation to build from.`);
+  drawCallout(flow, "Your focus", `Aim for steady practice, not a perfect week. Small changes that fit your real routine are easier to keep.`);
 };
 
-const renderMajorSectionIntro = (flow, major, context) => {
+const _renderMajorSectionIntro = (flow, major, context) => {
   drawSectionTitle(flow, major.title);
   drawMiniProgressBar(flow, "Section Score", major.score, major.color || COLORS.blue);
   drawMiniProgressBar(flow, "Overall Score", context.overallScore, COLORS.blue);
@@ -829,77 +840,77 @@ const renderMajorSectionIntro = (flow, major, context) => {
 };
 
 const renderMajorSections = (flow, sections, context, tocEntries) => {
-  sections.forEach((major, majorIndex) => {
-    startBodyPage(flow, major.shortTitle, "Premium Long-Form Chapter");
-    tocEntries.push({ level: 1, title: major.title, page: flow.doc.getNumberOfPages() });
+  sections.forEach((major) => {
+    const guidance = context.isSleep ? sleepGuidance(major.shortTitle) : sleepGuidance("");
+    const isGrowth = major.score === context.growth.score;
+    const isStrongest = major.score === context.strongest.score;
+    const difference = Math.abs(major.score - context.overallScore);
 
-    renderMajorSectionIntro(flow, major, context);
+    tocEntries.push({ level: 1, title: major.title, page: startDimensionFlow(flow) });
+    flow.context = context;
+    drawSectionTitle(flow, isGrowth ? `${major.shortTitle}: priority area` : isStrongest ? `${major.shortTitle}: your strongest area` : `${major.shortTitle}: score snapshot`);
+    drawMiniProgressBar(flow, major.shortTitle, major.score, major.color);
+    drawMiniProgressBar(flow, "Overall score", context.overallScore, COLORS.blue);
+    drawMiniProgressBar(flow, `Strongest: ${context.strongest.name}`, context.strongest.score, context.strongest.color);
+    drawComparisonChart(flow, major);
+    drawSubsectionTitle(flow, "What this means");
+    const meaning = isGrowth
+      ? `${major.shortTitle} is your lowest score at ${major.score}/100. It is the clearest place to simplify your routine and build one repeatable sleep-supporting habit.`
+      : isStrongest
+        ? `${major.shortTitle} is your strongest area at ${major.score}/100. Something in this part of your routine appears to be helping; use that stability to support the areas that need more attention.`
+        : `${major.shortTitle} is ${difference} points ${major.score >= context.overallScore ? "above" : "below"} your overall score. It is a useful part of your sleep picture to protect while you work on ${context.growth.name}.`;
+    drawParagraph(flow, meaning);
+    drawCallout(flow, isGrowth ? "Focus this week" : isStrongest ? "Your advantage" : "Quick insight", isGrowth ? `Priority: make ${major.shortTitle.toLowerCase()} easier to support, rather than trying to overhaul every part of your routine.` : isStrongest ? `Keep doing: identify the routine around ${major.shortTitle.toLowerCase()} that already feels easiest to repeat.` : `Keep this area in view as you build a steadier routine around ${context.growth.name}.`);
 
-    major.subsections.forEach((subsection, subsectionIndex) => {
-      drawSubsectionTitle(flow, subsection.title);
-      drawMiniProgressBar(
-        flow,
-        `${major.shortTitle} Progress`,
-        major.score,
-        major.color || COLORS.blue
-      );
+    drawSectionTitle(flow, "Your pattern");
+    drawParagraph(flow, isGrowth ? `Your results point to ${major.shortTitle.toLowerCase()} as the main opportunity in your sleep profile. The best next move is a small routine you can repeat even when the day has been full.` : isStrongest ? `${major.shortTitle} is a valuable part of your current sleep picture. Keep it steady, then borrow that same cue, timing, or preparation for ${context.growth.name.toLowerCase()}.` : `${major.shortTitle} sits alongside your overall score, so it is worth maintaining as you focus on your main opportunity.`);
+    drawCallout(flow, "Watch for this", isGrowth ? "Look for the first point in the evening where stimulation starts to crowd out rest. That is often the easiest place to make a small change." : "Notice which part of the routine makes this area feel easier. Keep that cue visible and repeatable.");
+    drawThreeTiles(flow, [
+      { label: "Tonight", text: guidance.tonight, fill: [230, 241, 255] },
+      { label: "This week", text: guidance.week, fill: [240, 244, 255] },
+      { label: "Quick win", text: guidance.quick, fill: isGrowth ? [255, 240, 236] : [232, 248, 240] },
+    ]);
+    if (isGrowth) {
+      drawSubsectionTitle(flow, "Your 7-day challenge");
+      drawParagraph(flow, `Repeat one action that supports ${major.shortTitle.toLowerCase()} for seven days. Keep the action easy enough to complete, then notice what makes it easier to continue.`);
+    } else if (isStrongest) {
+      drawSubsectionTitle(flow, "Use this strength");
+      drawParagraph(flow, `Choose one part of what already supports ${major.shortTitle.toLowerCase()} and use it as a cue for ${context.growth.name.toLowerCase()} this week.`);
+    }
 
-      drawCallout(flow, subsection.callouts[0].type, subsection.callouts[0].text);
-      drawParagraph(flow, subsection.paragraphs[0]);
-      drawParagraph(flow, subsection.paragraphs[1]);
-      drawParagraph(flow, subsection.paragraphs[2]);
-
-      if (subsection.paragraphs[3]) {
-        drawParagraph(flow, subsection.paragraphs[3]);
-      }
-
-      if (majorIndex === 0 && subsectionIndex === 8) {
-        drawCallout(
-          flow,
-          "Practical Example",
-          "Use the 30-day improvement plan with a daily reflection, habit tracker, stress protocol, and weekly review. Then extend to a 90-day roadmap with measurable milestones."
-        );
-      }
-
-      flow.y += 2.8;
-    });
+    drawSectionTitle(flow, isGrowth ? "Your priority plan" : "Quick takeaway");
+    drawThreeTiles(flow, [
+      { label: "Your advantage", text: `${context.strongest.name} is your strongest area at ${context.strongest.score}/100. Use one habit from it to support ${major.shortTitle.toLowerCase()}.`, fill: [232, 248, 240] },
+      { label: "Focus this week", text: `${context.growth.name} is your main opportunity at ${context.growth.score}/100. Keep your next change small and repeatable.`, fill: [255, 247, 232] },
+      { label: "Tonight's action", text: isGrowth ? guidance.tonight : `For ${major.shortTitle.toLowerCase()}: ${guidance.quick}`, fill: [230, 241, 255] },
+    ]);
+    drawSubsectionTitle(flow, "7-day check-in");
+    drawParagraph(flow, `After seven days, ask: did the action fit my evenings and mornings? Keep it if it helped, or make it smaller if it did not.`);
+    drawCallout(flow, "Next step", isGrowth ? `Keep your attention on ${major.shortTitle.toLowerCase()} for the next week before you add another goal.` : `Maintain ${major.shortTitle.toLowerCase()} while your main focus stays on ${context.growth.name.toLowerCase()}.`);
   });
 };
 
 const renderPracticalAppendix = (flow, context, tocEntries) => {
-  startBodyPage(flow, "Applied Systems", "30-day and 90-day Implementation Toolkit");
-  tocEntries.push({ level: 1, title: "Applied Systems Toolkit", page: flow.doc.getNumberOfPages() });
-
-  drawSectionTitle(flow, "Applied Systems Toolkit");
-
-  const blocks = [
-    {
-      title: "30-Day Improvement Plan",
-      body: "Days 1-7: establish baseline data and identify top three triggers. Days 8-14: install two micro habits linked to morning routine and evening routine. Days 15-21: apply decision framework to all important commitments and run stress protocol before major conversations. Days 22-30: review trend data, remove one friction point, and formalize your personal recovery protocol.",
-    },
-    {
-      title: "90-Day Roadmap",
-      body: "Month 1 emphasizes consistency. Month 2 emphasizes quality under pressure. Month 3 emphasizes transfer into leadership, relationships, and strategic decisions. At each month end, conduct a formal review with progress indicators, blind spot analysis, and implementation strategy updates.",
-    },
-    {
-      title: "Habit Tracker and Behavior Checklist",
-      body: "Track daily completion of key actions: morning planning, priority execution block, emotional pause protocol, boundary communication, evening reflection, and sleep protection routine. Behavioral reliability is the leading indicator; score movement is a lagging indicator.",
-    },
-    {
-      title: "Personal Experiments and Micro Habits",
-      body: "Run one personal experiment per week. Keep the hypothesis explicit and measurable. Example: if I run a two-minute pre-meeting reset, then my communication clarity score should improve from 6/10 to 8/10 in at least four meetings this week.",
-    },
-  ];
-
-  blocks.forEach((block) => {
-    drawSubsectionTitle(flow, block.title);
-    drawParagraph(flow, block.body);
-    drawCallout(
-      flow,
-      "Growth Opportunity",
-      `Apply this block with disciplined weekly review. Strongest leverage remains ${context.strongest.name}, while the highest development return remains ${context.growth.name}.`
-    );
-  });
+  const opening = `This plan keeps your attention on ${context.growth.name}, while preserving what is already working in ${context.strongest.name}.`;
+  const nextStep = "Choose the smallest action in this plan and make it easy to begin tonight.";
+  flow.headerTitle = "Your action plan";
+  flow.headerSubtitle = "A clear plan for the next 30 days";
+  ensureSpace(flow, 15.5 + measureParagraphHeight(flow.doc, opening), "Action Plan opening");
+  tocEntries.push({ level: 1, title: "Your Action Plan", page: flow.doc.getNumberOfPages() });
+  drawSectionTitle(flow, "Your action plan", 3);
+  drawParagraph(flow, opening, 0);
+  const guidance = sleepGuidance(context.growth.name);
+  drawThreeTiles(flow, [
+    { label: "Tonight", text: guidance.tonight, fill: [230, 241, 255] },
+    { label: "Next 7 days", text: guidance.week, fill: [255, 247, 232] },
+    { label: "Next 30 days", text: `Keep one ${context.growth.name.toLowerCase()} habit simple enough to repeat.`, fill: [240, 244, 255] },
+  ], 1);
+  drawThreeTiles(flow, [
+    { label: "Keep doing", text: `Protect the routine that supports ${context.strongest.name.toLowerCase()}.`, fill: [232, 248, 240] },
+    { label: "Focus on", text: `Give ${context.growth.name.toLowerCase()} one clear priority this week.`, fill: [255, 240, 236] },
+    { label: "Review", text: "Check in after 30 days and keep what fits your life.", fill: [248, 252, 255] },
+  ], 1);
+  drawCallout(flow, "Your next step", nextStep);
 };
 
 const renderClosingPage = (doc, context) => {
@@ -909,7 +920,7 @@ const renderClosingPage = (doc, context) => {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(30);
   doc.setTextColor(...COLORS.white);
-  doc.text("Executive Closing", PAGE_WIDTH / 2, 40, { align: "center" });
+  doc.text("Your next chapter", PAGE_WIDTH / 2, 40, { align: "center" });
 
   drawScoreCircle(doc, PAGE_WIDTH / 2, 82, context.overallScore, true);
 
@@ -919,13 +930,9 @@ const renderClosingPage = (doc, context) => {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14.2);
   doc.setTextColor(...COLORS.white);
-  doc.text("Final Professional Summary", MARGIN_LEFT + 8, 138);
+  doc.text("Your result", MARGIN_LEFT + 8, 138);
 
-  const summary = [
-    `This assessment positions you in a ${context.developmentLevel} stage with strongest leverage in ${context.strongest.name} and highest growth return in ${context.growth.name}.`,
-    "The central recommendation is to protect consistency under pressure through structured routines, explicit decision criteria, and disciplined recovery protocol execution.",
-    "Growth will be confirmed when behavioral reliability improves across difficult weeks, not just peak performance days.",
-  ].join(" ");
+  const summary = `Your overall score is ${context.overallScore}/100. ${context.strongest.name} is your strongest area and ${context.growth.name} is your primary opportunity. Give one practical action enough time to become part of your normal routine, then review what changed.`;
 
   const linesRaw = doc.splitTextToSize(summary, CONTENT_WIDTH - 16);
   const lines = Array.isArray(linesRaw) ? linesRaw : [summary];
@@ -939,8 +946,9 @@ const renderClosingPage = (doc, context) => {
     ["Overall Score", `${context.overallScore}/100`],
     ["Strongest Dimension", context.strongest.name],
     ["Growth Opportunity", context.growth.name],
-    ["AI Confidence", context.aiConfidenceLevel],
-    ["Recommended Review Cycle", "Weekly and Monthly"],
+    ["7-Day Focus", `One action for ${context.growth.name}`],
+    ["30-Day Direction", "Keep, simplify, or adjust"],
+    ["When To Review", "After 30 days"],
   ];
 
   let y = 208;
@@ -956,11 +964,16 @@ const renderClosingPage = (doc, context) => {
     doc.text(v, PAGE_WIDTH - MARGIN_RIGHT - 8, y, { align: "right" });
     y += 11;
   });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.7);
+  doc.setTextColor(193, 217, 251);
+  doc.text("This report is educational, informational self-assessment guidance. It is not a medical diagnosis.", PAGE_WIDTH / 2, 253, { align: "center" });
 };
 
-const renderTocPages = (doc, tocEntries) => {
+const renderTocPages = (doc, tocEntries, context) => {
   const tocStartPage = 2;
-  const tocPageCount = 4;
+  const tocPageCount = 1;
 
   let page = tocStartPage;
   let y = 40;
@@ -1013,21 +1026,44 @@ const renderTocPages = (doc, tocEntries) => {
 
     y += entry.level === 1 ? 7.2 : 6.5;
   });
+
+  const introY = Math.max(y + 12, 118);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14.5);
+  doc.setTextColor(...COLORS.ink);
+  doc.text("How to use your report", MARGIN_LEFT, introY);
+  doc.setDrawColor(...COLORS.line);
+  doc.setLineWidth(0.4);
+  doc.line(MARGIN_LEFT, introY + 4, PAGE_WIDTH - MARGIN_RIGHT, introY + 4);
+
+  const steps = [
+    `1. Start with ${context.growth.name}, your main opportunity.`,
+    "2. Choose one action that feels easy to begin.",
+    "3. Repeat it for seven days before adding more.",
+    `4. Use ${context.strongest.name} as the routine to protect.`,
+  ];
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.6);
+  doc.setTextColor(...COLORS.text);
+  doc.text(steps, MARGIN_LEFT, introY + 13, { maxWidth: CONTENT_WIDTH });
+
+  const cardY = introY + 47;
+  doc.setFillColor(...CALLOUT_COLORS["AI Insight"]);
+  doc.roundedRect(MARGIN_LEFT, cardY, CONTENT_WIDTH, 28, 3.2, 3.2, "F");
+  doc.setFillColor(...COLORS.navy);
+  doc.rect(MARGIN_LEFT, cardY, 2.8, 28, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.2);
+  doc.setTextColor(...COLORS.ink);
+  doc.text("YOUR FOCUS", MARGIN_LEFT + 5.2, cardY + 7);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.4);
+  doc.setTextColor(...COLORS.text);
+  const focus = "This is educational self-assessment guidance, not a medical diagnosis. Aim for steady practice, not a perfect week.";
+  doc.text(doc.splitTextToSize(focus, CONTENT_WIDTH - 10), MARGIN_LEFT + 5.2, cardY + 14, { maxWidth: CONTENT_WIDTH - 10 });
 };
 
-const estimateReadingTime = (assessmentSections) => {
-  const totalWords = assessmentSections.reduce((sectionAcc, section) => {
-    return (
-      sectionAcc +
-      section.subsections.reduce((subAcc, subsection) => {
-        return subAcc + subsection.paragraphs.reduce((pAcc, p) => pAcc + countWords(p), 0);
-      }, 0)
-    );
-  }, 0);
-
-  const minutes = Math.ceil(totalWords / 175);
-  return `${minutes}-${minutes + 12} minutes`;
-};
+const estimateReadingTime = () => "15-20 minutes";
 
 export const buildPremiumPdf = async ({
   reportText = "",
@@ -1039,6 +1075,7 @@ export const buildPremiumPdf = async ({
     day: "numeric",
   }),
   selectedTestTitle = "MindScore Assessment",
+  paginationDebug = false,
   doc = new jsPDF({ unit: "mm", format: "a4" }),
 }) => {
   const sections = parseReportSections(reportText);
@@ -1046,16 +1083,6 @@ export const buildPremiumPdf = async ({
   const overallScore = clamp(Math.round(Number(finalScore) || 0), 0, 100);
   const strongest = [...dimensions].sort((a, b) => b.score - a.score)[0] || dimensions[0];
   const growth = [...dimensions].sort((a, b) => a.score - b.score)[0] || dimensions[0];
-
-  const pool = sections.reduce(
-    (acc, section) => {
-      const p = splitContent(section.content);
-      acc.paragraphs.push(...p.paragraphs);
-      acc.bullets.push(...p.bullets);
-      return acc;
-    },
-    { paragraphs: [], bullets: [] }
-  );
 
   const context = {
     sections,
@@ -1067,35 +1094,30 @@ export const buildPremiumPdf = async ({
     selectedTestTitle: toSafeText(selectedTestTitle, "MindScore Assessment"),
     priorityLevel:
       overallScore >= 80 ? "High Stability" : overallScore >= 60 ? "Moderate Focus" : "Priority Attention",
-    developmentLevel: developmentLevel(overallScore),
-    aiConfidenceLevel: confidenceLevel(sections, dimensions),
-    readingTime: "",
+    isSleep: /sleep/i.test(selectedTestTitle) || dimensions.some((dimension) => /sleep/i.test(dimension.name)),
+    readingTime: estimateReadingTime(),
   };
 
-  const assessmentSections = createAssessmentContent(context, pool);
-  context.readingTime = estimateReadingTime(assessmentSections);
+  const assessmentSections = getMajorSections(context);
 
   if (doc.getNumberOfPages() === 0) doc.addPage();
   doc.setPage(1);
 
   renderCoverPage(doc, context);
 
-  const tocEntries = [{ level: 1, title: "Cover", page: 1 }, { level: 1, title: "Table of Contents", page: 2 }];
+  const tocEntries = [];
 
-  reserveTocPages(doc, 4);
+  reserveTocPages(doc, 1);
 
-  const flow = createFlowContext(doc);
-  startBodyPage(flow, "Executive Preface", "How to read this assessment");
-  renderExecutivePreface(flow, context);
-
-  tocEntries.push({ level: 1, title: "Executive Preface", page: 6 });
+  const flow = createFlowContext(doc, paginationDebug);
+  tocEntries.push({ level: 1, title: "How to Use Your Report", page: 2 });
 
   renderMajorSections(flow, assessmentSections, context, tocEntries);
   renderPracticalAppendix(flow, context, tocEntries);
   renderClosingPage(doc, context);
-  tocEntries.push({ level: 1, title: "Executive Closing", page: doc.getNumberOfPages() });
+  tocEntries.push({ level: 1, title: "Your Next Chapter", page: doc.getNumberOfPages() });
 
-  renderTocPages(doc, tocEntries);
+  renderTocPages(doc, tocEntries, context);
 
   const totalPages = doc.getNumberOfPages();
   for (let page = 1; page <= totalPages; page += 1) {
