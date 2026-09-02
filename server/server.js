@@ -400,6 +400,7 @@ const sendPdfEmail = async ({ toEmail, assessmentType, purchase, sessionId, usag
 
 const fulfillmentLocks = new Map();
 const resendLocks = new Map();
+const initialEmailLocks = new Map();
 
 // Statuses persisted per purchase in the JSON store (our "database" record
 // for this app). Once REPORT_READY or COMPLETED is reached, the PDF is
@@ -417,8 +418,60 @@ const REPORT_STATUS = {
 const FRIENDLY_GENERATION_ERROR =
   "We couldn't generate your report after multiple attempts. Please contact support at aimindscore@gmail.com and reference your payment confirmation.";
 
+const logDuration = (event, startedAt, details = {}) => {
+  logEvent(event, { ...details, durationMs: Date.now() - startedAt });
+};
+
+const deliverInitialEmail = (purchase, sessionId, fulfillmentStartedAt) => {
+  const existingLock = initialEmailLocks.get(sessionId);
+  if (existingLock) return existingLock;
+
+  const task = (async () => {
+    const startedAt = Date.now();
+    try {
+      await sendPdfEmail({
+        toEmail: purchase.customerEmail,
+        assessmentType: purchase.assessmentType,
+        purchase,
+        sessionId,
+        usage: "initial-email",
+      });
+      await withStoreMutation(async (nextStore) => {
+        const nextPurchase = nextStore.purchases[sessionId] || purchase;
+        nextPurchase.reportStatus = REPORT_STATUS.COMPLETED;
+        nextPurchase.emailSentAt = new Date().toISOString();
+        delete nextPurchase.emailError;
+        delete nextPurchase.emailErrorDetail;
+        nextStore.purchases[sessionId] = nextPurchase;
+      });
+      logDuration("email_sent", startedAt, { sessionId, assessmentId: purchase.assessmentId });
+      logDuration("fulfillment_completed", fulfillmentStartedAt, { sessionId, assessmentId: purchase.assessmentId, emailSent: true });
+    } catch (error) {
+      console.error("[fulfillment] email send failed (PDF remains available for download)", {
+        sessionId,
+        message: error.message,
+      });
+      await withStoreMutation(async (nextStore) => {
+        const nextPurchase = nextStore.purchases[sessionId] || purchase;
+        nextPurchase.reportStatus = REPORT_STATUS.REPORT_READY;
+        nextPurchase.emailError = "We couldn't email your report right now. You can resend it anytime from this page.";
+        nextPurchase.emailErrorDetail = error.message;
+        nextStore.purchases[sessionId] = nextPurchase;
+      });
+      logDuration("email_send_failed", startedAt, { sessionId, assessmentId: purchase.assessmentId });
+      logDuration("fulfillment_completed", fulfillmentStartedAt, { sessionId, assessmentId: purchase.assessmentId, emailSent: false });
+    }
+  })().finally(() => {
+    initialEmailLocks.delete(sessionId);
+  });
+
+  initialEmailLocks.set(sessionId, task);
+  return task;
+};
+
 const generateReportPdfWithRetry = async (assessment, sessionId) => {
   const attemptOnce = async () => {
+    const aiStartedAt = Date.now();
     const reportText = await createAiReport({
       testName: assessment.testName,
       score: assessment.score,
@@ -426,13 +479,18 @@ const generateReportPdfWithRetry = async (assessment, sessionId) => {
       dimensions: assessment.dimensions,
     });
 
-    return generatePremiumPdfBuffer({
+    logDuration("ai_report_generated", aiStartedAt, { sessionId, assessmentId: assessment.assessmentId });
+    const pdfStartedAt = Date.now();
+    const pdfBuffer = await generatePremiumPdfBuffer({
       reportText,
       dimensions: assessment.dimensions,
       finalScore: assessment.score,
       assessmentDate: assessment.assessmentDate,
       selectedTestTitle: assessment.testName,
     });
+    logDuration("premium_pdf_built", pdfStartedAt, { sessionId, assessmentId: assessment.assessmentId, byteSize: pdfBuffer.length });
+
+    return pdfBuffer;
   };
 
   try {
@@ -455,6 +513,7 @@ const generateReportPdfWithRetry = async (assessment, sessionId) => {
 };
 
 const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
+  const fulfillmentStartedAt = Date.now();
   const sessionId = toSafeText(session.id);
   if (!sessionId) throw new Error("Missing session id in webhook event");
   const eventKey = toSafeText(eventId, `session_${sessionId}`);
@@ -462,7 +521,9 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
   const metadata = session.metadata || {};
   const assessmentId = toSafeText(metadata.assessmentId);
 
+  const storeStartedAt = Date.now();
   const store = await readStore();
+  logDuration("fulfillment_store_read", storeStartedAt, { sessionId, assessmentId });
 
   if (store.processedEventIds[eventKey]) {
     console.log("[stripe] idempotent skip: event already processed", { eventId: eventKey, sessionId });
@@ -536,15 +597,19 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
   });
 
   try {
+    const assessmentReadStartedAt = Date.now();
     const refreshedStore = await readStore();
     const assessment = refreshedStore.assessments[purchase.assessmentId];
     if (!assessment) throw new Error(`Saved assessment not found (${purchase.assessmentId})`);
+    logDuration("fulfillment_assessment_read", assessmentReadStartedAt, { sessionId, assessmentId: purchase.assessmentId });
 
     logEvent("pdf_generation_started", { sessionId, assessmentId: purchase.assessmentId });
     const pdfBuffer = await generateReportPdfWithRetry(assessment, sessionId);
 
     const pdfPath = path.join(REPORTS_DIR, `${purchase.assessmentId}.pdf`);
+    const pdfSaveStartedAt = Date.now();
     await fs.writeFile(pdfPath, pdfBuffer);
+    logDuration("premium_pdf_saved", pdfSaveStartedAt, { sessionId, assessmentId: purchase.assessmentId, pdfPath, byteSize: pdfBuffer.length });
     const reportArtifact = {
       ...purchase,
       pdfPath,
@@ -569,43 +634,11 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
       nextStore.purchases[sessionId] = nextPurchase;
     });
 
-    let emailSent = true;
-    let emailErrorDetail = "";
-    try {
-      await sendPdfEmail({
-        toEmail: purchase.customerEmail,
-        assessmentType: purchase.assessmentType,
-        purchase: reportArtifact,
-        sessionId,
-        usage: "initial-email",
-      });
-      logEvent("email_sent", { sessionId, assessmentId: purchase.assessmentId });
-    } catch (error) {
-      emailSent = false;
-      emailErrorDetail = error.message;
-      console.error("[fulfillment] email send failed (PDF remains available for download)", {
-        sessionId,
-        message: error.message,
-      });
-    }
-
     await withStoreMutation(async (nextStore) => {
-      const nextPurchase = nextStore.purchases[sessionId] || purchase;
-      if (emailSent) {
-        nextPurchase.reportStatus = REPORT_STATUS.COMPLETED;
-        nextPurchase.emailSentAt = new Date().toISOString();
-        delete nextPurchase.emailError;
-        delete nextPurchase.emailErrorDetail;
-      } else {
-        // Stays REPORT_READY: download is available, email can be resent later.
-        nextPurchase.reportStatus = REPORT_STATUS.REPORT_READY;
-        // Friendly message only — raw SMTP/provider errors never reach the client.
-        nextPurchase.emailError = "We couldn't email your report right now. You can resend it anytime from this page.";
-        nextPurchase.emailErrorDetail = emailErrorDetail;
-      }
-      nextStore.purchases[sessionId] = nextPurchase;
       nextStore.processedEventIds[eventKey] = new Date().toISOString();
     });
+    logDuration("premium_report_ready", fulfillmentStartedAt, { sessionId, assessmentId: purchase.assessmentId, pdfPath, pdfGeneratorVersion: PREMIUM_PDF_GENERATOR_VERSION });
+    void deliverInitialEmail(reportArtifact, sessionId, fulfillmentStartedAt);
   } catch (error) {
     console.error("[fulfillment] fulfillment error", {
       sessionId,
@@ -792,10 +825,12 @@ const derivePublicStatus = (paid, reportStatus) => {
 
 app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (req, res) => {
   try {
+    const verifyStartedAt = Date.now();
     const sessionId = toSafeText(req.params.sessionId);
     if (!sessionId) return res.status(400).json({ status: "PAYMENT_FAILED", error: "Missing session id." });
 
     let session;
+    const stripeVerificationStartedAt = Date.now();
     try {
       session = await stripe.checkout.sessions.retrieve(sessionId);
     } catch (error) {
@@ -805,6 +840,7 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
         error: "Unable to verify your payment right now. Please try again or contact support.",
       });
     }
+    logDuration("stripe_session_verified", stripeVerificationStartedAt, { sessionId, paymentStatus: session.payment_status });
 
     const store = await readStore();
     const purchase = store.purchases[sessionId];
@@ -846,6 +882,7 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
 
     const status = derivePublicStatus(paid, reportStatus);
 
+    logDuration("payment_session_verified", verifyStartedAt, { sessionId, status, ready, reportStatus });
     return res.json({
       sessionId,
       status,
@@ -960,6 +997,18 @@ app.post("/api/premium-report/resend-email", rateLimit(60_000, 5), async (req, r
   const sessionId = payload.sid;
   const existingLock = resendLocks.get(sessionId);
   if (existingLock) return existingLock.then((result) => res.json(result));
+
+  const initialEmailLock = initialEmailLocks.get(sessionId);
+  if (initialEmailLock) {
+    return initialEmailLock.then(async () => {
+      const refreshedPurchase = (await readStore()).purchases[sessionId];
+      return res.json({
+        status: refreshedPurchase?.reportStatus || REPORT_STATUS.REPORT_READY,
+        emailSent: Boolean(refreshedPurchase?.emailSentAt),
+        error: toSafeText(refreshedPurchase?.emailError),
+      });
+    });
+  }
 
   const task = (async () => {
     const store = await readStore();
