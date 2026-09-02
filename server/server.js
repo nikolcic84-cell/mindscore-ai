@@ -357,7 +357,24 @@ const generatePremiumPdfBuffer = async ({
 const hasCurrentPremiumPdf = (purchase) =>
   Boolean(purchase?.pdfPath) && purchase.pdfGeneratorVersion === PREMIUM_PDF_GENERATOR_VERSION;
 
-const sendPdfEmail = async ({ toEmail, assessmentType, pdfBuffer }) => {
+const readCurrentPremiumPdf = async (purchase, sessionId, usage) => {
+  if (!hasCurrentPremiumPdf(purchase)) {
+    throw new Error("Current premium report artifact is unavailable.");
+  }
+
+  const pdfBuffer = await fs.readFile(purchase.pdfPath);
+  logEvent("premium_pdf_artifact", {
+    sessionId,
+    usage,
+    pdfPath: purchase.pdfPath,
+    pdfGeneratorVersion: purchase.pdfGeneratorVersion,
+    byteSize: pdfBuffer.length,
+  });
+  return pdfBuffer;
+};
+
+const sendPdfEmail = async ({ toEmail, assessmentType, purchase, sessionId, usage }) => {
+  const pdfBuffer = await readCurrentPremiumPdf(purchase, sessionId, usage);
   const subject = "Your MindScore AI Premium Report";
   const text = [
     "Thank you for your purchase.",
@@ -528,7 +545,18 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
 
     const pdfPath = path.join(REPORTS_DIR, `${purchase.assessmentId}.pdf`);
     await fs.writeFile(pdfPath, pdfBuffer);
-    logEvent("pdf_generation_completed", { sessionId, assessmentId: purchase.assessmentId });
+    const reportArtifact = {
+      ...purchase,
+      pdfPath,
+      pdfGeneratorVersion: PREMIUM_PDF_GENERATOR_VERSION,
+    };
+    logEvent("pdf_generation_completed", {
+      sessionId,
+      assessmentId: purchase.assessmentId,
+      pdfPath,
+      pdfGeneratorVersion: PREMIUM_PDF_GENERATOR_VERSION,
+      byteSize: pdfBuffer.length,
+    });
 
     // PDF is now safely on disk and downloadable; email is a best-effort
     // step from here on and must never trigger a regeneration.
@@ -536,8 +564,8 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
       const nextPurchase = nextStore.purchases[sessionId] || purchase;
       nextPurchase.reportStatus = REPORT_STATUS.REPORT_READY;
       nextPurchase.reportReadyAt = new Date().toISOString();
-      nextPurchase.pdfPath = pdfPath;
-      nextPurchase.pdfGeneratorVersion = PREMIUM_PDF_GENERATOR_VERSION;
+      nextPurchase.pdfPath = reportArtifact.pdfPath;
+      nextPurchase.pdfGeneratorVersion = reportArtifact.pdfGeneratorVersion;
       nextStore.purchases[sessionId] = nextPurchase;
     });
 
@@ -547,7 +575,9 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
       await sendPdfEmail({
         toEmail: purchase.customerEmail,
         assessmentType: purchase.assessmentType,
-        pdfBuffer,
+        purchase: reportArtifact,
+        sessionId,
+        usage: "initial-email",
       });
       logEvent("email_sent", { sessionId, assessmentId: purchase.assessmentId });
     } catch (error) {
@@ -908,8 +938,8 @@ app.get("/api/premium-report/download", rateLimit(60_000, 20), async (req, res) 
       return res.status(403).json({ status: "PAYMENT_FAILED", error: "Token does not match purchase." });
     }
 
-    const pdfBuffer = await fs.readFile(purchase.pdfPath);
-    logEvent("download_completed", { sessionId: payload.sid });
+    const pdfBuffer = await readCurrentPremiumPdf(purchase, payload.sid, "download");
+    logEvent("download_completed", { sessionId: payload.sid, pdfPath: purchase.pdfPath, pdfGeneratorVersion: purchase.pdfGeneratorVersion, byteSize: pdfBuffer.length });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=MindScore-AI-Premium-Report.pdf");
     return res.send(pdfBuffer);
@@ -952,11 +982,12 @@ app.post("/api/premium-report/resend-email", rateLimit(60_000, 5), async (req, r
     }
 
     try {
-      const pdfBuffer = await fs.readFile(purchase.pdfPath);
       await sendPdfEmail({
         toEmail: purchase.customerEmail,
         assessmentType: purchase.assessmentType,
-        pdfBuffer,
+        purchase,
+        sessionId,
+        usage: "resend-email",
       });
 
       await withStoreMutation(async (nextStore) => {
