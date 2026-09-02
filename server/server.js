@@ -357,24 +357,31 @@ const generatePremiumPdfBuffer = async ({
 const hasCurrentPremiumPdf = (purchase) =>
   Boolean(purchase?.pdfPath) && purchase.pdfGeneratorVersion === PREMIUM_PDF_GENERATOR_VERSION;
 
+const getPdfArtifactDetails = (purchase, pdfBuffer) => ({
+  filename: "MindScore-AI-Premium-Report.pdf",
+  pdfPath: purchase.pdfPath,
+  pdfGeneratorVersion: purchase.pdfGeneratorVersion,
+  byteSize: pdfBuffer.length,
+  sha256: crypto.createHash("sha256").update(pdfBuffer).digest("hex"),
+});
+
 const readCurrentPremiumPdf = async (purchase, sessionId, usage) => {
   if (!hasCurrentPremiumPdf(purchase)) {
     throw new Error("Current premium report artifact is unavailable.");
   }
 
   const pdfBuffer = await fs.readFile(purchase.pdfPath);
+  const artifact = getPdfArtifactDetails(purchase, pdfBuffer);
   logEvent("premium_pdf_artifact", {
     sessionId,
     usage,
-    pdfPath: purchase.pdfPath,
-    pdfGeneratorVersion: purchase.pdfGeneratorVersion,
-    byteSize: pdfBuffer.length,
+    ...artifact,
   });
-  return pdfBuffer;
+  return { pdfBuffer, artifact };
 };
 
 const sendPdfEmail = async ({ toEmail, assessmentType, purchase, sessionId, usage }) => {
-  const pdfBuffer = await readCurrentPremiumPdf(purchase, sessionId, usage);
+  const { artifact } = await readCurrentPremiumPdf(purchase, sessionId, usage);
   const subject = "Your MindScore AI Premium Report";
   const text = [
     "Thank you for your purchase.",
@@ -383,6 +390,8 @@ const sendPdfEmail = async ({ toEmail, assessmentType, purchase, sessionId, usag
     `Assessment type: ${assessmentType}`,
   ].join("\n");
 
+  logEvent("premium_pdf_email_attachment", { sessionId, usage, ...artifact });
+
   await mailTransport.sendMail({
     from: process.env.SMTP_FROM_EMAIL,
     to: toEmail,
@@ -390,8 +399,8 @@ const sendPdfEmail = async ({ toEmail, assessmentType, purchase, sessionId, usag
     text,
     attachments: [
       {
-        filename: "MindScore-AI-Premium-Report.pdf",
-        content: pdfBuffer,
+        filename: artifact.filename,
+        path: artifact.pdfPath,
         contentType: "application/pdf",
       },
     ],
@@ -975,8 +984,8 @@ app.get("/api/premium-report/download", rateLimit(60_000, 20), async (req, res) 
       return res.status(403).json({ status: "PAYMENT_FAILED", error: "Token does not match purchase." });
     }
 
-    const pdfBuffer = await readCurrentPremiumPdf(purchase, payload.sid, "download");
-    logEvent("download_completed", { sessionId: payload.sid, pdfPath: purchase.pdfPath, pdfGeneratorVersion: purchase.pdfGeneratorVersion, byteSize: pdfBuffer.length });
+    const { pdfBuffer, artifact } = await readCurrentPremiumPdf(purchase, payload.sid, "download");
+    logEvent("download_completed", { sessionId: payload.sid, ...artifact });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=MindScore-AI-Premium-Report.pdf");
     return res.send(pdfBuffer);
