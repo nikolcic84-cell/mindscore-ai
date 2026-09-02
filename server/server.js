@@ -31,6 +31,7 @@ const STORE_PATH = path.join(DATA_DIR, "payments-store.json");
 const REPORTS_DIR = path.join(DATA_DIR, "reports");
 const DOWNLOAD_TOKEN_TTL_MS = 1000 * 60 * 60 * 4;
 const QUESTIONS_PER_ASSESSMENT = 12;
+const PREMIUM_PDF_GENERATOR_VERSION = "compact-v7";
 
 // Structured event log for production observability. Never include secrets
 // (API keys, tokens, SMTP credentials) in `details`.
@@ -353,6 +354,9 @@ const generatePremiumPdfBuffer = async ({
   return Buffer.from(arrayBuffer);
 };
 
+const hasCurrentPremiumPdf = (purchase) =>
+  Boolean(purchase?.pdfPath) && purchase.pdfGeneratorVersion === PREMIUM_PDF_GENERATOR_VERSION;
+
 const sendPdfEmail = async ({ toEmail, assessmentType, pdfBuffer }) => {
   const subject = "Your MindScore AI Premium Report";
   const text = [
@@ -455,9 +459,10 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
   // never re-run while a generation attempt is already in flight.
   if (
     existingStatus === REPORT_STATUS.GENERATING_REPORT ||
-    existingStatus === REPORT_STATUS.REPORT_READY ||
-    existingStatus === REPORT_STATUS.EMAIL_SENT ||
-    existingStatus === REPORT_STATUS.COMPLETED
+    ((existingStatus === REPORT_STATUS.REPORT_READY ||
+      existingStatus === REPORT_STATUS.EMAIL_SENT ||
+      existingStatus === REPORT_STATUS.COMPLETED) &&
+      hasCurrentPremiumPdf(existingPurchase))
   ) {
     console.log("[stripe] idempotent skip: report already generated or in progress", {
       sessionId,
@@ -532,6 +537,7 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
       nextPurchase.reportStatus = REPORT_STATUS.REPORT_READY;
       nextPurchase.reportReadyAt = new Date().toISOString();
       nextPurchase.pdfPath = pdfPath;
+      nextPurchase.pdfGeneratorVersion = PREMIUM_PDF_GENERATOR_VERSION;
       nextStore.purchases[sessionId] = nextPurchase;
     });
 
@@ -780,6 +786,7 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
         purchase.reportStatus === REPORT_STATUS.PENDING_PAYMENT ||
         purchase.reportStatus === REPORT_STATUS.PAYMENT_VERIFIED ||
         purchase.reportStatus === REPORT_STATUS.FAILED ||
+        !hasCurrentPremiumPdf(purchase) ||
         !purchase.reportStatus);
 
     if (shouldReconcileFulfillment) {
@@ -805,7 +812,7 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
     const reportStatus = refreshedPurchase?.reportStatus || "unknown";
     const ready =
       (reportStatus === REPORT_STATUS.REPORT_READY || reportStatus === REPORT_STATUS.COMPLETED) &&
-      !!refreshedPurchase?.pdfPath;
+      hasCurrentPremiumPdf(refreshedPurchase);
 
     const status = derivePublicStatus(paid, reportStatus);
 
@@ -855,7 +862,7 @@ app.get("/api/premium-report/download", rateLimit(60_000, 20), async (req, res) 
     const isReportReady = (candidate) =>
       Boolean(candidate) &&
       (candidate.reportStatus === REPORT_STATUS.REPORT_READY || candidate.reportStatus === REPORT_STATUS.COMPLETED) &&
-      Boolean(candidate.pdfPath);
+      hasCurrentPremiumPdf(candidate);
 
     if (!isReportReady(purchase)) {
       const session = await stripe.checkout.sessions.retrieve(payload.sid);
@@ -931,7 +938,7 @@ app.post("/api/premium-report/resend-email", rateLimit(60_000, 5), async (req, r
     if (
       !purchase ||
       (purchase.reportStatus !== REPORT_STATUS.REPORT_READY && purchase.reportStatus !== REPORT_STATUS.COMPLETED) ||
-      !purchase.pdfPath
+      !hasCurrentPremiumPdf(purchase)
     ) {
       return {
         status: purchase?.reportStatus === REPORT_STATUS.FAILED ? "FAILED" : "GENERATING_REPORT",
