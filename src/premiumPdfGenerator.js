@@ -195,6 +195,49 @@ const getMajorSections = (context) => {
   }));
 };
 
+const getProfileInsights = (dimensions, overallScore) => {
+  const rankedHigh = [...dimensions].sort((a, b) => b.score - a.score);
+  const rankedLow = [...dimensions].sort((a, b) => a.score - b.score);
+  const strongest = rankedHigh[0];
+  const secondStrongest = rankedHigh[1] || strongest;
+  const weakest = rankedLow[0];
+  const secondWeakest = rankedLow[1] || weakest;
+  return {
+    strongest,
+    secondStrongest,
+    weakest,
+    secondWeakest,
+    overallDistance: strongest.score - overallScore,
+    spread: strongest.score - weakest.score,
+  };
+};
+
+const buildSleepPattern = (profile, overallScore) => {
+  const highNames = `${profile.strongest.name} and ${profile.secondStrongest.name}`;
+  const lowNames = `${profile.weakest.name} and ${profile.secondWeakest.name}`;
+  const concentration = profile.spread >= 20
+    ? "The difference between these areas is pronounced, so your next step can be focused rather than broad."
+    : "Your scores sit relatively close together, so a simple routine change may support the whole profile.";
+  return [
+    `Within this self-assessment, ${highNames} appear relatively more protected, while ${lowNames} may be worth focusing on. Your overall score of ${overallScore}/100 sits between those results, which suggests a mixed sleep picture rather than one single pattern.`,
+    `${concentration} Start with ${profile.weakest.name.toLowerCase()}, then notice whether the strength in ${profile.strongest.name.toLowerCase()} gives you a useful routine to borrow.`,
+  ];
+};
+
+const dimensionConnection = (major, profile, overallScore) => {
+  const name = major.shortTitle;
+  if (name === profile.strongest.name) {
+    return `${name} is one of the more protected parts of your profile. Notice which cue or timing already supports it, then use that same cue to make ${profile.weakest.name.toLowerCase()} easier to begin.`;
+  }
+  if (name === profile.weakest.name) {
+    return `${name} is the clearest priority within this self-assessment. The gap of ${profile.spread} points from ${profile.strongest.name} suggests that one targeted routine may be more useful than changing everything at once.`;
+  }
+  if (major.score > overallScore) {
+    return `${name} sits above your overall score and can help steady the profile. Protect what is already working here while you focus on ${profile.weakest.name.toLowerCase()}.`;
+  }
+  return `${name} sits below your overall score, alongside ${profile.weakest.name}. Improving either area may make the rest of your sleep routine feel easier to maintain.`;
+};
+
 const poolFallback = (pool, seed) => {
   if (!pool.paragraphs.length) return "";
   return pool.paragraphs[seed % pool.paragraphs.length];
@@ -842,8 +885,8 @@ const _renderMajorSectionIntro = (flow, major, context) => {
 const renderMajorSections = (flow, sections, context, tocEntries) => {
   sections.forEach((major) => {
     const guidance = context.isSleep ? sleepGuidance(major.shortTitle) : sleepGuidance("");
-    const isGrowth = major.score === context.growth.score;
-    const isStrongest = major.score === context.strongest.score;
+    const isGrowth = major.name === context.profile.weakest.name;
+    const isStrongest = major.name === context.profile.strongest.name;
     const difference = Math.abs(major.score - context.overallScore);
 
     tocEntries.push({ level: 1, title: major.title, page: startDimensionFlow(flow) });
@@ -855,60 +898,62 @@ const renderMajorSections = (flow, sections, context, tocEntries) => {
     drawComparisonChart(flow, major);
     drawSubsectionTitle(flow, "What this means");
     const meaning = isGrowth
-      ? `${major.shortTitle} is your lowest score at ${major.score}/100. It is the clearest place to simplify your routine and build one repeatable sleep-supporting habit.`
+      ? `${major.shortTitle} is your lowest result at ${major.score}/100. Your responses suggest that a calmer, more repeatable lead-in to sleep may be worth focusing on first.`
       : isStrongest
-        ? `${major.shortTitle} is your strongest area at ${major.score}/100. Something in this part of your routine appears to be helping; use that stability to support the areas that need more attention.`
-        : `${major.shortTitle} is ${difference} points ${major.score >= context.overallScore ? "above" : "below"} your overall score. It is a useful part of your sleep picture to protect while you work on ${context.growth.name}.`;
+        ? `${major.shortTitle} is your strongest result at ${major.score}/100. Within this self-assessment, this part of your sleep routine appears relatively more supported.`
+        : `${major.shortTitle} is ${difference} points ${major.score >= context.overallScore ? "above" : "below"} your overall score. It may be worth protecting while you work on the areas that need more attention.`;
     drawParagraph(flow, meaning);
-    drawCallout(flow, isGrowth ? "Focus this week" : isStrongest ? "Your advantage" : "Quick insight", isGrowth ? `Priority: make ${major.shortTitle.toLowerCase()} easier to support, rather than trying to overhaul every part of your routine.` : isStrongest ? `Keep doing: identify the routine around ${major.shortTitle.toLowerCase()} that already feels easiest to repeat.` : `Keep this area in view as you build a steadier routine around ${context.growth.name}.`);
+    drawSubsectionTitle(flow, "How it connects to your profile");
+    drawParagraph(flow, dimensionConnection(major, context.profile, context.overallScore));
 
     drawSectionTitle(flow, "Your pattern");
-    drawParagraph(flow, isGrowth ? `Your results point to ${major.shortTitle.toLowerCase()} as the main opportunity in your sleep profile. The best next move is a small routine you can repeat even when the day has been full.` : isStrongest ? `${major.shortTitle} is a valuable part of your current sleep picture. Keep it steady, then borrow that same cue, timing, or preparation for ${context.growth.name.toLowerCase()}.` : `${major.shortTitle} sits alongside your overall score, so it is worth maintaining as you focus on your main opportunity.`);
-    drawCallout(flow, "Watch for this", isGrowth ? "Look for the first point in the evening where stimulation starts to crowd out rest. That is often the easiest place to make a small change." : "Notice which part of the routine makes this area feel easier. Keep that cue visible and repeatable.");
+    drawParagraph(flow, isGrowth ? `This is the area where a modest evening adjustment may have the clearest value. Focus on reducing friction before sleep, not on creating a perfect routine.` : isStrongest ? `This strength may be useful because it shows that part of your sleep routine is already working for you. Keep that pattern visible as you make one change elsewhere.` : `This area sits within the middle of your profile. It may respond best to one clear cue you can return to on ordinary days.`);
+    const watchFor = isGrowth
+      ? "Look for the first point in the evening where stimulation starts to crowd out rest. That is often the easiest place to make a small change."
+      : major.shortTitle.includes("Recovery")
+        ? "Notice whether a calm lead-in to bed changes how restored you feel on waking."
+        : major.shortTitle.includes("Continuity")
+          ? "Notice what tends to interrupt your usual sleep routine and whether one small change reduces that friction."
+          : major.shortTitle.includes("Clarity")
+            ? "Notice which morning cue helps you feel most clear, then protect it on ordinary days."
+            : "Notice whether a steadier bedtime window makes this part of your routine easier to maintain.";
+    drawCallout(flow, "Watch for this", watchFor);
     drawThreeTiles(flow, [
-      { label: "Tonight", text: guidance.tonight, fill: [230, 241, 255] },
-      { label: "This week", text: guidance.week, fill: [240, 244, 255] },
-      { label: "Quick win", text: guidance.quick, fill: isGrowth ? [255, 240, 236] : [232, 248, 240] },
+      { label: "One thing to try", text: guidance.tonight, fill: [230, 241, 255] },
+      { label: "What to notice", text: `Over the next 7 days, notice whether ${major.shortTitle.toLowerCase()} feels easier, unchanged, or harder.`, fill: isGrowth ? [255, 240, 236] : [232, 248, 240] },
+      { label: "Next step", text: isStrongest ? `Keep the cue that supports this area.` : guidance.quick, fill: [240, 244, 255] },
     ]);
-    if (isGrowth) {
-      drawSubsectionTitle(flow, "Your 7-day challenge");
-      drawParagraph(flow, `Repeat one action that supports ${major.shortTitle.toLowerCase()} for seven days. Keep the action easy enough to complete, then notice what makes it easier to continue.`);
-    } else if (isStrongest) {
-      drawSubsectionTitle(flow, "Use this strength");
-      drawParagraph(flow, `Choose one part of what already supports ${major.shortTitle.toLowerCase()} and use it as a cue for ${context.growth.name.toLowerCase()} this week.`);
-    }
-
-    drawSectionTitle(flow, isGrowth ? "Your priority plan" : "Quick takeaway");
-    drawThreeTiles(flow, [
-      { label: "Your advantage", text: `${context.strongest.name} is your strongest area at ${context.strongest.score}/100. Use one habit from it to support ${major.shortTitle.toLowerCase()}.`, fill: [232, 248, 240] },
-      { label: "Focus this week", text: `${context.growth.name} is your main opportunity at ${context.growth.score}/100. Keep your next change small and repeatable.`, fill: [255, 247, 232] },
-      { label: "Tonight's action", text: isGrowth ? guidance.tonight : `For ${major.shortTitle.toLowerCase()}: ${guidance.quick}`, fill: [230, 241, 255] },
-    ]);
-    drawSubsectionTitle(flow, "7-day check-in");
-    drawParagraph(flow, `After seven days, ask: did the action fit my evenings and mornings? Keep it if it helped, or make it smaller if it did not.`);
-    drawCallout(flow, "Next step", isGrowth ? `Keep your attention on ${major.shortTitle.toLowerCase()} for the next week before you add another goal.` : `Maintain ${major.shortTitle.toLowerCase()} while your main focus stays on ${context.growth.name.toLowerCase()}.`);
   });
 };
 
+const renderSleepPattern = (flow, context, tocEntries) => {
+  tocEntries.push({ level: 1, title: "Your Sleep Pattern", page: flow.doc.getNumberOfPages() });
+  drawSectionTitle(flow, "Your sleep pattern");
+  const [first, second] = buildSleepPattern(context.profile, context.overallScore);
+  drawParagraph(flow, first);
+  drawParagraph(flow, second);
+  drawCallout(flow, "Profile focus", `Start with ${context.profile.weakest.name.toLowerCase()}. Protect the routine that supports ${context.profile.strongest.name.toLowerCase()}.`);
+};
+
 const renderPracticalAppendix = (flow, context, tocEntries) => {
-  const opening = `This plan keeps your attention on ${context.growth.name}, while preserving what is already working in ${context.strongest.name}.`;
-  const nextStep = "Choose the smallest action in this plan and make it easy to begin tonight.";
+  const opening = `This plan focuses on ${context.profile.weakest.name}, while keeping ${context.profile.strongest.name} steady.`;
+  const nextStep = "Success here means finding a routine you can realistically maintain, not achieving a perfect score.";
   flow.headerTitle = "Your action plan";
   flow.headerSubtitle = "A clear plan for the next 30 days";
   ensureSpace(flow, 15.5 + measureParagraphHeight(flow.doc, opening), "Action Plan opening");
   tocEntries.push({ level: 1, title: "Your Action Plan", page: flow.doc.getNumberOfPages() });
-  drawSectionTitle(flow, "Your action plan", 3);
+  drawSectionTitle(flow, "Your 30-day action plan", 3);
   drawParagraph(flow, opening, 0);
   const guidance = sleepGuidance(context.growth.name);
   drawThreeTiles(flow, [
     { label: "Tonight", text: guidance.tonight, fill: [230, 241, 255] },
     { label: "Next 7 days", text: guidance.week, fill: [255, 247, 232] },
-    { label: "Next 30 days", text: `Keep one ${context.growth.name.toLowerCase()} habit simple enough to repeat.`, fill: [240, 244, 255] },
+    { label: "After 7 days", text: "Was it realistic? Did you complete it most days? Did sleep feel easier, unchanged, or harder?", fill: [240, 244, 255] },
   ], 1);
   drawThreeTiles(flow, [
-    { label: "Keep doing", text: `Protect the routine that supports ${context.strongest.name.toLowerCase()}.`, fill: [232, 248, 240] },
-    { label: "Focus on", text: `Give ${context.growth.name.toLowerCase()} one clear priority this week.`, fill: [255, 240, 236] },
-    { label: "Review", text: "Check in after 30 days and keep what fits your life.", fill: [248, 252, 255] },
+    { label: "Days 8-30", text: `Continue the ${context.profile.weakest.name.toLowerCase()} action if useful; otherwise simplify it.`, fill: [232, 248, 240] },
+    { label: "Keep doing", text: `Protect the routine that supports ${context.profile.strongest.name.toLowerCase()}.`, fill: [255, 240, 236] },
+    { label: "After 30 days", text: "Re-take the assessment and compare the dimension scores.", fill: [248, 252, 255] },
   ], 1);
   drawCallout(flow, "Your next step", nextStep);
 };
@@ -932,7 +977,7 @@ const renderClosingPage = (doc, context) => {
   doc.setTextColor(...COLORS.white);
   doc.text("Your result", MARGIN_LEFT + 8, 138);
 
-  const summary = `Your overall score is ${context.overallScore}/100. ${context.strongest.name} is your strongest area and ${context.growth.name} is your primary opportunity. Give one practical action enough time to become part of your normal routine, then review what changed.`;
+  const summary = `Your overall score is ${context.overallScore}/100. Your pattern shows more support in ${context.profile.strongest.name} and more room to focus on ${context.profile.weakest.name}. Start with one realistic action, then pay attention to how the wider pattern changes.`;
 
   const linesRaw = doc.splitTextToSize(summary, CONTENT_WIDTH - 16);
   const lines = Array.isArray(linesRaw) ? linesRaw : [summary];
@@ -944,11 +989,10 @@ const renderClosingPage = (doc, context) => {
 
   const rows = [
     ["Overall Score", `${context.overallScore}/100`],
-    ["Strongest Dimension", context.strongest.name],
-    ["Growth Opportunity", context.growth.name],
-    ["7-Day Focus", `One action for ${context.growth.name}`],
-    ["30-Day Direction", "Keep, simplify, or adjust"],
-    ["When To Review", "After 30 days"],
+    ["Protect", `${context.profile.strongest.name}: keep the routine that already supports it.`],
+    ["Focus", `${context.profile.weakest.name}: it is the clearest place for one practical change.`],
+    ["Your First Step", sleepGuidance(context.profile.weakest.name).tonight],
+    ["Review", "Repeat the assessment after 30 days and compare the pattern."],
   ];
 
   let y = 208;
@@ -968,7 +1012,8 @@ const renderClosingPage = (doc, context) => {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.7);
   doc.setTextColor(193, 217, 251);
-  doc.text("This report is educational, informational self-assessment guidance. It is not a medical diagnosis.", PAGE_WIDTH / 2, 253, { align: "center" });
+  doc.text("Small changes become useful when they are realistic enough to repeat.", PAGE_WIDTH / 2, 247, { align: "center" });
+  doc.text("This report is an educational self-assessment and is not a medical diagnosis. If sleep difficulties are persistent, severe, or significantly affect daytime functioning, consider discussing them with a qualified healthcare professional.", PAGE_WIDTH / 2, 257, { align: "center", maxWidth: CONTENT_WIDTH - 16 });
 };
 
 const renderTocPages = (doc, tocEntries, context) => {
@@ -1097,6 +1142,7 @@ export const buildPremiumPdf = async ({
     isSleep: /sleep/i.test(selectedTestTitle) || dimensions.some((dimension) => /sleep/i.test(dimension.name)),
     readingTime: estimateReadingTime(),
   };
+  context.profile = getProfileInsights(dimensions, overallScore);
 
   const assessmentSections = getMajorSections(context);
 
@@ -1112,6 +1158,7 @@ export const buildPremiumPdf = async ({
   const flow = createFlowContext(doc, paginationDebug);
   tocEntries.push({ level: 1, title: "How to Use Your Report", page: 2 });
 
+  renderSleepPattern(flow, context, tocEntries);
   renderMajorSections(flow, assessmentSections, context, tocEntries);
   renderPracticalAppendix(flow, context, tocEntries);
   renderClosingPage(doc, context);
