@@ -439,7 +439,7 @@ function PaymentSuccessPage() {
         }));
 
         if (data.paid && !data.ready && !generationFailed) {
-          timerId = window.setTimeout(verify, 3000);
+          timerId = window.setTimeout(verify, 1000);
         }
       } catch (error) {
         if (cancelled) return;

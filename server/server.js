@@ -105,7 +105,7 @@ if (!FRONTEND_BASE_URL) {
 
 console.log("[startup] Storage directory", DATA_DIR);
 
-const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-06-30.basil",
 });
@@ -261,12 +261,12 @@ const verifyDownloadToken = (token) => {
   return payload;
 };
 
-const createAiReport = async ({ testName, score, answers, dimensions = [] }) => {
+const _createAiReport = async ({ testName, score, answers, dimensions = [] }) => {
   const dimensionSummary = dimensions
     .map((dimension) => `${dimension.name}: ${dimension.score}/100`)
     .join("\n");
 
-  const response = await openaiClient.responses.create({
+  const response = await _openaiClient.responses.create({
     model: "gpt-5-mini",
     max_output_tokens: 7000,
     input: `
@@ -480,18 +480,17 @@ const deliverInitialEmail = (purchase, sessionId, fulfillmentStartedAt) => {
 
 const generateReportPdfWithRetry = async (assessment, sessionId) => {
   const attemptOnce = async () => {
-    const aiStartedAt = Date.now();
-    const reportText = await createAiReport({
-      testName: assessment.testName,
-      score: assessment.score,
-      answers: assessment.answers,
-      dimensions: assessment.dimensions,
+    // The current premium generator renders from saved scores and dimensions;
+    // its reportText input is not part of the rendered PDF.
+    logEvent("ai_report_skipped", {
+      sessionId,
+      assessmentId: assessment.assessmentId,
+      reason: "Current PDF uses score-based personalized content directly.",
+      durationMs: 0,
     });
-
-    logDuration("ai_report_generated", aiStartedAt, { sessionId, assessmentId: assessment.assessmentId });
     const pdfStartedAt = Date.now();
     const pdfBuffer = await generatePremiumPdfBuffer({
-      reportText,
+      reportText: "",
       dimensions: assessment.dimensions,
       finalScore: assessment.score,
       assessmentDate: assessment.assessmentDate,
