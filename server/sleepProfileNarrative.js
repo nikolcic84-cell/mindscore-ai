@@ -1,7 +1,33 @@
+import { makeParseableTextFormat } from "openai/lib/parser.js";
+
 const NARRATIVE_VERSION = "sleep-profile-ai-v1";
 const MODEL = "gpt-5-mini";
 const TIMEOUT_MS = 20_000;
-const MAX_OUTPUT_TOKENS = 800;
+const MAX_OUTPUT_TOKENS = 1600;
+
+const SLEEP_PROFILE_SCHEMA = {
+  type: "json_schema",
+  name: "sleep_profile_narrative",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      profileSummary: { type: "string" },
+      whatsWorking: { type: "string" },
+      mainFocus: { type: "string" },
+      whereToStart: { type: "string" },
+      puttingItTogether: { type: "string" },
+    },
+    required: [
+      "profileSummary",
+      "whatsWorking",
+      "mainFocus",
+      "whereToStart",
+      "puttingItTogether",
+    ],
+  },
+};
 
 const REQUIRED_FIELDS = ["profileSummary", "whatsWorking", "mainFocus", "whereToStart", "puttingItTogether"];
 const FIELD_LIMITS = {
@@ -64,13 +90,6 @@ export const buildSleepProfilePayload = ({ assessment = {}, dimensions = [], ove
   };
 };
 
-const parseJson = (text) => {
-  const raw = safeText(text);
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("AI response did not contain JSON.");
-  return JSON.parse(match[0]);
-};
-
 export const validateSleepProfileNarrative = (candidate, payload) => {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     return { valid: false, fields: {}, reason: "Narrative is not an object." };
@@ -124,34 +143,12 @@ export const generateSleepProfileNarrative = async ({ openaiClient, payload, api
   let response;
   try {
     response = await withTimeout((signal) =>
-      openaiClient.responses.create(
+      openaiClient.responses.parse(
         {
           model: MODEL,
           max_output_tokens: MAX_OUTPUT_TOKENS,
           text: {
-            format: {
-              type: "json_schema",
-              name: "sleep_profile_narrative",
-              strict: true,
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  profileSummary: { type: "string" },
-                  whatsWorking: { type: "string" },
-                  mainFocus: { type: "string" },
-                  whereToStart: { type: "string" },
-                  puttingItTogether: { type: "string" },
-                },
-                required: [
-                  "profileSummary",
-                  "whatsWorking",
-                  "mainFocus",
-                  "whereToStart",
-                  "puttingItTogether",
-                ],
-              },
-            },
+            format: makeParseableTextFormat(SLEEP_PROFILE_SCHEMA, JSON.parse),
           },
           input: [
             "You generate ONLY concise JSON for a consumer sleep self-assessment report.",
@@ -169,8 +166,17 @@ export const generateSleepProfileNarrative = async ({ openaiClient, payload, api
   }
 
   try {
-    const parsed = parseJson(response.output_text || "");
-    const validation = validateSleepProfileNarrative(parsed, payload);
+    if (response.incomplete_details) {
+      return { status: "fallback", fields: {}, reason: `AI response incomplete: ${response.incomplete_details.reason || "unknown"}.` };
+    }
+    if (response.status !== "completed") {
+      return { status: "fallback", fields: {}, reason: `AI response status: ${response.status || "unknown"}.` };
+    }
+    if (!response.output_parsed) {
+      return { status: "fallback", fields: {}, reason: "AI response did not contain parsed JSON." };
+    }
+
+    const validation = validateSleepProfileNarrative(response.output_parsed, payload);
     return validation.valid
       ? { status: "ok", fields: validation.fields, reason: "ok" }
       : { status: "fallback", fields: validation.fields, reason: validation.reason };
