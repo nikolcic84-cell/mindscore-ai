@@ -121,22 +121,52 @@ export const generateSleepProfileNarrative = async ({ openaiClient, payload, api
     return { status: "fallback", fields: {}, reason: "OPENAI_API_KEY is missing." };
   }
 
-  const response = await withTimeout((signal) =>
-    openaiClient.responses.create(
-      {
-        model: MODEL,
-        max_output_tokens: MAX_OUTPUT_TOKENS,
-        input: [
-          "You generate ONLY concise JSON for a consumer sleep self-assessment report.",
-          "Use only the supplied scores and answer signals. Do not diagnose, recommend medication, invent statistics, or change scores.",
-          "Use plain English. Prefer phrases such as 'your results suggest' and 'may be worth observing'.",
-          "Return exactly this JSON shape with string values: {\"profileSummary\":\"...\",\"whatsWorking\":\"...\",\"mainFocus\":\"...\",\"whereToStart\":\"...\",\"puttingItTogether\":\"...\"}.",
-          `Assessment data: ${JSON.stringify(payload)}`,
-        ].join("\n"),
-      },
-      { signal }
-    )
-  );
+  let response;
+  try {
+    response = await withTimeout((signal) =>
+      openaiClient.responses.create(
+        {
+          model: MODEL,
+          max_output_tokens: MAX_OUTPUT_TOKENS,
+          text: {
+            format: {
+              type: "json_schema",
+              name: "sleep_profile_narrative",
+              strict: true,
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  profileSummary: { type: "string" },
+                  whatsWorking: { type: "string" },
+                  mainFocus: { type: "string" },
+                  whereToStart: { type: "string" },
+                  puttingItTogether: { type: "string" },
+                },
+                required: [
+                  "profileSummary",
+                  "whatsWorking",
+                  "mainFocus",
+                  "whereToStart",
+                  "puttingItTogether",
+                ],
+              },
+            },
+          },
+          input: [
+            "You generate ONLY concise JSON for a consumer sleep self-assessment report.",
+            "Use only the supplied scores and answer signals. Do not diagnose, recommend medication, invent statistics, or change scores.",
+            "Use plain English. Prefer phrases such as 'your results suggest' and 'may be worth observing'.",
+            "Return exactly this JSON shape with string values: {\"profileSummary\":\"...\",\"whatsWorking\":\"...\",\"mainFocus\":\"...\",\"whereToStart\":\"...\",\"puttingItTogether\":\"...\"}.",
+            `Assessment data: ${JSON.stringify(payload)}`,
+          ].join("\n"),
+        },
+        { signal }
+      )
+    );
+  } catch (error) {
+    return { status: "fallback", fields: {}, reason: error.message };
+  }
 
   try {
     const parsed = parseJson(response.output_text || "");
