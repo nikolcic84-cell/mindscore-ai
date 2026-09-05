@@ -558,9 +558,9 @@ const writeWrappedText = (doc, text, x, y, width, options = {}) => {
   };
 };
 
-const createFlowContext = (doc, debug = false) => ({
+const createFlowContext = (doc, startY = MARGIN_TOP + 8, debug = false) => ({
   doc,
-  y: 198,
+  y: startY,
   headerTitle: "Sleep quality insights",
   headerSubtitle: "Your personalized report",
   hasBodyContent: false,
@@ -592,12 +592,149 @@ const startDimensionFlow = (flow) => {
   return flow.doc.getNumberOfPages();
 };
 
+const drawIcon = (doc, type, x, y, size = 1) => {
+  const s = size;
+  doc.setDrawColor(43, 113, 233);
+  doc.setFillColor(230, 241, 255);
+  doc.setLineWidth(0.75 * s);
+
+  if (type === "moon") {
+    doc.setFillColor(43, 113, 233);
+    doc.circle(x, y, 5.8 * s, "F");
+    doc.setFillColor(...COLORS.white);
+    doc.circle(x + 2.8 * s, y - 1.2 * s, 5.8 * s, "F");
+    doc.setDrawColor(43, 113, 233);
+    doc.circle(x, y, 5.8 * s, "S");
+    doc.setFillColor(43, 161, 140);
+    [[7, -5], [9, 1], [5, 5]].forEach(([dx, dy]) => doc.circle(x + dx * s, y + dy * s, 0.7 * s, "F"));
+    return;
+  }
+
+  if (type === "bed") {
+    doc.roundedRect(x - 8 * s, y - 1 * s, 15 * s, 6 * s, 1.5 * s, 1.5 * s, "S");
+    doc.line(x - 8 * s, y - 4 * s, x - 8 * s, y + 6 * s);
+    doc.roundedRect(x - 5.5 * s, y - 3 * s, 4 * s, 2.5 * s, 1 * s, 1 * s, "S");
+    doc.circle(x + 7.5 * s, y - 5 * s, 2.4 * s, "S");
+    doc.setFillColor(...COLORS.white);
+    doc.circle(x + 8.7 * s, y - 5.4 * s, 2.2 * s, "F");
+    return;
+  }
+
+  if (type === "waves") {
+    for (let row = 0; row < 3; row += 1) {
+      const yy = y - 4 * s + row * 4 * s;
+      doc.lines([[3 * s, -2 * s], [4 * s, 2 * s], [4 * s, -2 * s], [3 * s, 2 * s]], x - 8 * s, yy);
+    }
+    return;
+  }
+
+  if (type === "brain") {
+    doc.circle(x - 4 * s, y - 2 * s, 3 * s, "S");
+    doc.circle(x + 1 * s, y - 3 * s, 3.2 * s, "S");
+    doc.circle(x + 4 * s, y + 1 * s, 3 * s, "S");
+    doc.line(x - 6 * s, y + 2 * s, x - 1 * s, y + 5 * s);
+    doc.line(x - 1 * s, y + 5 * s, x + 5 * s, y + 3 * s);
+    doc.circle(x + 8 * s, y - 5 * s, 2 * s, "S");
+    doc.setFillColor(...COLORS.white);
+    doc.circle(x + 9 * s, y - 5.4 * s, 1.8 * s, "F");
+    return;
+  }
+
+  if (type === "sun") {
+    doc.circle(x, y, 4 * s, "S");
+    for (let i = 0; i < 8; i += 1) {
+      const angle = (Math.PI * 2 * i) / 8;
+      doc.line(x + Math.cos(angle) * 6 * s, y + Math.sin(angle) * 6 * s, x + Math.cos(angle) * 8.5 * s, y + Math.sin(angle) * 8.5 * s);
+    }
+    return;
+  }
+
+  if (type === "clock") {
+    doc.circle(x, y, 6 * s, "S");
+    doc.line(x, y, x, y - 3.8 * s);
+    doc.line(x, y, x + 3 * s, y + 1.8 * s);
+    return;
+  }
+
+  if (type === "calendar") {
+    doc.roundedRect(x - 7 * s, y - 6 * s, 14 * s, 12 * s, 1.5 * s, 1.5 * s, "S");
+    doc.line(x - 7 * s, y - 2.5 * s, x + 7 * s, y - 2.5 * s);
+    doc.line(x - 3 * s, y - 8 * s, x - 3 * s, y - 4.8 * s);
+    doc.line(x + 3 * s, y - 8 * s, x + 3 * s, y - 4.8 * s);
+    doc.line(x - 2.5 * s, y + 1.2 * s, x - 0.4 * s, y + 3.5 * s);
+    doc.line(x - 0.4 * s, y + 3.5 * s, x + 4 * s, y - 1.5 * s);
+    return;
+  }
+
+  if (type === "check") {
+    doc.roundedRect(x - 6 * s, y - 6 * s, 12 * s, 12 * s, 2 * s, 2 * s, "S");
+    doc.line(x - 3.5 * s, y, x - 0.8 * s, y + 2.8 * s);
+    doc.line(x - 0.8 * s, y + 2.8 * s, x + 4.2 * s, y - 3 * s);
+    return;
+  }
+
+  if (type === "shield") {
+    doc.lines([[5 * s, 2 * s], [0, 7 * s], [-5 * s, -7 * s], [0, -5 * s], [5 * s, 3 * s]], x - 5 * s, y - 5 * s);
+    doc.line(x - 2 * s, y, x, y + 2 * s);
+    doc.line(x, y + 2 * s, x + 4 * s, y - 3 * s);
+    return;
+  }
+
+  if (type === "chart") {
+    doc.line(x - 7 * s, y + 5 * s, x + 7 * s, y + 5 * s);
+    doc.line(x - 7 * s, y + 5 * s, x - 7 * s, y - 6 * s);
+    doc.line(x - 5 * s, y + 2 * s, x - 1 * s, y - 1 * s);
+    doc.line(x - 1 * s, y - 1 * s, x + 2.5 * s, y + 1 * s);
+    doc.line(x + 2.5 * s, y + 1 * s, x + 6 * s, y - 4 * s);
+    return;
+  }
+
+  if (type === "home") {
+    doc.lines([[6 * s, 5 * s], [0, 8 * s], [-12 * s, 0], [0, -8 * s], [6 * s, -5 * s]], x - 6 * s, y - 3 * s);
+    doc.roundedRect(x - 4.5 * s, y + 1 * s, 9 * s, 6 * s, 1 * s, 1 * s, "S");
+    doc.line(x - 1.5 * s, y + 7 * s, x - 1.5 * s, y + 3.5 * s);
+    doc.line(x + 1.5 * s, y + 7 * s, x + 1.5 * s, y + 3.5 * s);
+    return;
+  }
+
+  if (type === "target") {
+    doc.circle(x, y, 6 * s, "S");
+    doc.circle(x, y, 3 * s, "S");
+    doc.line(x + 1.5 * s, y - 1.5 * s, x + 7 * s, y - 7 * s);
+    doc.line(x + 7 * s, y - 7 * s, x + 7 * s, y - 3.5 * s);
+    doc.line(x + 7 * s, y - 7 * s, x + 3.5 * s, y - 7 * s);
+    return;
+  }
+
+  if (type === "bulb") {
+    doc.circle(x, y - 2 * s, 3.8 * s, "S");
+    doc.line(x - 2.2 * s, y + 2.6 * s, x + 2.2 * s, y + 2.6 * s);
+    doc.line(x - 1.5 * s, y + 4.2 * s, x + 1.5 * s, y + 4.2 * s);
+  }
+};
+
+const iconTypeForTitle = (title) => {
+  if (/Your Sleep Profile|sleep pattern/i.test(title)) return "moon";
+  if (/Sleep Recovery/i.test(title)) return "bed";
+  if (/Sleep Continuity/i.test(title)) return "waves";
+  if (/Cognitive Wind-Down/i.test(title)) return "brain";
+  if (/Daytime Clarity/i.test(title)) return "sun";
+  if (/Sleep Consistency/i.test(title)) return "clock";
+  if (/30-day action plan/i.test(title)) return "calendar";
+  return "moon";
+};
+
+const drawSleepAccent = (doc, title, y) => {
+  drawIcon(doc, iconTypeForTitle(title), PAGE_WIDTH - MARGIN_RIGHT - 12, y - 4, 0.78);
+};
+
 const drawSectionTitle = (flow, text, bottomGap = 6.5) => {
   ensureSpace(flow, 15.5, `Heading: ${text}`);
   flow.doc.setFont("helvetica", "bold");
   flow.doc.setFontSize(19.5);
   flow.doc.setTextColor(...COLORS.ink);
   flow.doc.text(text, MARGIN_LEFT, flow.y);
+  drawSleepAccent(flow.doc, text, flow.y);
   flow.y += 9;
 
   flow.doc.setDrawColor(...COLORS.line);
@@ -707,12 +844,22 @@ const drawComparisonChart = (flow, major) => {
   drawParagraph(flow, `This is a comparison within your own results. ${major.shortTitle} is ${Math.abs(major.score - flow.context.overallScore)} points ${major.score >= flow.context.overallScore ? "above" : "below"} your overall score.`);
 };
 
+const drawScoreComparisonSentence = (flow, major, context) => {
+  const fromOverall = major.score - context.overallScore;
+  const fromStrongest = context.profile.strongest.score - major.score;
+  const sentence = major.shortTitle === context.profile.strongest.name
+    ? `${major.shortTitle} is your strongest area, ${Math.abs(fromOverall)} points ${fromOverall >= 0 ? "above" : "below"} your overall score.`
+    : `${major.shortTitle} is ${Math.abs(fromOverall)} points ${fromOverall >= 0 ? "above" : "below"} your overall score and ${fromStrongest} points below your strongest area.`;
+  drawParagraph(flow, sentence, 3);
+};
+
 const drawCallout = (flow, type, text) => {
   const fill = CALLOUT_COLORS[type] || COLORS.card;
   const width = CONTENT_WIDTH;
   const x = MARGIN_LEFT;
 
-  const linesRaw = flow.doc.splitTextToSize(toSafeText(text, ""), width - 10);
+  const textWidth = type === "Your next step" ? width - 24 : width - 10;
+  const linesRaw = flow.doc.splitTextToSize(toSafeText(text, ""), textWidth);
   const lines = Array.isArray(linesRaw) ? linesRaw : [toSafeText(linesRaw, "")];
   const lineHeight = 6.2;
   const contentHeight = lines.length * lineHeight;
@@ -725,6 +872,9 @@ const drawCallout = (flow, type, text) => {
 
   flow.doc.setFillColor(...COLORS.navy);
   flow.doc.rect(x, flow.y, 2.8, boxHeight, "F");
+  if (type === "Your next step") {
+    drawIcon(flow.doc, "target", x + width - 10, flow.y + 9, 0.55);
+  }
 
   flow.doc.setFont("helvetica", "bold");
   flow.doc.setFontSize(10.3);
@@ -734,15 +884,83 @@ const drawCallout = (flow, type, text) => {
   flow.doc.setFont("helvetica", "normal");
   flow.doc.setFontSize(11.2);
   flow.doc.setTextColor(...COLORS.text);
-  flow.doc.text(lines, x + 5.2, flow.y + 12, { maxWidth: width - 10 });
+  flow.doc.text(lines, x + 5.2, flow.y + 12, { maxWidth: textWidth });
 
   flow.y += boxHeight + 4.5;
+};
+
+const didYouKnowText = (major) => {
+  const name = major.shortTitle;
+  const score = `${major.score}/100`;
+  if (name.includes("Recovery")) {
+    return `Sleep is an active recovery period, not just time spent in bed. Your ${name} score of ${score} makes restoration a useful signal to watch this week.`;
+  }
+  if (name.includes("Continuity")) {
+    return `Sleep can feel less refreshing when the night is repeatedly interrupted, even if time in bed seems adequate. Your ${name} score of ${score} makes night-to-night smoothness worth observing.`;
+  }
+  if (name.includes("Wind-Down")) {
+    return `The mind often needs a clear transition before sleep, especially after stimulating or unresolved tasks. Your ${name} score of ${score} suggests this transition may deserve extra attention.`;
+  }
+  if (name.includes("Clarity")) {
+    return `Daytime alertness can give useful context when judging how well sleep is supporting you. Your ${name} score of ${score} can help you notice whether mornings and afternoons tell the same story.`;
+  }
+  return `A regular sleep and wake rhythm can make bedtime feel more predictable over time. Your ${name} score of ${score} makes routine timing a useful pattern to track.`;
+};
+
+const drawDidYouKnow = (flow, major) => {
+  const text = didYouKnowText(major);
+  const lines = flow.doc.splitTextToSize(text, CONTENT_WIDTH - 18);
+  const boxHeight = 16 + lines.length * 5.4;
+  ensureSpace(flow, boxHeight + 4, `Did you know: ${major.shortTitle}`);
+
+  flow.doc.setFillColor(236, 246, 255);
+  flow.doc.roundedRect(MARGIN_LEFT, flow.y, CONTENT_WIDTH, boxHeight, 3, 3, "F");
+  flow.doc.setDrawColor(214, 228, 247);
+  flow.doc.roundedRect(MARGIN_LEFT, flow.y, CONTENT_WIDTH, boxHeight, 3, 3, "S");
+  drawIcon(flow.doc, "bulb", MARGIN_LEFT + 8, flow.y + 10, 0.62);
+  flow.doc.setFont("helvetica", "bold");
+  flow.doc.setFontSize(9.2);
+  flow.doc.setTextColor(...COLORS.ink);
+  flow.doc.text("DID YOU KNOW?", MARGIN_LEFT + 16, flow.y + 8);
+  flow.doc.setFont("helvetica", "normal");
+  flow.doc.setFontSize(10.4);
+  flow.doc.setTextColor(...COLORS.text);
+  flow.doc.text(lines, MARGIN_LEFT + 16, flow.y + 15, { maxWidth: CONTENT_WIDTH - 18 });
+  flow.y += boxHeight + 4;
+};
+
+const dimensionDefinition = (name) => {
+  if (name.includes("Recovery")) return "How restored you feel after sleep. In everyday terms: do you wake up feeling that sleep actually helped you recharge?";
+  if (name.includes("Continuity")) return "How uninterrupted your sleep tends to feel. Waking often, lying awake for a while, or feeling restless can make sleep feel less continuous.";
+  if (name.includes("Wind-Down")) return "How easily your mind shifts from daytime activity into sleep mode. If you lie in bed thinking, planning, scrolling, or replaying the day, this area may feel harder.";
+  if (name.includes("Clarity")) return "How clear, alert, and mentally present you tend to feel during the day. It is about how your sleep seems to show up after you wake.";
+  return "How regular your sleep and wake times are from day to day. It looks at whether your routine has a predictable rhythm.";
+};
+
+const drawInRealLife = (flow, text) => {
+  const lines = flow.doc.splitTextToSize(text, CONTENT_WIDTH - 10);
+  const boxHeight = 13 + lines.length * 5.6;
+  ensureSpace(flow, boxHeight + 4, "In real life");
+  flow.doc.setFillColor(248, 252, 255);
+  flow.doc.roundedRect(MARGIN_LEFT, flow.y, CONTENT_WIDTH, boxHeight, 3, 3, "F");
+  flow.doc.setDrawColor(214, 228, 247);
+  flow.doc.roundedRect(MARGIN_LEFT, flow.y, CONTENT_WIDTH, boxHeight, 3, 3, "S");
+  flow.doc.setFont("helvetica", "bold");
+  flow.doc.setFontSize(9.2);
+  flow.doc.setTextColor(...COLORS.ink);
+  drawIcon(flow.doc, "home", MARGIN_LEFT + 7, flow.y + 8, 0.55);
+  flow.doc.text("IN REAL LIFE", MARGIN_LEFT + 15, flow.y + 7);
+  flow.doc.setFont("helvetica", "normal");
+  flow.doc.setFontSize(10.4);
+  flow.doc.setTextColor(...COLORS.text);
+  flow.doc.text(lines, MARGIN_LEFT + 15, flow.y + 14, { maxWidth: CONTENT_WIDTH - 20 });
+  flow.y += boxHeight + 4;
 };
 
 const drawThreeTiles = (flow, tiles, bottomGap = 5) => {
   const gap = 4;
   const width = (CONTENT_WIDTH - gap * 2) / 3;
-  const height = 43;
+  const height = 38;
   ensureSpace(flow, height + bottomGap, "Action card row");
 
   tiles.forEach((tile, index) => {
@@ -763,6 +981,73 @@ const drawThreeTiles = (flow, tiles, bottomGap = 5) => {
   });
 
   flow.y += height + bottomGap;
+};
+
+const drawActionPlanCard = (flow, card) => {
+  const cardGap = 2;
+  const labelWidth = 40;
+  const valueX = MARGIN_LEFT + labelWidth + 24;
+  const valueWidth = PAGE_WIDTH - MARGIN_RIGHT - valueX - 6;
+  const lineHeight = 5.2;
+  const rowGap = 4;
+  const topPadding = 12;
+  const bottomPadding = 8;
+  flow.doc.setFont("helvetica", "normal");
+  flow.doc.setFontSize(9.6);
+  const rows = [
+    { label: "WHAT TO DO", text: card.what },
+    { label: "HOW", text: card.how },
+    { label: "WHY", text: card.why },
+  ].map((row) => ({
+    ...row,
+    lines: flow.doc.splitTextToSize(row.text, valueWidth),
+  }));
+  const contentHeight = rows.reduce((sum, row, index) => {
+    return sum + row.lines.length * lineHeight + (index < rows.length - 1 ? rowGap : 0);
+  }, 0);
+  const boxHeight = Math.max(42, topPadding + contentHeight + bottomPadding);
+  ensureSpace(flow, boxHeight + cardGap, `Action plan: ${card.label}`);
+
+  flow.doc.setFillColor(...(card.fill || COLORS.card));
+  flow.doc.roundedRect(MARGIN_LEFT, flow.y, CONTENT_WIDTH, boxHeight, 3.4, 3.4, "F");
+  flow.doc.setDrawColor(...COLORS.line);
+  flow.doc.roundedRect(MARGIN_LEFT, flow.y, CONTENT_WIDTH, boxHeight, 3.4, 3.4, "S");
+  drawIcon(flow.doc, card.icon, MARGIN_LEFT + 10, flow.y + 14, 0.78);
+  flow.doc.setFont("helvetica", "bold");
+  flow.doc.setFontSize(8.8);
+  flow.doc.setTextColor(...COLORS.ink);
+  flow.doc.text(card.label.toUpperCase(), MARGIN_LEFT + 21, flow.y + 10);
+
+  let textY = flow.y + topPadding;
+  rows.forEach((row, index) => {
+    flow.doc.setFont("helvetica", "bold");
+    flow.doc.setFontSize(8.8);
+    flow.doc.setTextColor(...COLORS.muted);
+    flow.doc.text(row.label, MARGIN_LEFT + labelWidth, textY);
+    flow.doc.setFont("helvetica", "normal");
+    flow.doc.setFontSize(9.6);
+    flow.doc.setTextColor(...COLORS.text);
+    flow.doc.text(row.lines, valueX, textY, { maxWidth: valueWidth });
+    textY += row.lines.length * lineHeight + (index < rows.length - 1 ? rowGap : 0);
+  });
+
+  flow.y += boxHeight + cardGap;
+};
+
+const measureActionPlanCardHeight = (doc, card) => {
+  const cardGap = 2;
+  const labelWidth = 40;
+  const valueX = MARGIN_LEFT + labelWidth + 24;
+  const valueWidth = PAGE_WIDTH - MARGIN_RIGHT - valueX - 6;
+  const lineHeight = 5.2;
+  const rowGap = 4;
+  const topPadding = 12;
+  const bottomPadding = 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.6);
+  const rowHeights = [card.what, card.how, card.why].map((text) => doc.splitTextToSize(text, valueWidth).length * lineHeight);
+  const contentHeight = rowHeights.reduce((sum, height, index) => sum + height + (index < rowHeights.length - 1 ? rowGap : 0), 0);
+  return Math.max(42, topPadding + contentHeight + bottomPadding) + cardGap;
 };
 
 const measureParagraphHeight = (doc, text) => {
@@ -885,8 +1170,8 @@ const _renderMajorSectionIntro = (flow, major, context) => {
 const renderMajorSections = (flow, sections, context, tocEntries) => {
   sections.forEach((major) => {
     const guidance = context.isSleep ? sleepGuidance(major.shortTitle) : sleepGuidance("");
-    const isGrowth = major.name === context.profile.weakest.name;
-    const isStrongest = major.name === context.profile.strongest.name;
+    const isGrowth = major.shortTitle === context.profile.weakest.name;
+    const isStrongest = major.shortTitle === context.profile.strongest.name;
     const difference = Math.abs(major.score - context.overallScore);
 
     tocEntries.push({ level: 1, title: major.title, page: startDimensionFlow(flow) });
@@ -895,7 +1180,9 @@ const renderMajorSections = (flow, sections, context, tocEntries) => {
     drawMiniProgressBar(flow, major.shortTitle, major.score, major.color);
     drawMiniProgressBar(flow, "Overall score", context.overallScore, COLORS.blue);
     drawMiniProgressBar(flow, `Strongest: ${context.strongest.name}`, context.strongest.score, context.strongest.color);
-    drawComparisonChart(flow, major);
+    drawScoreComparisonSentence(flow, major, context);
+    drawSubsectionTitle(flow, "What it means");
+    drawParagraph(flow, dimensionDefinition(major.shortTitle));
     drawSubsectionTitle(flow, "What this means");
     const meaning = isGrowth
       ? `${major.shortTitle} is your lowest result at ${major.score}/100. Your responses suggest that a calmer, more repeatable lead-in to sleep may be worth focusing on first.`
@@ -903,6 +1190,10 @@ const renderMajorSections = (flow, sections, context, tocEntries) => {
         ? `${major.shortTitle} is your strongest result at ${major.score}/100. Within this self-assessment, this part of your sleep routine appears relatively more supported.`
         : `${major.shortTitle} is ${difference} points ${major.score >= context.overallScore ? "above" : "below"} your overall score. It may be worth protecting while you work on the areas that need more attention.`;
     drawParagraph(flow, meaning);
+    drawDidYouKnow(flow, major);
+    if (major.shortTitle.includes("Wind-Down")) {
+      drawInRealLife(flow, "Instead of aiming for a perfect bedtime routine, try this: around the same time, put your phone on charge, prepare one thing for tomorrow, and spend the last 30 minutes doing something quieter.");
+    }
     drawSubsectionTitle(flow, "How it connects to your profile");
     drawParagraph(flow, dimensionConnection(major, context.profile, context.overallScore));
 
@@ -935,26 +1226,110 @@ const renderSleepPattern = (flow, context, tocEntries) => {
   drawCallout(flow, "Profile focus", `Start with ${context.profile.weakest.name.toLowerCase()}. Protect the routine that supports ${context.profile.strongest.name.toLowerCase()}.`);
 };
 
+const renderSleepProfilePage = (flow, context, tocEntries) => {
+  startBodyPage(flow, "Your Sleep Profile", "Putting your results together");
+  tocEntries.push({ level: 1, title: "Your Sleep Profile", page: flow.doc.getNumberOfPages() });
+  drawSectionTitle(flow, "Your Sleep Profile");
+
+  flow.doc.setFont("helvetica", "normal");
+  flow.doc.setFontSize(10.8);
+  flow.doc.setTextColor(...COLORS.muted);
+  flow.doc.text("Putting your results together", MARGIN_LEFT, flow.y);
+  flow.y += 10;
+
+  const illustrationX = PAGE_WIDTH - MARGIN_RIGHT - 25;
+  const illustrationY = flow.y + 12;
+  flow.doc.setFillColor(230, 241, 255);
+  flow.doc.circle(illustrationX, illustrationY, 16, "F");
+  flow.doc.setDrawColor(43, 113, 233);
+  flow.doc.setLineWidth(1.2);
+  flow.doc.circle(illustrationX - 3, illustrationY, 7.5, "S");
+  flow.doc.setFillColor(230, 241, 255);
+  flow.doc.circle(illustrationX + 1.5, illustrationY - 3, 7.5, "F");
+  flow.doc.setFillColor(43, 161, 140);
+  [[-12, -10], [10, -11], [12, 5]].forEach(([dx, dy]) => flow.doc.circle(illustrationX + dx, illustrationY + dy, 0.9, "F"));
+
+  const fallbackProfileSummary = `Your five scores form a ${context.profile.spread >= 20 ? "clear contrast" : "fairly even"} profile. ${context.profile.strongest.name} (${context.profile.strongest.score}/100) is your strongest result, while ${context.profile.weakest.name} (${context.profile.weakest.score}/100) is the main area to focus on.`;
+  const fallbackWhatsWorking = `${context.profile.strongest.name} is relatively supported. Protect the cue or routine that helps it.`;
+  const fallbackMainFocus = `${context.profile.weakest.name} sits ${context.profile.spread} points below your strongest area.`;
+  const fallbackWhereToStart = sleepGuidance(context.profile.weakest.name).tonight;
+  const fallbackPuttingItTogether = `Within this self-assessment, ${context.profile.secondStrongest.name} may help support ${context.profile.secondWeakest.name}. Start with one change around ${context.profile.weakest.name.toLowerCase()}, then notice whether the rest of your routine feels easier to maintain.`;
+  const narrative = context.sleepProfileNarrative || {};
+  const profileSummary = narrative.profileSummary || fallbackProfileSummary;
+  drawParagraph(flow, profileSummary);
+
+  context.dimensions.forEach((dimension) => drawMiniProgressBar(flow, dimension.name, dimension.score, dimension.color));
+  drawThreeTiles(flow, [
+    { label: "What's working", text: narrative.whatsWorking || fallbackWhatsWorking, fill: [232, 248, 240] },
+    { label: "Your main focus", text: narrative.mainFocus || fallbackMainFocus, fill: [255, 240, 236] },
+    { label: "Where to start", text: narrative.whereToStart || fallbackWhereToStart, fill: [230, 241, 255] },
+  ]);
+  drawCallout(flow, "Putting it together", narrative.puttingItTogether || fallbackPuttingItTogether);
+};
+
 const renderPracticalAppendix = (flow, context, tocEntries) => {
   const opening = `This plan focuses on ${context.profile.weakest.name}, while keeping ${context.profile.strongest.name} steady.`;
-  const nextStep = "Success here means finding a routine you can realistically maintain, not achieving a perfect score.";
+  const nextStep = "The goal is not a perfect sleep score. The goal is to discover which small behaviors are realistic enough to become part of everyday life, then check what changes in your next assessment.";
   flow.headerTitle = "Your action plan";
   flow.headerSubtitle = "A clear plan for the next 30 days";
-  ensureSpace(flow, 15.5 + measureParagraphHeight(flow.doc, opening), "Action Plan opening");
+  const guidance = sleepGuidance(context.growth.name);
+  const actionCards = [
+    {
+      label: "Tonight",
+      icon: "moon",
+      fill: [230, 241, 255],
+      what: guidance.tonight,
+      how: "Choose one screen or stimulating habit and stop it for the final 30 minutes before bed. Put the device somewhere you do not automatically reach for it.",
+      why: "This gives your mind a clearer transition between daytime stimulation and sleep.",
+    },
+    {
+      label: "Next 7 days",
+      icon: "clock",
+      fill: [255, 247, 232],
+      what: "Use the same wind-down window most nights. Wind-down means the period before bed when you deliberately reduce stimulation and prepare for sleep.",
+      how: "Choose a realistic 30-60 minute window. Reduce screen use, finish work tasks, prepare for tomorrow, and pick one calm activity.",
+      why: "Consistency matters more than perfection because a repeatable cue is easier for your body and mind to recognize.",
+    },
+    {
+      label: "After 7 days",
+      icon: "check",
+      fill: [240, 244, 255],
+      what: "Review what actually happened during the week.",
+      how: "Ask: did I follow it most days, was it easy enough, did falling asleep feel easier, unchanged, or harder, and what part was unrealistic?",
+      why: "If something was hard, modify it instead of abandoning it. If 60 minutes without your phone is too much, try 30.",
+    },
+    {
+      label: "Days 8-30",
+      icon: "brain",
+      fill: [232, 248, 240],
+      what: `Continue the evening routine that helps your mind move from daytime activity toward sleep, especially for ${context.profile.weakest.name}.`,
+      how: "Keep only the behaviors that were realistic in week one. Do less, but do it consistently.",
+      why: "One sustainable habit is more useful than five habits that disappear after a few days.",
+    },
+    {
+      label: "Keep going",
+      icon: "shield",
+      fill: [255, 240, 236],
+      what: `Protect what supports ${context.profile.strongest.name}. Protecting a routine simply means making it easier to repeat.`,
+      how: "Keep preparation simple, avoid extra steps, prepare earlier when possible, and return after an imperfect night instead of giving up.",
+      why: "Missing one evening does not mean the plan failed. Returning to the routine is part of the plan.",
+    },
+    {
+      label: "After 30 days",
+      icon: "chart",
+      fill: [248, 252, 255],
+      what: "Re-take the MindScore Sleep assessment and compare all five dimension scores.",
+      how: "Look for meaningful changes, identify which habit was easiest to maintain, and decide what to continue next month.",
+      why: "A score that does not improve does not automatically mean the month failed. The point is to learn what works for you.",
+    },
+  ];
+  const openingGroupHeight = 15.5 + measureParagraphHeight(flow.doc, opening, 0) + actionCards.slice(0, 3).reduce((sum, card) => sum + measureActionPlanCardHeight(flow.doc, card), 0);
+  ensureSpace(flow, openingGroupHeight, "Action Plan opening group");
   tocEntries.push({ level: 1, title: "Your Action Plan", page: flow.doc.getNumberOfPages() });
   drawSectionTitle(flow, "Your 30-day action plan", 3);
   drawParagraph(flow, opening, 0);
-  const guidance = sleepGuidance(context.growth.name);
-  drawThreeTiles(flow, [
-    { label: "Tonight", text: guidance.tonight, fill: [230, 241, 255] },
-    { label: "Next 7 days", text: guidance.week, fill: [255, 247, 232] },
-    { label: "After 7 days", text: "Was it realistic? Did you complete it most days? Did sleep feel easier, unchanged, or harder?", fill: [240, 244, 255] },
-  ], 1);
-  drawThreeTiles(flow, [
-    { label: "Days 8-30", text: `Continue the ${context.profile.weakest.name.toLowerCase()} action if useful; otherwise simplify it.`, fill: [232, 248, 240] },
-    { label: "Keep doing", text: `Protect the routine that supports ${context.profile.strongest.name.toLowerCase()}.`, fill: [255, 240, 236] },
-    { label: "After 30 days", text: "Re-take the assessment and compare the dimension scores.", fill: [248, 252, 255] },
-  ], 1);
+  actionCards.forEach((card) => drawActionPlanCard(flow, card));
+  drawInRealLife(flow, "A realistic plan might look like this: at around 10:30 PM, charge your phone away from the bed, prepare for tomorrow, and spend the last 30 minutes doing something quieter.");
   drawCallout(flow, "Your next step", nextStep);
 };
 
@@ -995,25 +1370,30 @@ const renderClosingPage = (doc, context) => {
     ["Review", "Repeat the assessment after 30 days and compare the pattern."],
   ];
 
-  let y = 208;
+  let y = 187;
   rows.forEach(([k, v]) => {
+    const valueLines = doc.splitTextToSize(v, CONTENT_WIDTH - 56);
+    const rowHeight = Math.max(13, valueLines.length * 4.2 + 5);
+    doc.setFillColor(20, 57, 128);
+    doc.roundedRect(MARGIN_LEFT + 8, y - 5, CONTENT_WIDTH - 16, rowHeight, 2.4, 2.4, "F");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10.6);
+    doc.setFontSize(8.8);
     doc.setTextColor(193, 217, 251);
-    doc.text(k, MARGIN_LEFT + 8, y);
+    doc.text(k.toUpperCase(), MARGIN_LEFT + 12, y + 3);
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11.1);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.2);
     doc.setTextColor(...COLORS.white);
-    doc.text(v, PAGE_WIDTH - MARGIN_RIGHT - 8, y, { align: "right" });
-    y += 11;
+    doc.text(valueLines, MARGIN_LEFT + 52, y + 3, { maxWidth: CONTENT_WIDTH - 56 });
+    y += rowHeight + 3;
   });
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.7);
+  doc.setFontSize(8.4);
   doc.setTextColor(193, 217, 251);
-  doc.text("Small changes become useful when they are realistic enough to repeat.", PAGE_WIDTH / 2, 247, { align: "center" });
-  doc.text("This report is an educational self-assessment and is not a medical diagnosis. If sleep difficulties are persistent, severe, or significantly affect daytime functioning, consider discussing them with a qualified healthcare professional.", PAGE_WIDTH / 2, 257, { align: "center", maxWidth: CONTENT_WIDTH - 16 });
+  doc.text("Small changes become useful when they are realistic enough to repeat.", PAGE_WIDTH / 2, 267, { align: "center" });
+  const disclaimer = "This report is an educational self-assessment and is not a medical diagnosis. If sleep difficulties are persistent, severe, or significantly affect daytime functioning, consider discussing them with a qualified healthcare professional.";
+  doc.text(doc.splitTextToSize(disclaimer, CONTENT_WIDTH - 16), PAGE_WIDTH / 2, 274, { align: "center", maxWidth: CONTENT_WIDTH - 16 });
 };
 
 const renderTocPages = (doc, tocEntries, context) => {
@@ -1072,7 +1452,7 @@ const renderTocPages = (doc, tocEntries, context) => {
     y += entry.level === 1 ? 7.2 : 6.5;
   });
 
-  const introY = Math.max(y + 12, 118);
+  const introY = Math.max(y + 12, 105);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14.5);
   doc.setTextColor(...COLORS.ink);
@@ -1106,6 +1486,8 @@ const renderTocPages = (doc, tocEntries, context) => {
   doc.setTextColor(...COLORS.text);
   const focus = "This is educational self-assessment guidance, not a medical diagnosis. Aim for steady practice, not a perfect week.";
   doc.text(doc.splitTextToSize(focus, CONTENT_WIDTH - 10), MARGIN_LEFT + 5.2, cardY + 14, { maxWidth: CONTENT_WIDTH - 10 });
+
+  return { page, nextY: cardY + 32.5 };
 };
 
 const estimateReadingTime = () => "15-20 minutes";
@@ -1120,6 +1502,7 @@ export const buildPremiumPdf = async ({
     day: "numeric",
   }),
   selectedTestTitle = "MindScore Assessment",
+  sleepProfileNarrative = null,
   paginationDebug = false,
   doc = new jsPDF({ unit: "mm", format: "a4" }),
 }) => {
@@ -1141,6 +1524,7 @@ export const buildPremiumPdf = async ({
       overallScore >= 80 ? "High Stability" : overallScore >= 60 ? "Moderate Focus" : "Priority Attention",
     isSleep: /sleep/i.test(selectedTestTitle) || dimensions.some((dimension) => /sleep/i.test(dimension.name)),
     readingTime: estimateReadingTime(),
+    sleepProfileNarrative,
   };
   context.profile = getProfileInsights(dimensions, overallScore);
 
@@ -1155,11 +1539,13 @@ export const buildPremiumPdf = async ({
 
   reserveTocPages(doc, 1);
 
-  const flow = createFlowContext(doc, paginationDebug);
+  const tocLayout = renderTocPages(doc, tocEntries, context);
+  const flow = createFlowContext(doc, tocLayout.nextY, paginationDebug);
   tocEntries.push({ level: 1, title: "How to Use Your Report", page: 2 });
 
   renderSleepPattern(flow, context, tocEntries);
   renderMajorSections(flow, assessmentSections, context, tocEntries);
+  renderSleepProfilePage(flow, context, tocEntries);
   renderPracticalAppendix(flow, context, tocEntries);
   renderClosingPage(doc, context);
   tocEntries.push({ level: 1, title: "Your Next Chapter", page: doc.getNumberOfPages() });

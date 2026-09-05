@@ -12,6 +12,12 @@ import { fileURLToPath } from "url";
 import { buildPremiumPdf } from "../src/premiumPdfGenerator.js";
 import { calculateDimensions } from "../src/psychology/dimensions.js";
 import { calculateSleepScore, calculateSleepResult } from "../src/psychology/sleepScoring.js";
+import {
+  SLEEP_PROFILE_NARRATIVE_MODEL,
+  SLEEP_PROFILE_NARRATIVE_VERSION,
+  buildSleepProfilePayload,
+  generateSleepProfileNarrative,
+} from "./sleepProfileNarrative.js";
 
 dotenv.config();
 
@@ -169,6 +175,16 @@ const toSafeText = (value, fallback = "") => {
 };
 
 const isValidEmail = (email) => /.+@.+\..+/.test(toSafeText(email));
+
+const isAdminRegenerationAuthorized = (req) => {
+  const adminToken = toSafeText(process.env.ADMIN_REGEN_TOKEN);
+  if (adminToken) {
+    const suppliedToken = toSafeText(req.get("authorization")).replace(/^Bearer\s+/i, "");
+    return suppliedToken.length === adminToken.length && crypto.timingSafeEqual(Buffer.from(suppliedToken), Buffer.from(adminToken));
+  }
+
+  return process.env.NODE_ENV !== "production" && (req.ip === "127.0.0.1" || req.ip === "::1" || req.ip === "::ffff:127.0.0.1");
+};
 
 const ensureStorage = async () => {
   await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
@@ -341,6 +357,7 @@ const generatePremiumPdfBuffer = async ({
   finalScore,
   assessmentDate,
   selectedTestTitle,
+  sleepProfileNarrative,
 }) => {
   const doc = await buildPremiumPdf({
     reportText,
@@ -348,6 +365,7 @@ const generatePremiumPdfBuffer = async ({
     finalScore,
     assessmentDate,
     selectedTestTitle,
+    sleepProfileNarrative,
   });
 
   const arrayBuffer = doc.output("arraybuffer");
@@ -480,14 +498,58 @@ const deliverInitialEmail = (purchase, sessionId, fulfillmentStartedAt) => {
 
 const generateReportPdfWithRetry = async (assessment, sessionId) => {
   const attemptOnce = async () => {
-    // The current premium generator renders from saved scores and dimensions;
-    // its reportText input is not part of the rendered PDF.
-    logEvent("ai_report_skipped", {
-      sessionId,
-      assessmentId: assessment.assessmentId,
-      reason: "Current PDF uses score-based personalized content directly.",
-      durationMs: 0,
-    });
+    let sleepProfileNarrative =
+      assessment.sleepProfileNarrativeVersion === SLEEP_PROFILE_NARRATIVE_VERSION
+        ? assessment.sleepProfileNarrative
+        : null;
+
+    if (!sleepProfileNarrative && assessment.assessmentType === "sleep") {
+      const narrativeStartedAt = Date.now();
+      const payload = buildSleepProfilePayload({
+        assessment,
+        dimensions: assessment.dimensions,
+        overallScore: assessment.score,
+      });
+      try {
+        const generated = await generateSleepProfileNarrative({
+          openaiClient: _openaiClient,
+          payload,
+          apiKeyAvailable: Boolean(process.env.OPENAI_API_KEY),
+        });
+        sleepProfileNarrative = generated.fields;
+        logDuration("sleep_profile_ai_narrative", narrativeStartedAt, {
+          sessionId,
+          assessmentId: assessment.assessmentId,
+          status: generated.status,
+          reason: generated.reason,
+          model: SLEEP_PROFILE_NARRATIVE_MODEL,
+        });
+        await withStoreMutation(async (nextStore) => {
+          const nextAssessment = nextStore.assessments[assessment.assessmentId];
+          if (nextAssessment) {
+            nextAssessment.sleepProfileNarrative = sleepProfileNarrative;
+            nextAssessment.sleepProfileNarrativeVersion = SLEEP_PROFILE_NARRATIVE_VERSION;
+          }
+        });
+      } catch (error) {
+        sleepProfileNarrative = {};
+        logDuration("sleep_profile_ai_narrative", narrativeStartedAt, {
+          sessionId,
+          assessmentId: assessment.assessmentId,
+          status: "fallback",
+          reason: error.message,
+          model: SLEEP_PROFILE_NARRATIVE_MODEL,
+        });
+        await withStoreMutation(async (nextStore) => {
+          const nextAssessment = nextStore.assessments[assessment.assessmentId];
+          if (nextAssessment) {
+            nextAssessment.sleepProfileNarrative = sleepProfileNarrative;
+            nextAssessment.sleepProfileNarrativeVersion = SLEEP_PROFILE_NARRATIVE_VERSION;
+          }
+        });
+      }
+    }
+
     const pdfStartedAt = Date.now();
     const pdfBuffer = await generatePremiumPdfBuffer({
       reportText: "",
@@ -495,6 +557,7 @@ const generateReportPdfWithRetry = async (assessment, sessionId) => {
       finalScore: assessment.score,
       assessmentDate: assessment.assessmentDate,
       selectedTestTitle: assessment.testName,
+      sleepProfileNarrative,
     });
     logDuration("premium_pdf_built", pdfStartedAt, { sessionId, assessmentId: assessment.assessmentId, byteSize: pdfBuffer.length });
 
@@ -716,6 +779,52 @@ app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+app.post("/api/admin/premium-report/:assessmentId/regenerate", async (req, res) => {
+  try {
+    if (!isAdminRegenerationAuthorized(req)) {
+      return res.status(404).json({ error: "Route not found." });
+    }
+
+    const assessmentId = toSafeText(req.params.assessmentId);
+    const store = await readStore();
+    const assessment = store.assessments[assessmentId];
+    const completedPurchase = Object.values(store.purchases).find(
+      (purchase) =>
+        purchase?.assessmentId === assessmentId &&
+        (purchase.reportStatus === REPORT_STATUS.REPORT_READY || purchase.reportStatus === REPORT_STATUS.COMPLETED)
+    );
+
+    if (!assessment || !completedPurchase) {
+      return res.status(404).json({ error: "Completed assessment not found." });
+    }
+
+    const pdfBuffer = await generatePremiumPdfBuffer({
+      reportText: "",
+      dimensions: assessment.dimensions,
+      finalScore: assessment.score,
+      assessmentDate: assessment.assessmentDate,
+      selectedTestTitle: assessment.testName,
+    });
+    const filename = `MindScore-AI-Premium-Report-${assessmentId}-QA.pdf`;
+    const pdfPath = path.join(REPORTS_DIR, filename);
+    await fs.writeFile(pdfPath, pdfBuffer);
+    logEvent("admin_pdf_regenerated", {
+      assessmentId,
+      sessionId: completedPurchase.sessionId,
+      pdfPath,
+      pdfGeneratorVersion: PREMIUM_PDF_GENERATOR_VERSION,
+      byteSize: pdfBuffer.length,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error("[admin] premium PDF regeneration failed", { message: error.message });
+    return res.status(500).json({ error: "Unable to regenerate report." });
+  }
 });
 
 app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res) => {
