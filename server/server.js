@@ -520,7 +520,7 @@ const generateReportPdfWithRetry = async (assessment, sessionId) => {
         logDuration("sleep_profile_ai_narrative", narrativeStartedAt, {
           sessionId,
           assessmentId: assessment.assessmentId,
-          status: generated.status,
+          status: generated.status === "ok" ? "ai" : "fallback",
           reason: generated.reason,
           model: SLEEP_PROFILE_NARRATIVE_MODEL,
         });

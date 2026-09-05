@@ -1,6 +1,7 @@
 const NARRATIVE_VERSION = "sleep-profile-ai-v1";
 const MODEL = "gpt-5-mini";
-const TIMEOUT_MS = 12_000;
+const TIMEOUT_MS = 20_000;
+const MAX_OUTPUT_TOKENS = 800;
 
 const REQUIRED_FIELDS = ["profileSummary", "whatsWorking", "mainFocus", "whereToStart", "puttingItTogether"];
 const FIELD_LIMITS = {
@@ -99,13 +100,17 @@ export const validateSleepProfileNarrative = (candidate, payload) => {
   };
 };
 
-const withTimeout = async (promise, timeoutMs = TIMEOUT_MS) => {
+const withTimeout = async (requestFactory, timeoutMs = TIMEOUT_MS) => {
+  const controller = new AbortController();
   let timerId;
-  const timeout = new Promise((_, reject) => {
-    timerId = setTimeout(() => reject(new Error("AI narrative request timed out.")), timeoutMs);
-  });
   try {
-    return await Promise.race([promise, timeout]);
+    return await new Promise((resolve, reject) => {
+      timerId = setTimeout(() => {
+        controller.abort();
+        reject(new Error("AI narrative request timed out."));
+      }, timeoutMs);
+      requestFactory(controller.signal).then(resolve, reject);
+    });
   } finally {
     clearTimeout(timerId);
   }
@@ -116,18 +121,21 @@ export const generateSleepProfileNarrative = async ({ openaiClient, payload, api
     return { status: "fallback", fields: {}, reason: "OPENAI_API_KEY is missing." };
   }
 
-  const response = await withTimeout(
-    openaiClient.responses.create({
-      model: MODEL,
-      max_output_tokens: 1200,
-      input: [
-        "You generate ONLY concise JSON for a consumer sleep self-assessment report.",
-        "Use only the supplied scores and answer signals. Do not diagnose, recommend medication, invent statistics, or change scores.",
-        "Use plain English. Prefer phrases such as 'your results suggest' and 'may be worth observing'.",
-        "Return exactly this JSON shape with string values: {\"profileSummary\":\"...\",\"whatsWorking\":\"...\",\"mainFocus\":\"...\",\"whereToStart\":\"...\",\"puttingItTogether\":\"...\"}.",
-        `Assessment data: ${JSON.stringify(payload)}`,
-      ].join("\n"),
-    })
+  const response = await withTimeout((signal) =>
+    openaiClient.responses.create(
+      {
+        model: MODEL,
+        max_output_tokens: MAX_OUTPUT_TOKENS,
+        input: [
+          "You generate ONLY concise JSON for a consumer sleep self-assessment report.",
+          "Use only the supplied scores and answer signals. Do not diagnose, recommend medication, invent statistics, or change scores.",
+          "Use plain English. Prefer phrases such as 'your results suggest' and 'may be worth observing'.",
+          "Return exactly this JSON shape with string values: {\"profileSummary\":\"...\",\"whatsWorking\":\"...\",\"mainFocus\":\"...\",\"whereToStart\":\"...\",\"puttingItTogether\":\"...\"}.",
+          `Assessment data: ${JSON.stringify(payload)}`,
+        ].join("\n"),
+      },
+      { signal }
+    )
   );
 
   try {
