@@ -227,6 +227,24 @@ const timeoutResult = await generateSleepPremiumReport({
 });
 assert.equal(timeoutResult.source, "fallback");
 assert.equal(validateSleepPremiumReport(timeoutResult.report, validationInput).valid, true);
+const stagingTimeoutResult = await generateSleepPremiumReport({
+  input: validationInput,
+  openaiClient: mockClient({ status: "completed", output_parsed: validReport }),
+  apiKeyAvailable: true,
+  fallbackOnError: false,
+  timeoutMs: 60_000,
+});
+assert.equal(stagingTimeoutResult.source, "ai");
+await assert.rejects(
+  generateSleepPremiumReport({
+    input: validationInput,
+    openaiClient: { responses: { parse: () => new Promise(() => {}) } },
+    apiKeyAvailable: true,
+    fallbackOnError: false,
+    timeoutMs: 10,
+  }),
+  (error) => error.name === "PremiumAITimeoutError"
+);
 
 const fallbackResult = await generateSleepPremiumReport({ input: noStableInput, apiKeyAvailable: false });
 assert.equal(fallbackResult.source, "fallback");

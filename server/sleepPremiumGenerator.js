@@ -22,7 +22,9 @@ const callWithTimeout = async (requestFactory, timeoutMs) => {
       new Promise((_, reject) => {
         timer = setTimeout(() => {
           controller.abort();
-          reject(new Error("Premium AI request timed out."));
+          const timeoutError = new Error(`Premium AI request timed out after ${timeoutMs}ms.`);
+          timeoutError.name = "PremiumAITimeoutError";
+          reject(timeoutError);
         }, timeoutMs);
       }),
     ]);

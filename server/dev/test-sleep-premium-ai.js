@@ -9,18 +9,43 @@ import { generateSleepPremiumReport } from "../sleepPremiumGenerator.js";
 
 const ANSWER_POINTS = Object.freeze([4, 5, 2, 3, 5, 4, 4, 3, 4, 4, 3, 3]);
 const EXPECTED_PROFILE = "ISPREKIDAN SAN";
-const redactSecrets = (value) => {
-  let text = String(value ?? "Unknown error");
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (apiKey) text = text.replaceAll(apiKey, "[REDACTED]");
-  return text
-    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "[REDACTED]")
+const STAGING_AI_TIMEOUT_MS = 60_000;
+
+const classifyFailure = (error) => {
+  const status = Number(error?.status || error?.statusCode) || null;
+  const code = String(error?.code || error?.error?.code || "").toLowerCase();
+  const type = String(error?.type || error?.error?.type || "").toLowerCase();
+  let safeDetail = [error?.name, error?.message, code, type]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/gi, "[REDACTED]")
     .replace(/\bBearer\s+\S+/gi, "Bearer [REDACTED]")
     .replace(/OPENAI_API_KEY\s*[:=]\s*[^\s,;]+/gi, "OPENAI_API_KEY=[REDACTED]");
+  if (process.env.OPENAI_API_KEY) safeDetail = safeDetail.replaceAll(process.env.OPENAI_API_KEY, "[REDACTED]");
+
+  if (error?.name === "PremiumAITimeoutError" || /timed out|timeout|aborterror|etimedout/i.test(safeDetail)) {
+    return { category: "timeout", status, detail: safeDetail };
+  }
+  if (status === 401 || status === 403 || /authentication|invalid_api_key|permission_denied/i.test(`${code} ${type}`)) {
+    return { category: "authentication error", status, detail: safeDetail };
+  }
+  if (/insufficient_quota|quota_exceeded|billing_hard_limit/i.test(`${code} ${type} ${safeDetail}`)) {
+    return { category: "quota error", status, detail: safeDetail };
+  }
+  if (status === 429 || /rate_limit|too_many_requests/i.test(`${code} ${type}`)) {
+    return { category: "rate limit error", status, detail: safeDetail };
+  }
+  if (/schema|json|parsed|validation|incomplete/i.test(safeDetail)) {
+    return { category: "schema/JSON validation error", status, detail: safeDetail };
+  }
+  if (/model_not_found|invalid_model|model.*not found|unsupported model/i.test(`${code} ${type} ${safeDetail}`)) {
+    return { category: "model/API error", status, detail: safeDetail };
+  }
+  return { category: "model/API error", status, detail: safeDetail || "No safe diagnostic details available." };
 };
 
 let profileName = "NOT CALCULATED";
-let schemaStatus = "FAIL";
+let schemaStatus = "NOT RUN";
 let fallbackUsed = false;
 let testSucceeded = false;
 
@@ -75,12 +100,16 @@ try {
     openaiClient,
     apiKeyAvailable: true,
     fallbackOnError: false,
+    timeoutMs: STAGING_AI_TIMEOUT_MS,
   });
   fallbackUsed = generation.source === "fallback";
   failUnless(generation.source === "ai", `Expected AI source; generator returned ${generation.source}.`);
 
   const validation = validateSleepPremiumReport(generation.report, input);
-  if (!validation.valid) throw new Error(`Strict Premium schema validation failed: ${validation.reason}`);
+  if (!validation.valid) {
+    schemaStatus = "FAIL";
+    throw new Error(`Strict Premium schema validation failed: ${validation.reason}`);
+  }
 
   failUnless(generation.report.profile.name === EXPECTED_PROFILE, "AI profile does not match the deterministic profile.");
   failUnless(generation.report.positiveOrWatch.mode === getSleepPremiumStrengthMode(input), "Positive/watch mode does not match deterministic dimensions.");
@@ -93,7 +122,9 @@ try {
   printCustomerReport(generation.report);
   testSucceeded = true;
 } catch (error) {
-  console.error(`Real Premium AI test error: ${redactSecrets(error?.message || error)}`);
+  const diagnostic = classifyFailure(error);
+  if (diagnostic.category === "schema/JSON validation error") schemaStatus = "FAIL";
+  console.error("Real Premium AI test diagnostic:", JSON.stringify(diagnostic));
 } finally {
   console.log(`REAL AI TEST: ${testSucceeded ? "SUCCESS" : "FAILED"}`);
   console.log(`PROFILE: ${profileName}`);
