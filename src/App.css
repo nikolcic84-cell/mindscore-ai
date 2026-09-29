@@ -7379,3 +7379,44 @@ input:focus-visible {
     white-space: nowrap;
   }
 }
+
+/* Full-screen mobile assessment: keep the background on the viewport-sized page and let the quiz grow naturally. */
+@media (max-width: 760px) {
+  .page.assessment-page.quiz-active {
+    display: flex;
+    position: relative;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    min-height: 100dvh;
+    height: auto;
+    align-items: stretch;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    background:
+      linear-gradient(180deg, rgba(8, 12, 18, 0.54), rgba(7, 10, 15, 0.74)),
+      var(--sleep-bedroom-image) center/cover no-repeat;
+  }
+
+  .page.assessment-page.quiz-active > .quiz-photo-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+
+  .page.assessment-page.quiz-active > .quiz-panel {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    min-height: 100dvh;
+    height: auto;
+    margin: 0;
+    padding:
+      max(18px, env(safe-area-inset-top, 0px))
+      max(18px, env(safe-area-inset-right, 0px))
+      max(18px, env(safe-area-inset-bottom, 0px))
+      max(18px, env(safe-area-inset-left, 0px));
+  }
+}
