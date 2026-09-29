@@ -6436,56 +6436,33 @@ input:focus-visible {
   line-height: 1.55;
 }
 
-.sleep-result-insights {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.sleep-result-insight-card {
-  display: flex;
-  min-height: 76px;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px;
-  border: 1px solid rgba(241, 229, 255, 0.15);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.075);
-}
-
-.sleep-result-insight-card span {
-  color: rgba(234, 222, 248, 0.72);
-  font-size: 0.68rem;
-  line-height: 1.25;
-}
-
-.sleep-result-insight-card strong {
-  color: #fffaff;
-  font-size: 0.88rem;
-  font-weight: 700;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.sleep-result-secondary-insights {
-  display: grid;
-  gap: 5px;
-  margin: 10px 0 0;
-  padding: 0 2px 0 15px;
-  color: rgba(239, 228, 250, 0.78);
-  font-size: 0.72rem;
-  line-height: 1.4;
+.sleep-result-personalized {
+  margin-top: 19px;
   text-align: left;
+}
+
+.sleep-result-personalized h3,
+.sleep-locked-teaser-copy h3 {
+  color: rgba(234, 222, 248, 0.78);
+  font-size: 0.69rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1.35;
+}
+
+.sleep-result-personalized p {
+  margin-top: 6px;
+  color: rgba(250, 245, 255, 0.9);
+  font-size: 0.87rem;
+  line-height: 1.5;
 }
 
 .sleep-locked-teaser {
   display: flex;
-  align-items: center;
-  gap: 11px;
-  margin-top: 14px;
-  padding: 12px 14px;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px;
   border: 1px solid rgba(214, 190, 245, 0.2);
   border-radius: 15px;
   background: rgba(214, 190, 245, 0.075);
@@ -6497,11 +6474,19 @@ input:focus-visible {
   filter: saturate(0.75);
 }
 
-.sleep-locked-teaser p {
+.sleep-locked-teaser-copy {
+  min-width: 0;
+}
+
+.sleep-locked-teaser-copy h3 {
+  color: #fffaff;
+}
+
+.sleep-locked-teaser-copy p {
+  margin-top: 5px;
   color: rgba(250, 245, 255, 0.88);
   font-size: 0.8rem;
-  font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .sleep-discovery-cta {
@@ -6610,12 +6595,8 @@ input:focus-visible {
     padding: 17px 14px;
   }
 
-  .sleep-result-insights {
-    gap: 8px;
-  }
-
-  .sleep-result-insight-card {
-    padding: 10px;
+  .sleep-result-personalized {
+    margin-top: 16px;
   }
 }
 

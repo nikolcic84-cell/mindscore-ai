@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 import { calculateDimensions } from "./psychology/dimensions";
 import { calculateSleepScore } from "./psychology/sleepScoring";
+import { getSleepFreeResultPresentation } from "./psychology/sleepFreeResult";
 import { calculateSleepSignature } from "./psychology/sleepSignature";
 import "./App.css";
 
@@ -1082,9 +1083,7 @@ function Homepage({ onStartAssessment }) {
 }
 
 function SleepSignatureResultPage({ signatureResult }) {
-  const isCalmNight = signatureResult?.signatureKey === "calm_night";
-  const isCombinedPattern = signatureResult?.mainAreaType === "multiple_weak";
-  const isNonSpecificPattern = ["supporting_warning", "rhythm_secondary", "mixed_pattern"].includes(signatureResult?.mainAreaType);
+  const presentation = getSleepFreeResultPresentation(signatureResult);
 
   return (
     <>
@@ -1119,45 +1118,27 @@ function SleepSignatureResultPage({ signatureResult }) {
           {signatureResult ? (
             <article className="sleep-signature-card">
               <div className="sleep-signature-copy">
-                <span className="sleep-card-eyebrow">Tvoj obrazac</span>
                 <h2>{signatureResult.signature}</h2>
-                <p className="sleep-signature-description">{signatureResult.shortText}</p>
+                <p className="sleep-signature-description">{presentation?.profileDescription}</p>
               </div>
 
-              <div className="sleep-result-insights">
-                <section className="sleep-result-insight-card">
-                  <span>
-                    {isCalmNight
-                      ? "Tvoja najjača strana"
-                      : isCombinedPattern
-                      ? "Oblasti koje se izdvajaju"
-                      : isNonSpecificPattern
-                      ? "Obrazac koji se izdvaja"
-                      : "Najviše se izdvaja"}
-                  </span>
-                  <strong>{isCalmNight ? signatureResult.strongestArea : signatureResult.mainArea}</strong>
+              {presentation && (
+                <section className="sleep-result-personalized" aria-labelledby="sleep-personalized-title">
+                  <h3 id="sleep-personalized-title">ŠTA SE IZDVAJA U TVOJIM ODGOVORIMA</h3>
+                  <p>{presentation.insight}</p>
                 </section>
-                <section className="sleep-result-insight-card">
-                  <span>{isCalmNight ? "Dobra vest" : "Tvoja dobra strana"}</span>
-                  <strong>{isCalmNight ? signatureResult.mainArea : signatureResult.strongestArea}</strong>
-                </section>
-              </div>
-
-              {signatureResult.secondaryInsights?.length > 0 && (
-                <ul className="sleep-result-secondary-insights" aria-label="Dodatni uvidi">
-                  {signatureResult.secondaryInsights.map((insight) => (
-                    <li key={insight.key}>{insight.text}</li>
-                  ))}
-                </ul>
               )}
 
-              <div className="sleep-locked-teaser">
+              <section className="sleep-locked-teaser" aria-labelledby="sleep-locked-teaser-title">
                 <span className="sleep-lock-icon" aria-hidden="true">🔒</span>
-                <p>Još 4 stvari se izdvajaju iz tvojih odgovora.</p>
-              </div>
+                <div className="sleep-locked-teaser-copy">
+                  <h3 id="sleep-locked-teaser-title">OVO JE SAMO DEO TVOJE SLIKE</h3>
+                  <p>Detaljnija analiza povezuje tvoje odgovore i pokazuje šta podržava tvoj san, šta ga remeti i gde se krije najveći prostor za promenu.</p>
+                </div>
+              </section>
 
               <a className="sleep-discovery-cta" href="/sleep-premium">
-                <span>OTKRIJ ŠTA SE JOŠ KRIJE <span aria-hidden="true">→</span></span>
+                <span>OTKRIJ CELU PRIČU O SVOM SNU <span aria-hidden="true">→</span></span>
               </a>
             </article>
           ) : (
