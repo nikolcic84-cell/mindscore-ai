@@ -1083,6 +1083,8 @@ function Homepage({ onStartAssessment }) {
 
 function SleepSignatureResultPage({ signatureResult }) {
   const isCalmNight = signatureResult?.signatureKey === "calm_night";
+  const isCombinedPattern = signatureResult?.mainAreaType === "multiple_weak";
+  const isNonSpecificPattern = ["supporting_warning", "rhythm_secondary", "mixed_pattern"].includes(signatureResult?.mainAreaType);
 
   return (
     <>
@@ -1124,7 +1126,15 @@ function SleepSignatureResultPage({ signatureResult }) {
 
               <div className="sleep-result-insights">
                 <section className="sleep-result-insight-card">
-                  <span>{isCalmNight ? "Tvoja najjača strana" : "Najviše se izdvaja"}</span>
+                  <span>
+                    {isCalmNight
+                      ? "Tvoja najjača strana"
+                      : isCombinedPattern
+                      ? "Oblasti koje se izdvajaju"
+                      : isNonSpecificPattern
+                      ? "Obrazac koji se izdvaja"
+                      : "Najviše se izdvaja"}
+                  </span>
                   <strong>{isCalmNight ? signatureResult.strongestArea : signatureResult.mainArea}</strong>
                 </section>
                 <section className="sleep-result-insight-card">
@@ -1132,6 +1142,14 @@ function SleepSignatureResultPage({ signatureResult }) {
                   <strong>{isCalmNight ? signatureResult.mainArea : signatureResult.strongestArea}</strong>
                 </section>
               </div>
+
+              {signatureResult.secondaryInsights?.length > 0 && (
+                <ul className="sleep-result-secondary-insights" aria-label="Dodatni uvidi">
+                  {signatureResult.secondaryInsights.map((insight) => (
+                    <li key={insight.key}>{insight.text}</li>
+                  ))}
+                </ul>
+              )}
 
               <div className="sleep-locked-teaser">
                 <span className="sleep-lock-icon" aria-hidden="true">🔒</span>

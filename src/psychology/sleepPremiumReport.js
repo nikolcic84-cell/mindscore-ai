@@ -1,4 +1,9 @@
-import { calculateSleepSignature, getSleepDimensionSeverity } from "./sleepSignature.js";
+import {
+  calculateSleepSignature,
+  getSleepDimensionSeverity,
+  SLEEP_SIGNATURE_DIMENSION_NAMES,
+  SLEEP_SIGNATURE_DIMENSION_QUESTION_INDICES,
+} from "./sleepSignature.js";
 
 const QUESTION_ANSWER_TEXT = [
   [
@@ -88,10 +93,10 @@ const QUESTION_ANSWER_TEXT = [
 ];
 
 const DIMENSIONS = Object.freeze({
-  recovery: { name: "Oporavak", questions: [0, 3, 7, 10] },
-  sleepOnset: { name: "Uspavljivanje", questions: [1, 6] },
-  continuity: { name: "Kontinuitet sna", questions: [2] },
-  rhythm: { name: "Ritam sna", questions: [4, 8, 9] },
+  recovery: { name: SLEEP_SIGNATURE_DIMENSION_NAMES.recovery, questions: SLEEP_SIGNATURE_DIMENSION_QUESTION_INDICES.recovery },
+  sleepOnset: { name: SLEEP_SIGNATURE_DIMENSION_NAMES.sleepOnset, questions: SLEEP_SIGNATURE_DIMENSION_QUESTION_INDICES.sleepOnset },
+  continuity: { name: SLEEP_SIGNATURE_DIMENSION_NAMES.continuity, questions: SLEEP_SIGNATURE_DIMENSION_QUESTION_INDICES.continuity },
+  rhythm: { name: SLEEP_SIGNATURE_DIMENSION_NAMES.rhythm, questions: SLEEP_SIGNATURE_DIMENSION_QUESTION_INDICES.rhythm },
 });
 
 const DIMENSION_ANSWER_CONTEXT = Object.freeze({
@@ -103,9 +108,10 @@ const DIMENSION_ANSWER_CONTEXT = Object.freeze({
   ],
   sleepOnset: [
     "koliko lako zaspiš",
+    "kako izgleda poslednjih 30 minuta pre spavanja",
     "koliko je um aktivan kada legneš",
   ],
-  continuity: ["šta se događa tokom noći"],
+  continuity: ["šta se događa tokom noći", "kako procenjuješ svoje poslednje noći"],
   rhythm: [
     "koliko sna obično imaš",
     "kako se vreme buđenja menja slobodnim danom",
@@ -125,10 +131,10 @@ const normalizePoints = (answers) => {
 };
 
 const getDimensionForArea = (areaName) =>
-  Object.entries(DIMENSIONS).find(([, dimension]) => dimension.name === areaName)?.[0] || "recovery";
+  Object.entries(DIMENSIONS).find(([, dimension]) => dimension.name === areaName)?.[0] || null;
 
-const getWeakestDimensionKey = (dimensionScores) =>
-  Object.keys(DIMENSIONS).sort((a, b) => dimensionScores[a] - dimensionScores[b])[0];
+const getDimensionKeysForAreas = (areaNames = []) =>
+  areaNames.map(getDimensionForArea).filter((key, index, keys) => keys.indexOf(key) === index);
 
 const getAnswerText = (indexes, questionIndex) => QUESTION_ANSWER_TEXT[questionIndex][indexes[questionIndex]];
 
@@ -181,20 +187,39 @@ const getStrengthObservation = (key, indexes, dimensionScores) => {
   return `${dimension.name} je relativno najpovoljnija oblast među odgovorima, ali se ne izdvaja kao potpuno stabilan oslonac. Tvoji odgovori su: ${evidence}.`;
 };
 
-const getSignatureExplanation = (signatureResult, indexes, dimensionScores) => {
+const getSignatureExplanation = (signatureResult, indexes) => {
   const onsetText = getAnswerText(indexes, 1);
   const mindText = getAnswerText(indexes, 6);
 
-  if (signatureResult.signatureKey === "calm_night") {
-    return `Tvoj obrazac, ${signatureResult.signature}, opisuje odgovore bez jedne jasno izdvojene slabe oblasti. Najjači oslonac u tvojim odgovorima je ${signatureResult.strongestArea.toLowerCase()}. Ovaj potpis ne znači da je svaka noć ista; on sažima ono što si označio/la u ovom upitniku.`;
+  if (signatureResult.mainAreaType === "supporting_warning") {
+    return `Osnovne oblasti ne izdvajaju jednu slabu tačku, ali odgovori o navici pred spavanje ili ukupnom utisku zaslužuju kontekst. Ovaj rezultat ne označava poseban problem; poziva da obratiš pažnju na dodatni signal u svojim odgovorima.`;
   }
-  if (signatureResult.signatureKey === "empty_battery") {
-    return `Potpis ${signatureResult.signature} nastaje kada se u odgovorima istovremeno izdvoje kontinuitet noći i osećaj oporavka. Tvoj odgovor o buđenjima — ${quoteAnswer(getAnswerText(indexes, 2))} — posmatra se zajedno sa odgovorima o buđenju i dnevnom funkcionisanju. To opisuje obrazac odgovora, a ne medicinski zaključak.`;
+
+  if (signatureResult.mainAreaType === "rhythm_secondary") {
+    return `Osnovne oblasti sna nisu izdvojile jednu jasnu slabu tačku, dok ritam spavanja predstavlja dodatnu temu za praćenje. ${signatureResult.secondaryInsights.map((insight) => insight.text).join(" ")}`;
+  }
+
+  if (signatureResult.mainAreaType === "mixed_pattern") {
+    return "Tvoji odgovori daju mešovitu sliku osnovnih oblasti, bez jedne jasno izdvojene slabe tačke i bez dovoljno ujednačenih signala za MIRNA NOĆ.";
+  }
+
+  if (signatureResult.mainAreaType === "multiple_weak") {
+    const areas = signatureResult.weakCoreDimensions.map((key) => DIMENSIONS[key].name.toLowerCase());
+    return `Više osnovnih oblasti istovremeno je ispod uobičajenog nivoa odgovora: ${areas.join(", ")}. Zato je poštenije sagledati ih zajedno, bez izdvajanja samo jednog kao jedinog fokusa.`;
+  }
+
+  if (signatureResult.signatureKey === "calm_night") {
+    const strongestCopy = signatureResult.strongestAreas.length > 1
+      ? `Najviši rezultat dele oblasti ${signatureResult.strongestAreas.map((area) => area.toLowerCase()).join(", ")}.`
+      : `Najjači oslonac u tvojim odgovorima je ${signatureResult.strongestArea.toLowerCase()}.`;
+    return `Tvoj obrazac, ${signatureResult.signature}, opisuje odgovore bez jedne jasno izdvojene slabe oblasti. ${strongestCopy} U upitniku su, između ostalog, zabeleženi odgovori ${quoteAnswer(getAnswerText(indexes, 0))}, ${quoteAnswer(getAnswerText(indexes, 1))} i ${quoteAnswer(getAnswerText(indexes, 2))}. Ovaj potpis ne znači da je svaka noć ista.`;
   }
   if (signatureResult.signatureKey === "sleep_under_pressure") {
-    const relevantKeys = Object.keys(DIMENSIONS).filter((key) => getSleepDimensionSeverity(dimensionScores[key]) === "weak");
+    const relevantKeys = signatureResult.weakCoreDimensions;
     const relevantAreas = relevantKeys.map((key) => DIMENSIONS[key].name.toLowerCase()).join(", ");
-    return `Potpis ${signatureResult.signature} znači da se više delova tvoje priče o snu prepliće i da nije korisno svesti ih na samo jedan uzrok. U tvojim odgovorima pažnju zajedno traže oblasti: ${relevantAreas}.`;
+    return relevantKeys.length
+      ? `Potpis ${signatureResult.signature} znači da se više delova tvoje priče o snu prepliće i da nije korisno svesti ih na samo jedan uzrok. U tvojim odgovorima pažnju zajedno traže oblasti: ${relevantAreas}.`
+      : `Potpis ${signatureResult.signature} označava mešovitu sliku ili dodatni signal koji vredi sagledati bez zaključka da postoji jedna slaba oblast. ${signatureResult.secondaryInsights.map((insight) => insight.text).join(" ")}`;
   }
   if (signatureResult.signatureKey === "awake_mind") {
     return `Potpis ${signatureResult.signature} opisuje večeri u kojima uspavljivanje ili smirivanje misli mogu tražiti više vremena. U tvojim odgovorima stoji ${quoteAnswer(onsetText)} i ${quoteAnswer(mindText)}. To su konkretni signali za izbor nežnijeg prelaza iz dana u odmor.`;
@@ -205,25 +230,27 @@ const getSignatureExplanation = (signatureResult, indexes, dimensionScores) => {
   if (signatureResult.signatureKey === "fragmented_night") {
     return `Potpis ${signatureResult.signature} opisuje odgovor koji se odnosi na tok noći kao najizraženiju temu. Tvoj izbor je: ${quoteAnswer(getAnswerText(indexes, 2))}. Ostale oblasti se koriste kao kontekst, a ne kao zamena za ovaj odgovor.`;
   }
-  if (signatureResult.signatureKey === "irregular_rhythm") {
-    return `Potpis ${signatureResult.signature} ukazuje da se ritam spavanja i buđenja najviše izdvaja u tvojim odgovorima. Na primer, među tvojim odgovorima su ${quoteAnswer(getAnswerText(indexes, 9))} i ${quoteAnswer(getAnswerText(indexes, 8))}.`;
-  }
   return signatureResult.shortText;
 };
 
-const getRelationshipInsight = (indexes, dimensionScores) => {
-  const ordered = Object.keys(DIMENSIONS).sort((a, b) => dimensionScores[a] - dimensionScores[b]);
-  const first = ordered[0];
-  const second = ordered[1];
-
-  if (first === "rhythm" || second === "rhythm") {
+const getRelationshipInsight = (indexes, signatureResult) => {
+  if (signatureResult.secondaryInsights.some((insight) => insight.key === "rhythm" || insight.key === "rhythm_mixed")) {
     return `Tvoj odgovor o slobodnom danu (${quoteAnswer(getAnswerText(indexes, 8))}) ide uz ono što kažeš o predvidivosti ritma (${quoteAnswer(getAnswerText(indexes, 9))}). Posmatrati ih zajedno može pomoći da razlikuješ povremenu nadoknadu sna od promenljivog rasporeda.`;
   }
-  if (first === "sleepOnset" || second === "sleepOnset") {
+  if (signatureResult.q6StronglyNegative || signatureResult.signatureKey === "awake_mind") {
     return `Tvoj odgovor o uspavljivanju (${quoteAnswer(getAnswerText(indexes, 1))}) može se posmatrati zajedno sa načinom na koji provodiš poslednjih 30 minuta pre sna (${quoteAnswer(getAnswerText(indexes, 5))}). Veza je korisna za razmišljanje o večernjem prelazu, bez pretpostavke da je jedan odgovor uzrok drugog.`;
   }
-  if (first === "continuity" || second === "continuity") {
+  if (signatureResult.q12StronglyNegative || signatureResult.signatureKey === "fragmented_night") {
     return `Odgovor o toku noći (${quoteAnswer(getAnswerText(indexes, 2))}) ima smisla čitati uz jutarnji osećaj (${quoteAnswer(getAnswerText(indexes, 0))}). Zajedno daju širu sliku o tome kako se noćno iskustvo i jutro pojavljuju u tvojim odgovorima.`;
+  }
+  if (signatureResult.signatureKey === "sleep_under_pressure") {
+    return `Odgovori o jutarnjem osećaju (${quoteAnswer(getAnswerText(indexes, 0))}) i uspavljivanju (${quoteAnswer(getAnswerText(indexes, 1))}) daju dva pogleda na tvoj obrazac. Zajedno ih je korisnije posmatrati nego tražiti jedan jedini razlog.`;
+  }
+  if (signatureResult.signatureKey === "calm_night" && signatureResult.strongestAreas.length > 1) {
+    return `Više osnovnih oblasti deli najviši rezultat (${signatureResult.strongestAreas.join(", ")}). Tvoj ritam spavanja i svakodnevne navike mogu pružiti dodatni kontekst, bez izdvajanja jedne oblasti kao pobedničke.`;
+  }
+  if (signatureResult.weakestAreas.length > 1) {
+    return `Više oblasti deli najniži rezultat (${signatureResult.weakestAreas.join(", ")}). Zbog toga ih je poštenije sagledati zajedno nego izdvojiti samo jednu.`;
   }
   return `Odgovori o buđenju (${quoteAnswer(getAnswerText(indexes, 0))}) i energiji tokom dana (${quoteAnswer(getAnswerText(indexes, 7))}) daju dva pogleda na oporavak. Čitani zajedno, pomažu da primetiš da li jutro i ostatak dana opisuju sličan obrazac.`;
 };
@@ -266,6 +293,17 @@ const getActionPlan = (focusKey, indexes) => {
 };
 
 const getSevenDayPlan = (focusKey, actions) => {
+  if (!focusKey) {
+    return [
+      "Dan 1 — Primeti koji deo večeri ti najviše prija.",
+      "Dan 2 — Zabeleži kako se osećaš pri buđenju.",
+      "Dan 3 — Obrati pažnju na ritam odlaska u krevet i ustajanja.",
+      "Dan 4 — Ponovi jednu naviku koja ti je prijala.",
+      "Dan 5 — Primeti da li se odgovor o noći ponavlja.",
+      "Dan 6 — Izaberi jedan mali korak koji ti deluje održivo.",
+      "Dan 7 — Osvrni se na zapažanja i zadrži ono što ti je koristilo.",
+    ];
+  }
   const focusNames = {
     recovery: "jutarnjeg osećaja i oporavka",
     sleepOnset: "večernjeg smirivanja",
@@ -290,21 +328,31 @@ export function buildSleepPremiumReport(answers) {
   if (!signature) throw new TypeError("Sleep signature could not be calculated from the supplied answers.");
 
   const dimensionScores = signature.internalScores;
-  const strongestKey = getDimensionForArea(signature.strongestArea);
-  const focusKey = signature.signatureKey === "calm_night"
-    ? strongestKey
-    : signature.signatureKey === "sleep_under_pressure"
-    ? getWeakestDimensionKey(dimensionScores)
-    : getDimensionForArea(signature.mainArea);
-  const observation = signature.signatureKey === "empty_battery"
-    ? `${getDimensionObservation("recovery", answerIndexes, dimensionScores)} ${getDimensionObservation("continuity", answerIndexes, dimensionScores)}`
-    : signature.signatureKey === "sleep_under_pressure"
+  const strongestKeys = getDimensionKeysForAreas(signature.strongestAreas);
+  const coreWeakKeys = signature.weakCoreDimensions;
+  const focusKey = signature.mainAreaType === "single_weak_core"
+    ? coreWeakKeys[0]
+    : signature.signatureKey === "calm_night" && strongestKeys.length === 1
+    ? strongestKeys[0]
+    : null;
+  const observation = signature.mainAreaType === "multiple_weak"
     ? Object.keys(DIMENSIONS)
-      .filter((key) => getSleepDimensionSeverity(dimensionScores[key]) === "weak")
+      .filter((key) => coreWeakKeys.includes(key))
       .map((key) => getDimensionObservation(key, answerIndexes, dimensionScores))
       .join(" ")
-    : getDimensionObservation(focusKey, answerIndexes, dimensionScores);
-  const actions = getActionPlan(focusKey, answerIndexes);
+    : focusKey
+    ? getDimensionObservation(focusKey, answerIndexes, dimensionScores)
+    : `${signature.mainArea} ${signature.secondaryInsights.map((insight) => insight.text).join(" ")}`.trim();
+  const actions = focusKey
+    ? getActionPlan(focusKey, answerIndexes)
+    : [
+        "Izaberi jednu malu naviku koju možeš lako da ponoviš narednih dana.",
+        "Zabeleži kratak utisak o večeri i jutru bez pokušaja da menjaš sve odjednom.",
+        "Obrati pažnju na dodatne signale i na to da li se ponavljaju.",
+      ];
+  const strongestObservation = strongestKeys.length === 1
+    ? getStrengthObservation(strongestKeys[0], answerIndexes, dimensionScores)
+    : `Više oblasti deli najviši rezultat: ${strongestKeys.map((key) => DIMENSIONS[key].name).join(", ")}. Nijedna nije izdvojena kao jedina najjača.`;
 
   return {
     signature,
@@ -312,7 +360,7 @@ export function buildSleepPremiumReport(answers) {
     sections: [
       {
         title: "Tvoj potpis sna",
-        paragraphs: [getSignatureExplanation(signature, answerIndexes, dimensionScores)],
+        paragraphs: [getSignatureExplanation(signature, answerIndexes)],
       },
       {
         title: "Šta se najviše izdvaja",
@@ -320,21 +368,27 @@ export function buildSleepPremiumReport(answers) {
       },
       {
         title: "Šta ti već ide dobro",
-        paragraphs: [getStrengthObservation(strongestKey, answerIndexes, dimensionScores)],
+        paragraphs: [strongestObservation],
       },
       {
         title: "Veza koju možda ne primećuješ",
-        paragraphs: [getRelationshipInsight(answerIndexes, dimensionScores)],
+        paragraphs: [getRelationshipInsight(answerIndexes, signature)],
       },
       {
         title: "Na šta vredi obratiti pažnju",
         paragraphs: [signature.signatureKey === "calm_night"
-          ? `Nijedna oblast se ne izdvaja kao jasan problem. Ako želiš da pratiš obrazac, posmatraj ${DIMENSION_ANSWER_CONTEXT[focusKey].join(" i ")} i nastavi da čuvaš navike koje ti prijaju.`
-          : signature.signatureKey === "empty_battery"
-          ? "U tvojim odgovorima se zajedno izdvajaju kontinuitet noći i osećaj oporavka. Možeš početi od jednog malog koraka koji podržava mirniji tok noći i lakši početak dana."
-          : signature.signatureKey === "sleep_under_pressure"
-          ? "Više oblasti zaslužuje pažnju, pa je korisnije izabrati jedan mali korak nego pokušavati da menjaš sve odjednom."
-          : `Kao sledeći mali fokus može poslužiti ${DIMENSIONS[focusKey].name.toLowerCase()}. Ovo je smernica za posmatranje ličnih navika, ne medicinski zaključak.`],
+          ? `Nijedna oblast se ne izdvaja kao jasna slaba tačka. ${signature.secondaryInsights.map((insight) => insight.text).join(" ")}`.trim()
+          : signature.mainAreaType === "single_weak_core"
+          ? `Kao sledeći mali fokus može poslužiti ${DIMENSIONS[focusKey].name.toLowerCase()}. Ovo je smernica za posmatranje ličnih navika, ne medicinski zaključak.`
+          : signature.mainAreaType === "multiple_weak"
+          ? "Više osnovnih oblasti je slabo; izaberi jedan mali korak umesto da pokušavaš da menjaš sve odjednom."
+          : signature.mainAreaType === "rhythm_secondary"
+          ? `Osnovne oblasti nisu svrstane u jasan obrazac za jednu oblast. ${signature.secondaryInsights.map((insight) => insight.text).join(" ")}`
+          : signature.mainAreaType === "supporting_warning"
+          ? `Osnovne oblasti nisu jasno slabe, ali vredi primetiti dodatne signale. ${signature.secondaryInsights.map((insight) => insight.text).join(" ")}`
+          : signature.mainAreaType === "mixed_pattern"
+          ? `Odgovori daju mešovitu sliku bez jedne oblasti koja bi se izdvojila kao fokus. ${signature.secondaryInsights.map((insight) => insight.text).join(" ")}`
+          : `${signature.mainArea} ${signature.secondaryInsights.map((insight) => insight.text).join(" ")}`.trim()],
       },
       {
         title: "Odakle da počneš",

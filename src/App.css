@@ -6469,6 +6469,17 @@ input:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.sleep-result-secondary-insights {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0 2px 0 15px;
+  color: rgba(239, 228, 250, 0.78);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  text-align: left;
+}
+
 .sleep-locked-teaser {
   display: flex;
   align-items: center;

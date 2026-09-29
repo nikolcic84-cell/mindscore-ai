@@ -6,12 +6,10 @@ import { buildSleepPremiumPdf } from "../sleepPremiumPdf.js";
 const toPoints = (indexes) => indexes.map((index) => 5 - index);
 const personas = [
   { name: "MIRNA NOĆ", indexes: Array(12).fill(0) },
-  { name: "UMORNO BUĐENJE", indexes: [4, 0, 0, 4, 0, 0, 0, 4, 0, 0, 4, 0] },
+  { name: "UMORAN SAN", indexes: [4, 0, 0, 4, 0, 0, 0, 4, 0, 0, 4, 0] },
   { name: "BUDAN UM", indexes: [0, 4, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0] },
-  { name: "ISPREKIDANA NOĆ", indexes: [0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-  { name: "PROMENLJIV RITAM", indexes: [0, 0, 0, 0, 3, 0, 0, 0, 4, 4, 0, 0] },
-  { name: "PRAZNA BATERIJA", indexes: Array(12).fill(4) },
-  { name: "SAN POD PRITISKOM", indexes: [4, 4, 0, 4, 3, 0, 4, 4, 4, 4, 4, 0] },
+  { name: "ISPREKIDAN SAN", indexes: [0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 4] },
+  { name: "SAN POD PRITISKOM", indexes: Array(12).fill(2) },
 ];
 
 const allText = (report) => report.sections.flatMap((section) => [
@@ -41,8 +39,8 @@ test("builds a personalized Serbian sleep report and PDF for every signature per
     return { report, text, bytes };
   });
 
-  assert.equal(new Set(reports.map(({ report }) => report.signature.signature)).size, 7);
-  assert.equal(new Set(reports.map(({ text }) => text)).size, 7);
+  assert.equal(new Set(reports.map(({ report }) => report.signature.signature)).size, 5);
+  assert.equal(new Set(reports.map(({ text }) => text)).size, 5);
   assert.ok(new Set(reports.map(({ bytes }) => bytes.length)).size > 1);
 });
 
@@ -57,6 +55,14 @@ test("specific answer changes personalize report evidence even when the signatur
   assert.notEqual(allText(first), allText(second));
   assert.match(allText(first), /Zaspim vrlo brzo/);
   assert.match(allText(second), /Treba mi malo vremena/);
+});
+
+test("mixed report copy stays neutral and does not call the area weak or problematic", () => {
+  const report = buildSleepPremiumReport(toPoints(Array(12).fill(2)));
+  const text = allText(report);
+  assert.equal(report.signature.signature, "SAN POD PRITISKOM");
+  assert.equal(report.signature.mainAreaType, "mixed_pattern");
+  assert.doesNotMatch(text, /jasan problem|slabu tačku|disorder|diagnosed/i);
 });
 
 test("rejects missing or invalid original answer sets", () => {
