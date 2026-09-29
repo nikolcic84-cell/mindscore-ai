@@ -6650,6 +6650,13 @@ input:focus-visible {
   line-height: 1.5;
 }
 
+.sleep-discovery-intro h1 {
+  max-width: 18ch;
+  margin-right: auto;
+  margin-left: auto;
+  font-size: clamp(1.65rem, 7.2vw, 2.15rem);
+}
+
 .sleep-discovery-signature {
   display: inline-flex;
   align-items: center;
@@ -6678,7 +6685,7 @@ input:focus-visible {
 .sleep-discovery-card {
   position: relative;
   display: grid;
-  min-height: 84px;
+  min-height: 76px;
   grid-template-columns: 28px minmax(0, 1fr) 46px;
   align-items: center;
   gap: 9px;
@@ -6722,6 +6729,14 @@ input:focus-visible {
   color: rgba(247, 241, 252, 0.72);
   font-size: 0.7rem;
   line-height: 1.38;
+}
+
+.sleep-discovery-card h2 {
+  font-size: 0.78rem;
+}
+
+.sleep-discovery-card p {
+  font-size: 0.69rem;
 }
 
 .sleep-discovery-blurred-preview {
@@ -6809,9 +6824,19 @@ input:focus-visible {
 
 .sleep-premium-purchase {
   display: grid;
-  gap: 12px;
+  gap: 9px;
   margin-top: 2px;
   padding-top: 4px;
+}
+
+.sleep-discovery-hook {
+  max-width: 34ch;
+  margin: 8px auto 5px;
+  color: rgba(250, 245, 255, 0.92);
+  font-size: clamp(1.05rem, 4.7vw, 1.2rem);
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .sleep-premium-purchase .sleep-discovery-price {
@@ -6838,6 +6863,13 @@ input:focus-visible {
 
 .sleep-premium-purchase .sleep-checkout-trust {
   margin: -4px 0 0;
+}
+
+.sleep-premium-includes {
+  color: rgba(249, 242, 255, 0.72);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .sleep-discovery-back {

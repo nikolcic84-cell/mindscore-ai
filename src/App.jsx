@@ -3,6 +3,7 @@ import AnalyticsDashboard from "./AnalyticsDashboard";
 import { calculateDimensions } from "./psychology/dimensions";
 import { calculateSleepScore } from "./psychology/sleepScoring";
 import { getSleepFreeResultPresentation } from "./psychology/sleepFreeResult";
+import { formatConfiguredEurPrice, getSleepPremiumBenefits } from "./psychology/sleepPremiumOffer";
 import { calculateSleepSignature } from "./psychology/sleepSignature";
 import "./App.css";
 
@@ -1153,29 +1154,6 @@ function SleepSignatureResultPage({ signatureResult }) {
   );
 }
 
-const SLEEP_DISCOVERY_CARDS = [
-  {
-    title: "Šta najviše utiče na tvoj san",
-    description: "Pogledaj šta se u tvojim odgovorima najviše povezuje sa trenutnim obrascem sna.",
-  },
-  {
-    title: "Tvoj skriveni obrazac",
-    description: "Otkrij vezu između odgovora koja nije vidljiva iz samo jednog pitanja.",
-  },
-  {
-    title: "Šta ti već ide dobro",
-    description: "Prepoznaj delove sna i navike koji predstavljaju tvoju dobru osnovu.",
-  },
-  {
-    title: "Odakle da počneš",
-    description: "Dobij konkretne korake prilagođene tvom obrascu sna.",
-  },
-  {
-    title: "Kompletan PDF izveštaj",
-    description: "Tvoja analiza, objašnjenja i praktični koraci na jednom mestu.",
-  },
-];
-
 function useSavedSleepAssessment() {
   const [savedAssessment, setSavedAssessment] = useState({ userAnswers: null, signatureResult: null });
 
@@ -1207,6 +1185,7 @@ function useSavedSleepAssessment() {
 
 function SleepPremiumDiscoveryPage() {
   const { signatureResult, userAnswers } = useSavedSleepAssessment();
+  const premiumBenefits = getSleepPremiumBenefits(signatureResult);
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailError, setEmailError] = useState("");
@@ -1258,7 +1237,7 @@ function SleepPremiumDiscoveryPage() {
     <>
       <SeoHead
         title="Tvoja priča se nastavlja | MindScore AI"
-        description="Nastavi da istražuješ obrasce koji se kriju u tvojoj priči o snu."
+        description="Nastavi da istražuješ šta tvoji odgovori govore o tvom snu."
       />
       <main className="sleep-experience-page sleep-discovery-page">
         <div className="sleep-experience-overlay" aria-hidden="true" />
@@ -1269,18 +1248,17 @@ function SleepPremiumDiscoveryPage() {
           </header>
 
           <section className="sleep-discovery-intro">
-            <p className="sleep-discovery-kicker">TVOJA PRIČA SE NASTAVLJA</p>
-            <h1>IZA TVOG POTPISA<br />KRIJE SE JOŠ</h1>
+            <h1>OTKRIJ VIŠE O SVOM SNU</h1>
             <p className="sleep-discovery-description">
-              Na osnovu tvojih 12 odgovora izdvojili smo još nekoliko obrazaca koji ti mogu pomoći da bolje razumeš svoj san.
+              Tvoj rezultat je samo početak. Pogledaćemo svih 12 odgovora zajedno da ti pokažemo gde tvoj san najviše gubi kvalitet, šta ti već ide dobro i odakle ima najviše smisla da kreneš.
             </p>
             {signatureResult && (
-              <p className="sleep-discovery-signature">Tvoj potpis: <strong>{signatureResult.signature}</strong></p>
+              <p className="sleep-discovery-signature">Tvoj rezultat: <strong>{signatureResult.signature}</strong></p>
             )}
           </section>
 
           <section className="sleep-discoveries" aria-label="Zaključana otkrića">
-            {SLEEP_DISCOVERY_CARDS.map((card, index) => (
+            {premiumBenefits.map((card, index) => (
               <article className="sleep-discovery-card" key={card.title}>
                 <span className="sleep-discovery-lock" aria-hidden="true">🔒</span>
                 <div className="sleep-discovery-card-copy">
@@ -1296,8 +1274,9 @@ function SleepPremiumDiscoveryPage() {
           </section>
 
           <section className="sleep-premium-purchase" aria-label="Kupovina kompletnog izveštaja">
+            <p className="sleep-discovery-hook">Ne moraš da menjaš sve. Važno je da znaš odakle da počneš.</p>
             <section className="sleep-discovery-price" aria-label="Cena">
-              <strong>4,99 €</strong>
+              <strong>{formatConfiguredEurPrice(PREMIUM_PRICE_EUR)}</strong>
               <span>Jednokratno · Bez pretplate</span>
             </section>
 
@@ -1319,8 +1298,9 @@ function SleepPremiumDiscoveryPage() {
               {emailError && <p className="sleep-checkout-error" id="sleep-premium-email-error" role="alert">{emailError}</p>}
               {checkoutError && <p className="sleep-checkout-error" role="alert">{checkoutError}</p>}
               <button className="sleep-discovery-cta" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Otvaramo sigurno plaćanje..." : "OTKLJUČAJ CELU PRIČU →"}
+                {isSubmitting ? "Otvaramo sigurno plaćanje..." : "OTKLJUČAJ MOJ DETALJNI REZULTAT →"}
               </button>
+              <p className="sleep-premium-includes">Lično objašnjenje · konkretni koraci · plan za 7 dana · PDF za čuvanje</p>
             </form>
 
             <p className="sleep-checkout-trust">🔒 Sigurno plaćanje putem Stripe-a</p>
