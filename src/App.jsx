@@ -1160,8 +1160,8 @@ const SLEEP_DISCOVERY_CARDS = [
     description: "Pogledaj šta se u tvojim odgovorima najviše povezuje sa trenutnim obrascem sna.",
   },
   {
-    title: "Veza koju možda ne primećuješ",
-    description: "Pogledaj kako se tvoji odgovori međusobno povezuju.",
+    title: "Tvoj skriveni obrazac",
+    description: "Otkrij vezu između odgovora koja nije vidljiva iz samo jednog pitanja.",
   },
   {
     title: "Šta ti već ide dobro",
@@ -1170,6 +1170,10 @@ const SLEEP_DISCOVERY_CARDS = [
   {
     title: "Odakle da počneš",
     description: "Dobij konkretne korake prilagođene tvom obrascu sna.",
+  },
+  {
+    title: "Kompletan PDF izveštaj",
+    description: "Tvoja analiza, objašnjenja i praktični koraci na jednom mestu.",
   },
 ];
 
@@ -1203,73 +1207,6 @@ function useSavedSleepAssessment() {
 }
 
 function SleepPremiumDiscoveryPage() {
-  const { signatureResult } = useSavedSleepAssessment();
-
-  return (
-    <>
-      <SeoHead
-        title="Tvoja priča se nastavlja | MindScore AI"
-        description="Nastavi da istražuješ obrasce koji se kriju u tvojoj priči o snu."
-      />
-      <main className="sleep-experience-page sleep-discovery-page">
-        <div className="sleep-experience-overlay" aria-hidden="true" />
-        <div className="sleep-discovery-shell">
-          <header className="sleep-experience-brand" aria-label="MindScore AI">
-            <span className="sleep-brand-mark" aria-hidden="true">M</span>
-            <span>MindScore AI</span>
-          </header>
-
-          <section className="sleep-discovery-intro">
-            <p className="sleep-discovery-kicker">TVOJA PRIČA SE NASTAVLJA</p>
-            <h1>IZA TVOG POTPISA<br />KRIJE SE JOŠ</h1>
-            <p className="sleep-discovery-description">
-              Na osnovu tvojih 12 odgovora izdvojili smo još nekoliko detalja koji ti mogu pomoći da bolje razumeš svoj san.
-            </p>
-            {signatureResult && (
-              <p className="sleep-discovery-signature">Tvoj potpis: <strong>{signatureResult.signature}</strong></p>
-            )}
-          </section>
-
-          <section className="sleep-discoveries" aria-label="Zaključana otkrića">
-            {SLEEP_DISCOVERY_CARDS.map((card, index) => (
-              <article className="sleep-discovery-card" key={card.title}>
-                <span className="sleep-discovery-lock" aria-hidden="true">🔒</span>
-                <div className="sleep-discovery-card-copy">
-                  <h2>{card.title}</h2>
-                  <p>{card.description}</p>
-                </div>
-                <div className="sleep-discovery-blurred-preview" aria-hidden="true">
-                  <span style={{ width: `${62 + index * 5}%` }} />
-                  <span style={{ width: `${78 - index * 4}%` }} />
-                </div>
-              </article>
-            ))}
-          </section>
-
-          <section className="sleep-pdf-benefit">
-            <span className="sleep-pdf-icon" aria-hidden="true">📄</span>
-            <div>
-              <h2>Kompletan PDF izveštaj</h2>
-              <p>Tvoja analiza, objašnjenja i praktični koraci na jednom mestu.</p>
-            </div>
-          </section>
-
-          <section className="sleep-discovery-price" aria-label="Cena">
-            <strong>4,99 €</strong>
-            <span>Jednokratno · Bez pretplate</span>
-          </section>
-
-          <a className="sleep-discovery-cta" href="/sleep-checkout">
-            <span>OTKLJUČAJ CELU PRIČU <span aria-hidden="true">→</span></span>
-          </a>
-          <a className="sleep-discovery-back" href="/">← Nazad na moj rezultat</a>
-        </div>
-      </main>
-    </>
-  );
-}
-
-function SleepCheckoutPage() {
   const { signatureResult, userAnswers } = useSavedSleepAssessment();
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1321,60 +1258,76 @@ function SleepCheckoutPage() {
   return (
     <>
       <SeoHead
-        title="Tvoj kompletan izveštaj | MindScore AI"
-        description="Unesi email za dostavu izveštaja i nastavi na sigurno plaćanje."
+        title="Tvoja priča se nastavlja | MindScore AI"
+        description="Nastavi da istražuješ obrasce koji se kriju u tvojoj priči o snu."
       />
-      <main className="sleep-experience-page sleep-checkout-page">
+      <main className="sleep-experience-page sleep-discovery-page">
         <div className="sleep-experience-overlay" aria-hidden="true" />
-        <section className="sleep-checkout-card">
+        <div className="sleep-discovery-shell">
           <header className="sleep-experience-brand" aria-label="MindScore AI">
             <span className="sleep-brand-mark" aria-hidden="true">M</span>
             <span>MindScore AI</span>
           </header>
-          <p className="sleep-discovery-kicker">JOŠ JEDAN KORAK</p>
-          <h1>TVOJ KOMPLETAN IZVEŠTAJ</h1>
-          <p className="sleep-checkout-subtitle">Još jedan korak do tvoje cele priče o snu.</p>
-          {signatureResult && <p className="sleep-discovery-signature">Tvoj potpis: <strong>{signatureResult.signature}</strong></p>}
 
-          <section className="sleep-checkout-summary" aria-label="Sadržaj izveštaja">
-            <h2>Kompletan Premium izveštaj</h2>
-            <ul>
-              <li>✓ Personalizovana analiza</li>
-              <li>✓ Praktični koraci</li>
-              <li>✓ PDF izveštaj</li>
-            </ul>
+          <section className="sleep-discovery-intro">
+            <p className="sleep-discovery-kicker">TVOJA PRIČA SE NASTAVLJA</p>
+            <h1>IZA TVOG POTPISA<br />KRIJE SE JOŠ</h1>
+            <p className="sleep-discovery-description">
+              Na osnovu tvojih 12 odgovora izdvojili smo još nekoliko obrazaca koji ti mogu pomoći da bolje razumeš svoj san.
+            </p>
+            {signatureResult && (
+              <p className="sleep-discovery-signature">Tvoj potpis: <strong>{signatureResult.signature}</strong></p>
+            )}
           </section>
 
-          <section className="sleep-checkout-price" aria-label="Cena">
-            <strong>4,99 €</strong>
-            <span>Jednokratno · Bez pretplate</span>
+          <section className="sleep-discoveries" aria-label="Zaključana otkrića">
+            {SLEEP_DISCOVERY_CARDS.map((card, index) => (
+              <article className="sleep-discovery-card" key={card.title}>
+                <span className="sleep-discovery-lock" aria-hidden="true">🔒</span>
+                <div className="sleep-discovery-card-copy">
+                  <h2>{card.title}</h2>
+                  <p>{card.description}</p>
+                </div>
+                <div className="sleep-discovery-blurred-preview" aria-hidden="true">
+                  <span style={{ width: `${62 + index * 5}%` }} />
+                  <span style={{ width: `${78 - index * 4}%` }} />
+                </div>
+              </article>
+            ))}
           </section>
 
-          <form className="sleep-checkout-form" onSubmit={handleCheckoutSubmit} noValidate>
-            <label htmlFor="sleep-checkout-email">Email za dostavu izveštaja</label>
-            <input
-              id="sleep-checkout-email"
-              type="email"
-              autoComplete="email"
-              placeholder="tvoj@email.com"
-              value={email}
-              aria-invalid={Boolean(emailError)}
-              aria-describedby={emailError ? "sleep-checkout-email-error" : undefined}
-              onChange={(event) => {
-                setEmail(event.target.value);
-                setEmailError("");
-              }}
-            />
-            {emailError && <p className="sleep-checkout-error" id="sleep-checkout-email-error" role="alert">{emailError}</p>}
-            {checkoutError && <p className="sleep-checkout-error" role="alert">{checkoutError}</p>}
-            <button className="sleep-discovery-cta" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Otvaramo sigurno plaćanje..." : "NASTAVI NA SIGURNO PLAĆANJE →"}
-            </button>
-          </form>
+          <section className="sleep-premium-purchase" aria-label="Kupovina kompletnog izveštaja">
+            <section className="sleep-discovery-price" aria-label="Cena">
+              <strong>4,99 €</strong>
+              <span>Jednokratno · Bez pretplate</span>
+            </section>
 
-          <p className="sleep-checkout-trust">🔒 Sigurno plaćanje putem Stripe-a</p>
-          <a className="sleep-discovery-back" href="/sleep-premium">← Nazad</a>
-        </section>
+            <form className="sleep-checkout-form" onSubmit={handleCheckoutSubmit} noValidate>
+              <label htmlFor="sleep-premium-email">Email za dostavu izveštaja</label>
+              <input
+                id="sleep-premium-email"
+                type="email"
+                autoComplete="email"
+                placeholder="tvoj@email.com"
+                value={email}
+                aria-invalid={Boolean(emailError)}
+                aria-describedby={emailError ? "sleep-premium-email-error" : undefined}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setEmailError("");
+                }}
+              />
+              {emailError && <p className="sleep-checkout-error" id="sleep-premium-email-error" role="alert">{emailError}</p>}
+              {checkoutError && <p className="sleep-checkout-error" role="alert">{checkoutError}</p>}
+              <button className="sleep-discovery-cta" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Otvaramo sigurno plaćanje..." : "OTKLJUČAJ CELU PRIČU →"}
+              </button>
+            </form>
+
+            <p className="sleep-checkout-trust">🔒 Sigurno plaćanje putem Stripe-a</p>
+          </section>
+          <a className="sleep-discovery-back" href="/">← Nazad na moj rezultat</a>
+        </div>
       </main>
     </>
   );
@@ -1879,7 +1832,7 @@ function App() {
   }
 
   if (pathname === "/sleep-checkout") {
-    return <SleepCheckoutPage />;
+    return <SleepPremiumDiscoveryPage />;
   }
 
   return <AssessmentApp />;
