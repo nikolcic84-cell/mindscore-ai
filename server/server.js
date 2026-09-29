@@ -12,12 +12,6 @@ import { fileURLToPath } from "url";
 import { buildPremiumPdf } from "../src/premiumPdfGenerator.js";
 import { calculateDimensions } from "../src/psychology/dimensions.js";
 import { calculateSleepScore, calculateSleepResult } from "../src/psychology/sleepScoring.js";
-import {
-  SLEEP_PROFILE_NARRATIVE_MODEL,
-  SLEEP_PROFILE_NARRATIVE_VERSION,
-  buildSleepReportPayload,
-  generateSleepProfileNarrative,
-} from "./sleepProfileNarrative.js";
 
 dotenv.config();
 
@@ -37,7 +31,7 @@ const STORE_PATH = path.join(DATA_DIR, "payments-store.json");
 const REPORTS_DIR = path.join(DATA_DIR, "reports");
 const DOWNLOAD_TOKEN_TTL_MS = 1000 * 60 * 60 * 4;
 const QUESTIONS_PER_ASSESSMENT = 12;
-const PREMIUM_PDF_GENERATOR_VERSION = "compact-v7";
+const PREMIUM_PDF_GENERATOR_VERSION = "sleep-report-v1";
 
 // Structured event log for production observability. Never include secrets
 // (API keys, tokens, SMTP credentials) in `details`.
@@ -354,18 +348,18 @@ Formatting rules:
 const generatePremiumPdfBuffer = async ({
   reportText,
   dimensions,
+  answers = [],
   finalScore,
   assessmentDate,
   selectedTestTitle,
-  sleepProfileNarrative,
 }) => {
   const doc = await buildPremiumPdf({
     reportText,
     profileDimensions: dimensions,
+    answers,
     finalScore,
     assessmentDate,
     selectedTestTitle,
-    sleepProfileNarrative,
   });
 
   const arrayBuffer = doc.output("arraybuffer");
@@ -376,7 +370,9 @@ const hasCurrentPremiumPdf = (purchase) =>
   Boolean(purchase?.pdfPath) && purchase.pdfGeneratorVersion === PREMIUM_PDF_GENERATOR_VERSION;
 
 const getPdfArtifactDetails = (purchase, pdfBuffer) => ({
-  filename: "MindScore-AI-Premium-Report.pdf",
+  filename: purchase?.assessmentType === "sleep"
+    ? "MindScore-AI-Premium-Sleep-Report.pdf"
+    : "MindScore-AI-Premium-Report.pdf",
   pdfPath: purchase.pdfPath,
   pdfGeneratorVersion: purchase.pdfGeneratorVersion,
   byteSize: pdfBuffer.length,
@@ -400,13 +396,32 @@ const readCurrentPremiumPdf = async (purchase, sessionId, usage) => {
 
 const sendPdfEmail = async ({ toEmail, assessmentType, purchase, sessionId, usage }) => {
   const { artifact } = await readCurrentPremiumPdf(purchase, sessionId, usage);
-  const subject = "Your MindScore AI Premium Report";
-  const text = [
-    "Thank you for your purchase.",
-    "Your Premium Report is attached to this email.",
-    "For support, contact: aimindscore@gmail.com.",
-    `Assessment type: ${assessmentType}`,
-  ].join("\n");
+  const isSleepReport = assessmentType === "sleep";
+  const subject = isSleepReport
+    ? "Tvoja MindScore AI priča o snu je spremna"
+    : "Your MindScore AI Premium Report";
+  const text = isSleepReport
+    ? [
+        "Zdravo,",
+        "",
+        "tvoja MindScore AI analiza sna je spremna.",
+        "",
+        "Na osnovu tvojih odgovora pripremili smo personalizovani izveštaj koji ti pomaže da bolje razumeš svoj obrazac sna, ono što ti već ide dobro i oblasti na koje možeš da obratiš više pažnje.",
+        "",
+        "Tvoj PDF izveštaj nalazi se u prilogu.",
+        "",
+        "Hvala ti što koristiš MindScore AI.",
+        "",
+        "MindScore AI je informativni wellness alat i ne predstavlja medicinsku dijagnozu niti zamenu za savet zdravstvenog stručnjaka.",
+        "",
+        "Za podršku: aimindscore@gmail.com",
+      ].join("\n")
+    : [
+        "Thank you for your purchase.",
+        "Your Premium Report is attached to this email.",
+        "For support, contact: aimindscore@gmail.com.",
+        `Assessment type: ${assessmentType}`,
+      ].join("\n");
 
   logEvent("premium_pdf_email_attachment", { sessionId, usage, ...artifact });
 
@@ -498,66 +513,14 @@ const deliverInitialEmail = (purchase, sessionId, fulfillmentStartedAt) => {
 
 const generateReportPdfWithRetry = async (assessment, sessionId) => {
   const attemptOnce = async () => {
-    let sleepProfileNarrative =
-      assessment.sleepProfileNarrativeVersion === SLEEP_PROFILE_NARRATIVE_VERSION
-        ? assessment.sleepProfileNarrative
-        : null;
-
-    if (!sleepProfileNarrative && assessment.assessmentType === "sleep") {
-      const narrativeStartedAt = Date.now();
-      const payload = buildSleepReportPayload({
-        assessment,
-        dimensions: assessment.dimensions,
-        overallScore: assessment.score,
-      });
-      try {
-        const generated = await generateSleepProfileNarrative({
-          openaiClient: _openaiClient,
-          payload,
-          apiKeyAvailable: Boolean(process.env.OPENAI_API_KEY),
-        });
-        sleepProfileNarrative = generated.fields;
-        logDuration("sleep_profile_ai_narrative", narrativeStartedAt, {
-          sessionId,
-          assessmentId: assessment.assessmentId,
-          status: generated.status === "ok" ? "ai" : "fallback",
-          reason: generated.reason,
-          model: SLEEP_PROFILE_NARRATIVE_MODEL,
-        });
-        await withStoreMutation(async (nextStore) => {
-          const nextAssessment = nextStore.assessments[assessment.assessmentId];
-          if (nextAssessment) {
-            nextAssessment.sleepProfileNarrative = sleepProfileNarrative;
-            nextAssessment.sleepProfileNarrativeVersion = SLEEP_PROFILE_NARRATIVE_VERSION;
-          }
-        });
-      } catch (error) {
-        sleepProfileNarrative = {};
-        logDuration("sleep_profile_ai_narrative", narrativeStartedAt, {
-          sessionId,
-          assessmentId: assessment.assessmentId,
-          status: "fallback",
-          reason: error.message,
-          model: SLEEP_PROFILE_NARRATIVE_MODEL,
-        });
-        await withStoreMutation(async (nextStore) => {
-          const nextAssessment = nextStore.assessments[assessment.assessmentId];
-          if (nextAssessment) {
-            nextAssessment.sleepProfileNarrative = sleepProfileNarrative;
-            nextAssessment.sleepProfileNarrativeVersion = SLEEP_PROFILE_NARRATIVE_VERSION;
-          }
-        });
-      }
-    }
-
     const pdfStartedAt = Date.now();
     const pdfBuffer = await generatePremiumPdfBuffer({
       reportText: "",
       dimensions: assessment.dimensions,
+      answers: assessment.answers,
       finalScore: assessment.score,
       assessmentDate: assessment.assessmentDate,
       selectedTestTitle: assessment.testName,
-      sleepProfileNarrative,
     });
     logDuration("premium_pdf_built", pdfStartedAt, { sessionId, assessmentId: assessment.assessmentId, byteSize: pdfBuffer.length });
 
@@ -803,13 +766,10 @@ app.post("/api/admin/premium-report/:assessmentId/regenerate", async (req, res) 
     const pdfBuffer = await generatePremiumPdfBuffer({
       reportText: "",
       dimensions: assessment.dimensions,
+      answers: assessment.answers,
       finalScore: assessment.score,
       assessmentDate: assessment.assessmentDate,
       selectedTestTitle: assessment.testName,
-      sleepProfileNarrative:
-        assessment.sleepProfileNarrativeVersion === SLEEP_PROFILE_NARRATIVE_VERSION
-          ? assessment.sleepProfileNarrative
-          : null,
     });
     const filename = `MindScore-AI-Premium-Report-${assessmentId}-QA.pdf`;
     const pdfPath = path.join(REPORTS_DIR, filename);
@@ -893,8 +853,12 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
           price_data: {
             currency: "eur",
             product_data: {
-              name: "MindScore AI Premium Psychological Report",
-              description: "Personalized premium PDF psychological assessment",
+              name: safeAssessmentType === "sleep"
+                ? "MindScore AI Premium Sleep Report"
+                : "MindScore AI Premium Psychological Report",
+              description: safeAssessmentType === "sleep"
+                ? "Personalized sleep analysis and practical PDF report"
+                : "Personalized premium PDF psychological assessment",
             },
             unit_amount: 499,
           },
@@ -1009,6 +973,7 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
     logDuration("payment_session_verified", verifyStartedAt, { sessionId, status, ready, reportStatus });
     return res.json({
       sessionId,
+      assessmentType: toSafeText(refreshedPurchase?.assessmentType),
       status,
       paid,
       ready,
@@ -1102,7 +1067,7 @@ app.get("/api/premium-report/download", rateLimit(60_000, 20), async (req, res) 
     const { pdfBuffer, artifact } = await readCurrentPremiumPdf(purchase, payload.sid, "download");
     logEvent("download_completed", { sessionId: payload.sid, ...artifact });
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=MindScore-AI-Premium-Report.pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=${artifact.filename}`);
     return res.send(pdfBuffer);
   } catch (error) {
     console.error("[payment] download token error", error.message);

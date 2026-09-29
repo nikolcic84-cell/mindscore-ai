@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import { buildSleepPremiumPdf } from "./sleepPremiumPdf.js";
 
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
@@ -1793,6 +1794,7 @@ const estimateReadingTime = () => "15-20 minutes";
 export const buildPremiumPdf = async ({
   reportText = "",
   profileDimensions = [],
+  answers = [],
   finalScore = 0,
   assessmentDate = new Date().toLocaleDateString("en-US", {
     year: "numeric",
@@ -1804,6 +1806,10 @@ export const buildPremiumPdf = async ({
   paginationDebug = false,
   doc = new jsPDF({ unit: "mm", format: "a4" }),
 }) => {
+  if (/sleep/i.test(selectedTestTitle) && Array.isArray(answers) && answers.length === 12) {
+    return buildSleepPremiumPdf({ answers });
+  }
+
   const sections = parseReportSections(reportText);
   const dimensions = normalizeDimensions(profileDimensions);
   const overallScore = clamp(Math.round(Number(finalScore) || 0), 0, 100);

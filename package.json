@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node --test src/psychology/sleepSignature.test.js scripts/test-sleep-ai-narrative.js",
+    "test": "node --test src/psychology/sleepSignature.test.js src/psychology/sleepPremiumReport.test.js scripts/test-sleep-ai-narrative.js",
     "preview": "vite preview"
   },
   "dependencies": {

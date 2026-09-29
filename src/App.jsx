@@ -446,6 +446,7 @@ function PaymentSuccessPage() {
   const [state, setState] = useState({
     loading: true,
     status: "PAYMENT_VERIFIED",
+    assessmentType: "",
     paid: false,
     ready: false,
     reportStatus: "PENDING_PAYMENT",
@@ -495,6 +496,7 @@ function PaymentSuccessPage() {
           ...previous,
           loading: false,
           status: data.status || previous.status,
+          assessmentType: data.assessmentType || previous.assessmentType,
           paid: Boolean(data.paid),
           ready: Boolean(data.ready),
           reportStatus,
@@ -506,7 +508,7 @@ function PaymentSuccessPage() {
           error: generationFailed ? data.error || "Report generation failed." : "",
         }));
 
-        if (data.paid && !data.ready && !generationFailed) {
+        if (data.paid && !generationFailed && (!data.ready || (!data.emailSent && !data.emailError))) {
           timerId = window.setTimeout(verify, 1000);
         }
       } catch (error) {
@@ -563,7 +565,10 @@ function PaymentSuccessPage() {
 
       const nameMatch =
         /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition) || /filename="?([^";]+)"?/i.exec(contentDisposition);
-      const fileName = decodeURIComponent(nameMatch?.[1] || "MindScore-AI-Premium-Report.pdf");
+      const fallbackFileName = state.assessmentType === "sleep"
+        ? "MindScore-AI-Premium-Sleep-Report.pdf"
+        : "MindScore-AI-Premium-Report.pdf";
+      const fileName = decodeURIComponent(nameMatch?.[1] || fallbackFileName);
 
       const objectUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -589,7 +594,7 @@ function PaymentSuccessPage() {
   const handleResendEmail = async () => {
     const token = new URLSearchParams(state.downloadUrl.split("?")[1] || "").get("token");
     if (!token) {
-      setState((previous) => ({ ...previous, resendMessage: "Download link is missing. Refresh and try again." }));
+      setState((previous) => ({ ...previous, resendMessage: "Slanje ponovo trenutno nije moguće. Pokušaj ponovo." }));
       return;
     }
 
@@ -608,13 +613,13 @@ function PaymentSuccessPage() {
         emailSent: Boolean(data.emailSent),
         emailError: data.emailSent ? "" : data.error || "",
         resendMessage: data.emailSent
-          ? "Email resent successfully."
-          : data.error || "Could not resend the email. Please try again.",
+          ? "Izveštaj je ponovo poslat na tvoj email."
+          : "Slanje emaila trenutno nije uspelo. PDF možeš preuzeti ispod.",
       }));
-    } catch (error) {
+    } catch {
       setState((previous) => ({
         ...previous,
-        resendMessage: error.message || "Could not resend the email. Please try again.",
+        resendMessage: "Slanje emaila trenutno nije uspelo. Pokušaj ponovo.",
       }));
     } finally {
       setState((previous) => ({ ...previous, isResendingEmail: false }));
@@ -623,14 +628,102 @@ function PaymentSuccessPage() {
 
   const delayed = state.paid && !state.ready && state.attempts >= 6;
   const showRecoverableError = !state.loading && !state.ready && Boolean(state.error);
+  const isSleepPurchase = state.assessmentType === "sleep";
+  const sleepReportFailed = state.reportStatus === "FAILED" || state.status === "FAILED";
+  const sleepEmailFailed = state.ready && !state.emailSent && Boolean(state.emailError);
 
   return (
     <>
       <SeoHead
-        title="Payment Success | MindScore AI"
-        description="Verify payment, generate your premium report, and download your PDF securely."
+        title={isSleepPurchase ? "Tvoja priča o snu je otključana | MindScore AI" : "Payment Success | MindScore AI"}
+        description={isSleepPurchase
+          ? "Proveri status pripreme i dostave svog personalizovanog izveštaja o snu."
+          : "Verify payment, generate your premium report, and download your PDF securely."}
       />
-      <main className="page payment-page">
+      <main className={isSleepPurchase ? "sleep-payment-page" : "page payment-page"}>
+        {isSleepPurchase ? (
+          <section className="sleep-payment-card" aria-live="polite">
+            <header className="sleep-experience-brand" aria-label="MindScore AI">
+              <span className="sleep-brand-mark" aria-hidden="true">M</span>
+              <span>MindScore AI</span>
+            </header>
+            <p className="sleep-payment-kicker">
+              {state.paid ? "UPLATA JE USPEŠNA" : state.loading ? "PROVERAVAMO UPLATU" : "STATUS UPLATE"}
+            </p>
+            <h1>
+              {sleepReportFailed
+                ? "Uplata je potvrđena"
+                : state.ready
+                ? "TVOJA PRIČA O SNU JE OTKLJUČANA"
+                : state.paid
+                ? "TVOJA PRIČA O SNU JE OTKLJUČANA"
+                : "Proveravamo uplatu"}
+            </h1>
+            <p className="sleep-payment-subtitle">
+              {state.emailSent
+                ? "Izveštaj je poslat na tvoj email."
+                : state.ready
+                ? "PDF izveštaj je spreman. Slanje emaila još nije potvrđeno."
+                : sleepReportFailed
+                ? "Uplata je evidentirana, ali priprema izveštaja trenutno nije uspela. Kontaktiraj podršku za pomoć."
+                : state.paid
+                ? "Hvala ti. Tvoj personalizovani izveštaj se priprema."
+                : "Sačekaj trenutak dok proverimo status tvoje uplate."}
+            </p>
+
+            <div className="sleep-payment-steps">
+              <div className={`sleep-payment-step ${state.paid ? "is-done" : state.loading ? "is-active" : ""}`}>
+                <span aria-hidden="true">{state.paid ? "✓" : state.loading ? "·" : "!"}</span>
+                <p>{state.paid ? "Uplata uspešno izvršena" : "Proveravamo uplatu"}</p>
+              </div>
+              <div className={`sleep-payment-step ${sleepReportFailed ? "is-error" : state.ready ? "is-done" : state.paid ? "is-active" : ""}`}>
+                <span aria-hidden="true">{sleepReportFailed ? "!" : state.ready ? "✓" : state.paid ? "◌" : "·"}</span>
+                <p>{sleepReportFailed ? "Priprema izveštaja nije uspela" : state.ready ? "Tvoja analiza je spremna" : "Tvoja analiza se priprema"}</p>
+              </div>
+              <div className={`sleep-payment-step ${sleepEmailFailed || sleepReportFailed ? "is-error" : state.emailSent ? "is-done" : state.ready ? "is-active" : ""}`}>
+                <span aria-hidden="true">{sleepEmailFailed || sleepReportFailed ? "!" : state.emailSent ? "✓" : state.ready ? "◌" : "·"}</span>
+                <p>{sleepEmailFailed
+                  ? "Slanje emaila nije potvrđeno"
+                  : sleepReportFailed
+                  ? "PDF izveštaj još nije spreman za slanje"
+                  : state.emailSent
+                  ? "PDF izveštaj je poslat na tvoj email"
+                  : "PDF izveštaj šaljemo na tvoj email"}</p>
+              </div>
+            </div>
+
+            {state.paid && !state.ready && !sleepReportFailed && (
+              <p className="sleep-payment-processing" role="status">Pripremamo tvoj izveštaj...</p>
+            )}
+            {state.ready && (
+              <p className="sleep-payment-spam-note">Proveri i Spam/Neželjenu poštu ako poruka ne stigne u Inbox.</p>
+            )}
+            {state.ready && state.emailError && (
+              <p className="sleep-payment-delivery-warning">Email nije potvrđen, ali je PDF dostupan za preuzimanje.</p>
+            )}
+
+            {state.ready && (
+              <div className="sleep-payment-actions">
+                <button className="sleep-payment-primary" onClick={handleDownloadPdf} disabled={state.isDownloading}>
+                  {state.isDownloading ? "Preuzimanje..." : "Preuzmi PDF izveštaj ↓"}
+                </button>
+                {!state.emailSent && (
+                  <button className="sleep-payment-secondary" onClick={handleResendEmail} disabled={state.isResendingEmail}>
+                    {state.isResendingEmail ? "Šaljemo..." : "Pokušaj ponovo da pošalješ email"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {state.resendMessage && !state.emailSent && <p className="sleep-payment-note">{state.resendMessage}</p>}
+            {showRecoverableError && (
+              <p className="sleep-payment-error" role="alert">
+                Nismo uspeli da potvrdimo uplatu ili pripremimo izveštaj. Osveži stranicu ili kontaktiraj podršku.
+              </p>
+            )}
+            {delayed && <p className="sleep-payment-note">Priprema traje duže nego obično. Ova stranica će se sama ažurirati.</p>}
+          </section>
+        ) : (
         <section className="content-panel payment-panel">
           {!state.loading && state.paid && !state.ready && state.reportStatus !== "FAILED" ? (
             <div className="payment-success-hero" aria-live="polite">
@@ -806,8 +899,9 @@ function PaymentSuccessPage() {
             </>
           )}
         </section>
+        )}
       </main>
-      <SiteFooter />
+      {!isSleepPurchase && <SiteFooter />}
     </>
   );
 }
@@ -999,9 +1093,19 @@ function SleepSignatureResultPage({ signatureResult }) {
       <main className="sleep-experience-page sleep-result-page">
         <div className="sleep-experience-overlay" aria-hidden="true" />
         <div className="sleep-experience-shell">
-          <header className="sleep-experience-brand" aria-label="MindScore AI">
+          <header className="sleep-experience-brand sleep-result-brand" aria-label="MindScore AI">
             <span className="sleep-brand-mark" aria-hidden="true">M</span>
             <span>MindScore AI</span>
+            <a
+              className="sleep-result-home-link"
+              href="/"
+              onClick={() => {
+                window.localStorage.removeItem(DRAFT_KEY);
+                window.localStorage.removeItem(COMPLETED_ASSESSMENT_KEY);
+              }}
+            >
+              Početna
+            </a>
           </header>
 
           <section className="sleep-result-intro" aria-labelledby="sleep-result-page-title">
