@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 import { calculateDimensions } from "./psychology/dimensions";
-import { calculateSleepScore, calculateSleepResult } from "./psychology/sleepScoring";
+import { calculateSleepScore } from "./psychology/sleepScoring";
+import { calculateSleepSignature } from "./psychology/sleepSignature";
 import "./App.css";
 
 const BACKEND_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
@@ -63,18 +64,18 @@ const tests = {
     category: "Recovery",
     minutes: "2-3 min",
     questions: [
-      "I usually wake up feeling refreshed after what should have been a full night's sleep.",
-      "If I wake up during the night, I usually fall back asleep easily.",
-      "After an emotionally difficult day, I am still able to sleep well that night.",
-      "My thoughts keep running when I am trying to fall asleep.",
-      "During the day, I often feel mentally tired even after getting enough sleep.",
-      "An important event the next morning significantly affects my sleep.",
-      "I often wake up before my alarm and cannot fall asleep again.",
-      "My mind becomes clear and focused quickly after I wake up.",
-      "I rely on caffeine or other stimulants to feel fully awake during the day.",
-      "My body recovers quickly after my sleep schedule changes for one or two days.",
-      "I often feel sleepy during quiet activities such as reading, studying, or watching TV.",
-      "I am confident that my current sleep allows my brain and body to recover at their best.",
+      "Kada se probudiš ujutru, kako se najčešće osećaš?",
+      "Legneš u krevet i ugasiš svetlo. Šta se obično desi?",
+      "Šta se najčešće dešava tokom noći?",
+      "Alarm zvoni. Kako izgleda tvoje ustajanje?",
+      "Koliko sna obično imaš tokom jedne noći?",
+      "Kako izgleda poslednjih 30 minuta pre spavanja?",
+      "Kada legneš, koliko je tvoja glava „budna“?",
+      "Kako izgleda tvoja energija tokom dana?",
+      "Kada imaš slobodan dan i nema alarma, šta se događa?",
+      "Koliko su ti vreme odlaska u krevet i vreme ustajanja predvidivi?",
+      "Posle loše prospavane noći, šta najviše primetiš sledećeg dana?",
+      "Kada razmisliš o svojim poslednjim noćima, koja rečenica ti je najbliža?",
     ],
   },
   leadership: {
@@ -108,24 +109,91 @@ const answers = [
   { text: "Not true for me", points: 1 },
 ];
 
-// Labels shown as locked/blurred in the Premium Preview until Premium is purchased.
-const PREMIUM_INSIGHT_CARDS = [
-  "Recovery Stability",
-  "Cognitive Recovery",
-];
-
-const PREMIUM_REPORT_CHECKLIST = [
-  "Personalized AI interpretation",
-  "Hidden strengths",
-  "Recovery roadmap",
-  "Daily action plan",
-  "Professional PDF report",
-];
-
-const PREMIUM_TRUST_BADGES = [
-  { icon: "🔒", label: "Secure payment" },
-  { icon: "⚡", label: "Instant access" },
-  { icon: "📄", label: "PDF included" },
+const sleepAnswerOptions = [
+  [
+    { text: "Odmorno — spreman sam za dan", points: 5 },
+    { text: "Uglavnom dobro, ali bih mogao još malo da spavam", points: 4 },
+    { text: "Ni odmorno ni posebno umorno", points: 3 },
+    { text: "Umorno — teško mi je da ustanem", points: 2 },
+    { text: "Kao da nisam ni spavao", points: 1 },
+  ],
+  [
+    { text: "Zaspim vrlo brzo", points: 5 },
+    { text: "Treba mi malo vremena", points: 4 },
+    { text: "Često mi treba dosta vremena da zaspim", points: 3 },
+    { text: "Misli mi ne daju da se isključim", points: 2 },
+    { text: "Imam osećaj da se borim sa snom", points: 1 },
+  ],
+  [
+    { text: "Uglavnom spavam bez buđenja", points: 5 },
+    { text: "Probudim se jednom i brzo nastavim da spavam", points: 4 },
+    { text: "Budim se nekoliko puta", points: 3 },
+    { text: "Kada se probudim, teško ponovo zaspim", points: 2 },
+    { text: "Noć mi često deluje isprekidano", points: 1 },
+  ],
+  [
+    { text: "Ustanem bez problema", points: 5 },
+    { text: "Treba mi nekoliko minuta", points: 4 },
+    { text: "Odložim alarm jednom", points: 3 },
+    { text: "Odlažem ga više puta", points: 2 },
+    { text: "Jedva se nateram da ustanem", points: 1 },
+  ],
+  [
+    { text: "7–9 sati", points: 5 },
+    { text: "6–7 sati", points: 4 },
+    { text: "5–6 sati", points: 3 },
+    { text: "Manje od 5 sati", points: 2 },
+    { text: "Više od 9 sati, a ipak često nisam odmoran", points: 1 },
+  ],
+  [
+    { text: "Uglavnom se smirim bez ekrana", points: 5 },
+    { text: "Imam svoju mirnu večernju rutinu", points: 4 },
+    { text: "Gledam TV ili neki sadržaj", points: 3 },
+    { text: "Telefon mi je često u ruci", points: 2 },
+    { text: "Skrolujem dok ne postanem potpuno pospan", points: 1 },
+  ],
+  [
+    { text: "Lako se isključim", points: 5 },
+    { text: "Razmišljam malo, pa se smirim", points: 4 },
+    { text: "Vrtim događaje iz tog dana", points: 3 },
+    { text: "Planiram, analiziram i razmišljam o problemima", points: 2 },
+    { text: "Telo je umorno, ali mozak kao da ne želi da stane", points: 1 },
+  ],
+  [
+    { text: "Uglavnom je stabilna", points: 5 },
+    { text: "Povremeno osetim umor", points: 4 },
+    { text: "Često mi treba kafa ili pauza", points: 3 },
+    { text: "Imam periode kada jedva držim oči otvorene", points: 2 },
+    { text: "Veći deo dana osećam da mi nedostaje energije", points: 1 },
+  ],
+  [
+    { text: "Budim se približno u isto vreme", points: 5 },
+    { text: "Spavam malo duže", points: 4 },
+    { text: "Spavam znatno duže", points: 3 },
+    { text: "Mogao bih da ostanem u krevetu pola dana", points: 2 },
+    { text: "Vreme spavanja i buđenja mi se stalno menja", points: 1 },
+  ],
+  [
+    { text: "Skoro uvek su slični", points: 5 },
+    { text: "Većinom imam isti ritam", points: 4 },
+    { text: "Razlikuju se po nekoliko sati", points: 3 },
+    { text: "Često nemam nikakav raspored", points: 2 },
+    { text: "Svaki dan može izgledati potpuno drugačije", points: 1 },
+  ],
+  [
+    { text: "Malo toga — uglavnom funkcionišem normalno", points: 5 },
+    { text: "Više sam umoran", points: 4 },
+    { text: "Teže se koncentrišem", points: 3 },
+    { text: "Umorniji sam i raspoloženje mi se promeni", points: 2 },
+    { text: "Imam osećaj da samo pokušavam da preguram dan", points: 1 },
+  ],
+  [
+    { text: "Zadovoljan sam svojim snom", points: 5 },
+    { text: "Uglavnom spavam dobro, uz poneku lošu noć", points: 4 },
+    { text: "Moj san bi mogao biti bolji", points: 3 },
+    { text: "Često imam osećaj da mi san nije dovoljan", points: 2 },
+    { text: "Spavanje mi je postalo nešto sa čim se redovno borim", points: 1 },
+  ],
 ];
 
 const faqItems = [
@@ -745,6 +813,8 @@ function PaymentSuccessPage() {
 }
 
 function PaymentCancelledPage() {
+  const returnToSleepCheckout = new URLSearchParams(window.location.search).get("return_to") === "/sleep-checkout";
+
   return (
     <>
       <SeoHead
@@ -756,8 +826,8 @@ function PaymentCancelledPage() {
           <div className="badge">Checkout update</div>
           <h1>Payment was cancelled</h1>
           <p>No charge was made. You can return to your assessment and continue whenever you are ready.</p>
-          <a className="primary-btn" href="/">
-            Return to Home
+          <a className="primary-btn" href={returnToSleepCheckout ? "/sleep-checkout" : "/"}>
+            {returnToSleepCheckout ? "Nazad na plaćanje" : "Return to Home"}
           </a>
         </section>
       </main>
@@ -891,194 +961,317 @@ function Homepage({ onStartAssessment }) {
             <span>MindScore AI</span>
           </a>
         </div>
-        <nav className="site-nav" aria-label="Primary navigation">
-          <a className={activeSection === "assessments" ? "active" : ""} href="#assessments">Sleep Assessment</a>
-          <a className={activeSection === "how-it-works" ? "active" : ""} href="#how-it-works">How It Works</a>
-          <a className={activeSection === "premium-report" ? "active" : ""} href="#premium-report">AI Report</a>
-          <a className={activeSection === "faq" ? "active" : ""} href="#faq">FAQ</a>
-          <a href="/support">Support</a>
-        </nav>
-        <span className="header-private"><span aria-hidden="true">L</span> 100% Private</span>
-        <button className="header-cta header-cta-desktop" onClick={guideToAssessments}>Start Free Sleep Test</button>
       </header>
 
       <main className="homepage">
         <section className="hero-section reveal">
           <div className="hero-copy reveal">
-            <p className="hero-label">AI-POWERED SLEEP ANALYSIS</p>
-            <h1><span>Sleep</span><span>Assessment</span></h1>
-            <p className="hero-subtitle">Discover what your sleep is telling you in just 2 minutes using our AI-powered sleep analysis.</p>
+            <h1>UPOZNAJ SVOJ SAN</h1>
+            <p className="hero-subtitle">Kako zaista spavaš?</p>
+            <p className="hero-detail">Za 2 minuta otkrij šta tvoje navike govore o tvom snu.</p>
             <div className="hero-actions">
-              <button className="primary-btn hero-primary-btn" onClick={() => onStartAssessment("sleep")}>Start Free Sleep Test</button>
+              <button className="primary-btn hero-primary-btn" onClick={() => onStartAssessment("sleep")}>
+                POKRENI BESPLATAN TEST →
+              </button>
             </div>
             <div className="hero-trust" aria-label="Assessment assurances">
-              <span><i className="trust-icon lock-icon" aria-hidden="true" />🔒 100% Private</span>
-              <span><i className="trust-icon bolt-icon" aria-hidden="true" />⚡ Instant Result</span>
-              <span><i className="trust-icon user-icon" aria-hidden="true" />👤 No Signup</span>
+              <span>🔒 Privatno</span>
+              <span>⚡ Rezultat odmah</span>
+              <span>👤 Bez registracije</span>
             </div>
-          </div>
-
-          <aside className="hero-visual reveal" aria-label="Sleep analysis preview">
-            <div className="hero-neural-brain" aria-hidden="true">
-              <div className="particle-cloud">
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="brain-orbit orbit-one" />
-              <div className="brain-orbit orbit-two" />
-              <div className="brain-orbit orbit-three" />
-
-              <div className="brain-core">
-                <span className="brain-core-label">AI</span>
-              </div>
-              <span className="brain-core-subtitle">Sleep Intelligence</span>
-            </div>
-          </aside>
-        </section>
-
-        <section className="section how-it-works-section reveal" id="assessments">
-          <div className="section-heading">
-            <h2 id="how-it-works">How It Works</h2>
-            <p>One focused assessment, one instant result, one premium AI report.</p>
-          </div>
-          {showPremiumGuidanceMessage && (
-            <p className="assessment-guidance-message" role="status" aria-live="polite">
-              Complete a free assessment first to unlock your personalized Premium Report.
-            </p>
-          )}
-          <div className="how-it-works-grid">
-            <div className="compact-steps">
-              <article><span className="step-icon" aria-hidden="true"><svg className="step-svg" viewBox="0 0 64 64" focusable="false"><rect x="17" y="15" width="30" height="39" rx="4" /><rect x="25" y="10" width="14" height="8" rx="3" /><path d="m23 29 3 3 6-7M34 29h8M23 39l3 3 6-7M34 39h8" /><path className="step-accent" d="m22 48 6 6 14-16" /></svg></span><div><h3>Choose Assessment</h3><p>Start your focused sleep check.</p></div></article>
-              <article><span className="step-icon" aria-hidden="true"><svg className="step-svg" viewBox="0 0 64 64" focusable="false"><path d="M12 29c0-10 9-17 20-17s20 7 20 17-9 17-20 17c-3 0-6-.5-9-1.5L15 50l2-9c-3-3-5-7-5-12Z" /><path className="step-accent" d="M24 25c0-3 2-5 5-5s5 2 5 5-2 4-5 6c0 2 1 3 1 4M30 40h.1M38 25c0-3 2-5 5-5s5 2 5 5-2 4-5 6c0 2 1 3 1 4M44 40h.1" /></svg></span><div><h3>Answer 12 Questions</h3><p>Complete a science-based assessment in about 2 minutes.</p></div></article>
-              <article><span className="step-icon" aria-hidden="true"><svg className="step-svg" viewBox="0 0 64 64" focusable="false"><rect x="13" y="12" width="38" height="40" rx="5" /><path d="M20 22h24M20 46h24" /><path className="step-accent" d="M20 39 27 32l6 4 10-12" /><path d="M20 28h3M26 28h3M32 28h3" /></svg></span><div><h3>Get Instant Result</h3><p>Receive your free sleep score immediately.</p></div></article>
-            </div>
-            <div className="step-arrow step-arrow-left" aria-hidden="true">›</div>
-            <div className="step-arrow step-arrow-right" aria-hidden="true">›</div>
           </div>
         </section>
 
-        <section className="section premium-section reveal" id="premium-report">
-          <div className="section-heading">
-            <h2>Premium PDF Report</h2>
-          </div>
-          <div className="premium-grid">
-            <article className="premium-preview pdf-preview">
-              <div className="reference-pdf-cards">
-                <div className="pdf-page premium-cover-page">
-                  <strong className="cover-score"><span className="cover-score-number">82</span><span className="cover-score-scale">/100</span></strong>
-                  <span className="cover-progress-ring" aria-hidden="true" />
-                  <span className="cover-score-label">SLEEP SCORE</span>
-                  <span className="cover-overthinker-badge">OVERTHINKER</span>
-                  <div className="cover-report-title"><span>Personalized</span><span>Sleep</span><span>Recovery</span><span>Report</span></div>
-                  <span className="cover-ai-badge">PERSONALIZED PREMIUM REPORT</span>
-                </div>
-                <div className="pdf-page pdf-page-two">
-                  <span>Sleep Cycle</span>
-                  <div className="radar-wrap" aria-hidden="true">
-                    <div className="radar-chart" />
-                  </div>
-                  <div className="pdf-score-bars">
-                    <div><b /> <i style={{ width: "84%" }} /></div>
-                    <div><b /> <i style={{ width: "71%" }} /></div>
-                    <div><b /> <i style={{ width: "77%" }} /></div>
-                  </div>
-                </div>
+      </main>
+    </>
+  );
+}
 
-                <div className="pdf-page pdf-page-three">
-                  <span>Daytime Energy Insights</span>
-                  <div className="energy-bars" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-                  <div className="recommendation-cards">
-                    <article><strong>Actionable AI Recommendations</strong><p>Personalized guidance for better sleep.</p></article>
-                  </div>
-                </div>
+function SleepSignatureResultPage({ signatureResult }) {
+  const isCalmNight = signatureResult?.signatureKey === "calm_night";
+
+  return (
+    <>
+      <SeoHead
+        title="Tvoja priča o snu | MindScore AI"
+        description="Pogledaj svoj lični potpis sna i šta se najviše izdvaja iz tvojih odgovora."
+      />
+      <main className="sleep-experience-page sleep-result-page">
+        <div className="sleep-experience-overlay" aria-hidden="true" />
+        <div className="sleep-experience-shell">
+          <header className="sleep-experience-brand" aria-label="MindScore AI">
+            <span className="sleep-brand-mark" aria-hidden="true">M</span>
+            <span>MindScore AI</span>
+          </header>
+
+          <section className="sleep-result-intro" aria-labelledby="sleep-result-page-title">
+            <h1 id="sleep-result-page-title">TVOJA PRIČA O SNU JE SPREMNA</h1>
+            <span className="sleep-result-divider" aria-hidden="true"><span /></span>
+            <p>TVOJ POTPIS SNA</p>
+          </section>
+
+          {signatureResult ? (
+            <article className="sleep-signature-card">
+              <div className="sleep-signature-copy">
+                <span className="sleep-card-eyebrow">Tvoj obrazac</span>
+                <h2>{signatureResult.signature}</h2>
+                <p className="sleep-signature-description">{signatureResult.shortText}</p>
               </div>
-              <div className="pdf-caption-grid"><div><h3>Personalized Premium Report</h3><p>Your results, key sleep patterns, practical insights, and a clear action plan — personalized to your assessment.</p></div><div><h3>Detailed Growth Roadmap</h3><p>Understand your strongest areas, your main opportunity, and the practical steps that can improve your sleep routine.</p></div></div>
-              <div className="secure-report-row"><span className="secure-report-icon" aria-hidden="true" /><div><h3>Secure &amp; Professional</h3><p>Your personalized premium report is delivered instantly after secure payment.</p></div></div>
+
+              <div className="sleep-result-insights">
+                <section className="sleep-result-insight-card">
+                  <span>{isCalmNight ? "Tvoja najjača strana" : "Najviše se izdvaja"}</span>
+                  <strong>{isCalmNight ? signatureResult.strongestArea : signatureResult.mainArea}</strong>
+                </section>
+                <section className="sleep-result-insight-card">
+                  <span>{isCalmNight ? "Dobra vest" : "Tvoja dobra strana"}</span>
+                  <strong>{isCalmNight ? signatureResult.mainArea : signatureResult.strongestArea}</strong>
+                </section>
+              </div>
+
+              <div className="sleep-locked-teaser">
+                <span className="sleep-lock-icon" aria-hidden="true">🔒</span>
+                <p>Još 4 stvari se izdvajaju iz tvojih odgovora.</p>
+              </div>
+
+              <a className="sleep-discovery-cta" href="/sleep-premium">
+                <span>OTKRIJ ŠTA SE JOŠ KRIJE <span aria-hidden="true">→</span></span>
+              </a>
             </article>
-          </div>
-        </section>
+          ) : (
+            <article className="sleep-signature-card sleep-result-unavailable">
+              <p>Nismo uspeli da pripremimo tvoj rezultat. Pokušaj ponovo da završiš upitnik.</p>
+              <a className="sleep-discovery-cta" href="/">Vrati se na upitnik</a>
+            </article>
+          )}
+        </div>
+      </main>
+    </>
+  );
+}
 
-        {isPreviewOpen && (
-          <div className="preview-modal" role="dialog" aria-modal="true" aria-labelledby="preview-modal-title">
-            <div className="preview-modal-backdrop" onClick={() => setIsPreviewOpen(false)} />
-            <div className="preview-modal-content">
-              <div className="preview-modal-header">
-                <div>
-                  <p>Premium PDF preview</p>
-                  <h2 id="preview-modal-title">Three-page report</h2>
-                </div>
-                <button className="preview-close-btn" type="button" aria-label="Close preview" onClick={() => setIsPreviewOpen(false)}>×</button>
-              </div>
-              <div className="preview-modal-pages">
-                <div className="pdf-page premium-cover-page" />
-                <div className="pdf-page pdf-page-two"><span>Page 2</span><h4>Sleep Signals</h4><div className="radar-wrap" aria-hidden="true"><div className="radar-chart" /></div><div className="pdf-score-bars"><div><b /> <i style={{ width: "84%" }} /></div><div><b /> <i style={{ width: "71%" }} /></div><div><b /> <i style={{ width: "77%" }} /></div></div></div>
-                <div className="pdf-page pdf-page-three"><span>Page 3</span><h4>Sleep Plan</h4><div className="recommendation-cards"><article><strong>Focus</strong><p>Better habits</p></article><article><strong>Practice</strong><p>Deeper recovery</p></article><article><strong>Track</strong><p>Energy markers</p></article></div></div>
-              </div>
-            </div>
-          </div>
-        )}
+const SLEEP_DISCOVERY_CARDS = [
+  {
+    title: "Šta najviše utiče na tvoj san",
+    description: "Pogledaj šta se u tvojim odgovorima najviše povezuje sa trenutnim obrascem sna.",
+  },
+  {
+    title: "Veza koju možda ne primećuješ",
+    description: "Pogledaj kako se tvoji odgovori međusobno povezuju.",
+  },
+  {
+    title: "Šta ti već ide dobro",
+    description: "Prepoznaj delove sna i navike koji predstavljaju tvoju dobru osnovu.",
+  },
+  {
+    title: "Odakle da počneš",
+    description: "Dobij konkretne korake prilagođene tvom obrascu sna.",
+  },
+];
 
-        <section className="section faq-section reveal" id="faq">
-          <div className="section-heading">
-            <h2>Frequently Asked Questions</h2>
-          </div>
-          <div className="faq-list">
-            {[faqItems[0], faqItems[1], faqItems[2], faqItems[4], faqItems[5]].map((item) => (
-              <details key={item.question}>
-                <summary>{item.question}</summary>
-                <div className="faq-answer">
-                  <p>{item.answer}</p>
+function useSavedSleepAssessment() {
+  const [savedAssessment, setSavedAssessment] = useState({ userAnswers: null, signatureResult: null });
+
+  useEffect(() => {
+    try {
+      const rawDraft = window.localStorage.getItem(DRAFT_KEY);
+      const rawCompleted = window.localStorage.getItem(COMPLETED_ASSESSMENT_KEY);
+      const assessment = rawDraft ? JSON.parse(rawDraft) : rawCompleted ? JSON.parse(rawCompleted) : null;
+      const answers = assessment?.userAnswers;
+
+      if (
+        assessment?.selectedTest !== "sleep" ||
+        !Array.isArray(answers) ||
+        answers.length !== 12 ||
+        answers.some((answer) => !Number.isInteger(answer) || answer < 1 || answer > 5)
+      ) return;
+
+      setSavedAssessment({
+        userAnswers: answers,
+        signatureResult: calculateSleepSignature(answers.map((points) => 5 - points)),
+      });
+    } catch {
+      setSavedAssessment({ userAnswers: null, signatureResult: null });
+    }
+  }, []);
+
+  return savedAssessment;
+}
+
+function SleepPremiumDiscoveryPage() {
+  const { signatureResult } = useSavedSleepAssessment();
+
+  return (
+    <>
+      <SeoHead
+        title="Tvoja priča se nastavlja | MindScore AI"
+        description="Nastavi da istražuješ obrasce koji se kriju u tvojoj priči o snu."
+      />
+      <main className="sleep-experience-page sleep-discovery-page">
+        <div className="sleep-experience-overlay" aria-hidden="true" />
+        <div className="sleep-discovery-shell">
+          <header className="sleep-experience-brand" aria-label="MindScore AI">
+            <span className="sleep-brand-mark" aria-hidden="true">M</span>
+            <span>MindScore AI</span>
+          </header>
+
+          <section className="sleep-discovery-intro">
+            <p className="sleep-discovery-kicker">TVOJA PRIČA SE NASTAVLJA</p>
+            <h1>IZA TVOG POTPISA<br />KRIJE SE JOŠ</h1>
+            <p className="sleep-discovery-description">
+              Na osnovu tvojih 12 odgovora izdvojili smo još nekoliko detalja koji ti mogu pomoći da bolje razumeš svoj san.
+            </p>
+            {signatureResult && (
+              <p className="sleep-discovery-signature">Tvoj potpis: <strong>{signatureResult.signature}</strong></p>
+            )}
+          </section>
+
+          <section className="sleep-discoveries" aria-label="Zaključana otkrića">
+            {SLEEP_DISCOVERY_CARDS.map((card, index) => (
+              <article className="sleep-discovery-card" key={card.title}>
+                <span className="sleep-discovery-lock" aria-hidden="true">🔒</span>
+                <div className="sleep-discovery-card-copy">
+                  <h2>{card.title}</h2>
+                  <p>{card.description}</p>
                 </div>
-              </details>
+                <div className="sleep-discovery-blurred-preview" aria-hidden="true">
+                  <span style={{ width: `${62 + index * 5}%` }} />
+                  <span style={{ width: `${78 - index * 4}%` }} />
+                </div>
+              </article>
             ))}
-          </div>
+          </section>
+
+          <section className="sleep-pdf-benefit">
+            <span className="sleep-pdf-icon" aria-hidden="true">📄</span>
+            <div>
+              <h2>Kompletan PDF izveštaj</h2>
+              <p>Tvoja analiza, objašnjenja i praktični koraci na jednom mestu.</p>
+            </div>
+          </section>
+
+          <section className="sleep-discovery-price" aria-label="Cena">
+            <strong>4,99 €</strong>
+            <span>Jednokratno · Bez pretplate</span>
+          </section>
+
+          <a className="sleep-discovery-cta" href="/sleep-checkout">
+            <span>OTKLJUČAJ CELU PRIČU <span aria-hidden="true">→</span></span>
+          </a>
+          <a className="sleep-discovery-back" href="/">← Nazad na moj rezultat</a>
+        </div>
+      </main>
+    </>
+  );
+}
+
+function SleepCheckoutPage() {
+  const { signatureResult, userAnswers } = useSavedSleepAssessment();
+  const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
+  const submitLock = useRef(false);
+
+  const handleCheckoutSubmit = async (event) => {
+    event.preventDefault();
+    if (submitLock.current) return;
+
+    setEmailError("");
+    setCheckoutError("");
+    const trimmedEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError("Unesi ispravnu email adresu.");
+      return;
+    }
+    if (!Array.isArray(userAnswers) || userAnswers.length !== 12) {
+      setCheckoutError("Tvoji odgovori nisu dostupni. Vrati se na rezultat i pokušaj ponovo.");
+      return;
+    }
+
+    submitLock.current = true;
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch(apiUrl(`${API_BASE}/create-checkout-session`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerEmail: trimmedEmail,
+          assessmentType: "sleep",
+          testName: tests.sleep.title,
+          answers: userAnswers,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.url) throw new Error("checkout_unavailable");
+
+      window.location.assign(data.url);
+    } catch {
+      submitLock.current = false;
+      setIsSubmitting(false);
+      setCheckoutError("Plaćanje trenutno nije moguće. Pokušaj ponovo.");
+    }
+  };
+
+  return (
+    <>
+      <SeoHead
+        title="Tvoj kompletan izveštaj | MindScore AI"
+        description="Unesi email za dostavu izveštaja i nastavi na sigurno plaćanje."
+      />
+      <main className="sleep-experience-page sleep-checkout-page">
+        <div className="sleep-experience-overlay" aria-hidden="true" />
+        <section className="sleep-checkout-card">
+          <header className="sleep-experience-brand" aria-label="MindScore AI">
+            <span className="sleep-brand-mark" aria-hidden="true">M</span>
+            <span>MindScore AI</span>
+          </header>
+          <p className="sleep-discovery-kicker">JOŠ JEDAN KORAK</p>
+          <h1>TVOJ KOMPLETAN IZVEŠTAJ</h1>
+          <p className="sleep-checkout-subtitle">Još jedan korak do tvoje cele priče o snu.</p>
+          {signatureResult && <p className="sleep-discovery-signature">Tvoj potpis: <strong>{signatureResult.signature}</strong></p>}
+
+          <section className="sleep-checkout-summary" aria-label="Sadržaj izveštaja">
+            <h2>Kompletan Premium izveštaj</h2>
+            <ul>
+              <li>✓ Personalizovana analiza</li>
+              <li>✓ Praktični koraci</li>
+              <li>✓ PDF izveštaj</li>
+            </ul>
+          </section>
+
+          <section className="sleep-checkout-price" aria-label="Cena">
+            <strong>4,99 €</strong>
+            <span>Jednokratno · Bez pretplate</span>
+          </section>
+
+          <form className="sleep-checkout-form" onSubmit={handleCheckoutSubmit} noValidate>
+            <label htmlFor="sleep-checkout-email">Email za dostavu izveštaja</label>
+            <input
+              id="sleep-checkout-email"
+              type="email"
+              autoComplete="email"
+              placeholder="tvoj@email.com"
+              value={email}
+              aria-invalid={Boolean(emailError)}
+              aria-describedby={emailError ? "sleep-checkout-email-error" : undefined}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setEmailError("");
+              }}
+            />
+            {emailError && <p className="sleep-checkout-error" id="sleep-checkout-email-error" role="alert">{emailError}</p>}
+            {checkoutError && <p className="sleep-checkout-error" role="alert">{checkoutError}</p>}
+            <button className="sleep-discovery-cta" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Otvaramo sigurno plaćanje..." : "NASTAVI NA SIGURNO PLAĆANJE →"}
+            </button>
+          </form>
+
+          <p className="sleep-checkout-trust">🔒 Sigurno plaćanje putem Stripe-a</p>
+          <a className="sleep-discovery-back" href="/sleep-premium">← Nazad</a>
         </section>
       </main>
-      <footer className="site-footer homepage-footer" aria-label="Homepage footer">
-        <div className="footer-grid">
-          <div className="footer-col brand">
-            <p className="footer-brand">MindScore AI</p>
-            <p className="footer-note">
-              Educational and informational self-assessment platform. Not medical diagnosis or treatment.
-            </p>
-          </div>
-
-          <nav className="footer-col" aria-label="Privacy and terms">
-            <p className="footer-col-title">Legal</p>
-            <div className="site-footer-links">
-              <a href="#faq">FAQ</a>
-              <a href="/privacy">Privacy</a>
-              <a href="/terms">Terms</a>
-              <a href="/terms">Legal</a>
-            </div>
-          </nav>
-
-          <nav className="footer-col" aria-label="Support contact">
-            <p className="footer-col-title">Support</p>
-            <div className="site-footer-links">
-              <a href="/support">Support</a>
-              <a href="mailto:aimindscore@gmail.com">aimindscore@gmail.com</a>
-            </div>
-          </nav>
-
-          <div className="footer-col" aria-label="Copyright">
-            <p className="footer-col-title">MindScore AI</p>
-            <div className="site-footer-links">
-              <span>(c) {new Date().getFullYear()}</span>
-            </div>
-          </div>
-        </div>
-      </footer>
     </>
   );
 }
@@ -1192,11 +1385,11 @@ function AssessmentApp() {
     return Math.round((score / (test.questions.length * 5)) * 100);
   }, [selectedTest, test, userAnswers, score]);
 
-  // AI Sleep Profile / Subtype / Confidence, derived purely from the answer pattern.
-  const sleepAIResult = useMemo(() => {
-    if (selectedTest !== "sleep" || userAnswers.length === 0) return null;
+  const sleepSignatureResult = useMemo(() => {
+    if (selectedTest !== "sleep" || userAnswers.length !== sleepAnswerOptions.length) return null;
     const answerIndexes = userAnswers.map((points) => 5 - Number(points));
-    return calculateSleepResult(answerIndexes);
+    const answerTexts = answerIndexes.map((answerIndex, questionIndex) => sleepAnswerOptions[questionIndex]?.[answerIndex]?.text);
+    return calculateSleepSignature(answerIndexes, answerTexts);
   }, [selectedTest, userAnswers]);
 
   const startTest = (key) => {
@@ -1341,8 +1534,11 @@ function AssessmentApp() {
     );
   }
 
+  if (currentQuestion === test.questions.length && selectedTest === "sleep") {
+    return <SleepSignatureResultPage signatureResult={sleepSignatureResult} />;
+  }
+
   if (currentQuestion === test.questions.length) {
-    const isSleepResult = selectedTest === "sleep" && sleepAIResult;
     const resultLevel = getLevel(finalScore);
     const summary = getSummary(finalScore);
     const strongestDimension =
@@ -1365,131 +1561,40 @@ function AssessmentApp() {
             <div className="result-head">
               <div className="badge">Free result</div>
               <h1>{test.title} Results</h1>
-              {!isSleepResult && <p>{resultLevel}</p>}
+              <p>{resultLevel}</p>
             </div>
 
-            {isSleepResult ? (
-              <div className="sleep-hero">
-                <div
-                  className="sleep-hero-circle"
-                  role="img"
-                  aria-label={`Overall score ${finalScore} out of 100`}
-                >
-                  <span className="sleep-hero-score">{finalScore}</span>
-                  <span className="sleep-hero-max">/100</span>
-                </div>
-                <h2 className="sleep-hero-profile">{sleepAIResult.profile}</h2>
-                <p className="sleep-hero-subtitle">Your AI Sleep Profile</p>
+            <div className="score-card">
+              <div
+                className="score-circle"
+                role="img"
+                aria-label={`Overall score ${finalScore} out of 100`}
+              >
+                <span>{finalScore}</span>
+                <small>/100</small>
               </div>
-            ) : (
-              <div className="score-card">
-                <div
-                  className="score-circle"
-                  role="img"
-                  aria-label={`Overall score ${finalScore} out of 100`}
-                >
-                  <span>{finalScore}</span>
-                  <small>/100</small>
-                </div>
-                <div className="score-copy">
-                  <h2>Overall Score</h2>
-                  <p>{summary.strengths}</p>
-                </div>
+              <div className="score-copy">
+                <h2>Overall Score</h2>
+                <p>{summary.strengths}</p>
               </div>
-            )}
+            </div>
 
-            {isSleepResult ? (
-              <>
-                <div className="ai-insight-grid">
-                  <article className="ai-insight-card">
-                    <span className="ai-insight-icon" aria-hidden="true">🧠</span>
-                    <h3>AI Sleep Profile</h3>
-                    <p>{sleepAIResult.profile}</p>
-                  </article>
-                  <article className="ai-insight-card">
-                    <span className="ai-insight-icon" aria-hidden="true">🧩</span>
-                    <h3>AI Subtype</h3>
-                    <p>{sleepAIResult.subtype}</p>
-                  </article>
-                  <article className="ai-insight-card">
-                    <span className="ai-insight-icon" aria-hidden="true">🎯</span>
-                    <h3>AI Confidence</h3>
-                    <p>{sleepAIResult.confidence}% Match</p>
-                  </article>
-                  <article className="ai-insight-card">
-                    <span className="ai-insight-icon" aria-hidden="true">💪</span>
-                    <h3>Strongest Pattern</h3>
-                    <p>{strongestDimension ? strongestDimension.name : "Not enough data yet"}</p>
-                  </article>
-                  <article className="ai-insight-card ai-insight-card-full ai-insight-card-compact">
-                    <span className="ai-insight-icon" aria-hidden="true">🚀</span>
-                    <h3>Biggest Opportunity</h3>
-                    <p>{growthDimension ? growthDimension.name : "Not enough data yet"}</p>
-                  </article>
-                  <article className="ai-teaser-card ai-insight-card-full">
-                    <h3>🧠 AI Insight</h3>
-                    <p>
-                      Our AI detected one hidden sleep pattern that may be reducing your recovery more than any
-                      other factor.
-                    </p>
-                    <p className="ai-teaser-cta">Unlock Premium to reveal it.</p>
-                  </article>
-                </div>
+            <div className="result-insights">
+              <article>
+                <h3>Key strengths</h3>
+                <p>{strongestDimension ? `${strongestDimension.name}: ${strongestDimension.score}/100.` : summary.strengths}</p>
+              </article>
+              <article>
+                <h3>Areas to improve</h3>
+                <p>{growthDimension ? `${growthDimension.name}: ${growthDimension.score}/100.` : summary.improve}</p>
+              </article>
+              <article>
+                <h3>Short recommendation</h3>
+                <p>{summary.recommendation}</p>
+              </article>
+            </div>
 
-                <section className="premium-preview-panel" aria-label="Premium preview">
-                  <div className="analytics-heading">
-                    <p className="analytics-label">Premium preview</p>
-                    <h2>Your AI Report Is Ready</h2>
-                  </div>
-
-                  <div className="premium-locked-cards">
-                    {PREMIUM_INSIGHT_CARDS.map((title, index) => (
-                      <article
-                        className={index === 0 ? "premium-locked-card premium-locked-card-blurred" : "premium-locked-card"}
-                        key={title}
-                      >
-                        <span className="premium-locked-icon" aria-hidden="true">🔒</span>
-                        <div className="premium-locked-copy">
-                          <h3>{title}</h3>
-                          <p>Hidden AI analysis</p>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-
-                  <div className="premium-checklist-card">
-                    <div className="premium-checklist-header">
-                      <h3>🔥 One hidden sleep pattern detected</h3>
-                      <p>Your biggest opportunity for improvement</p>
-                    </div>
-                    <ul>
-                      {PREMIUM_REPORT_CHECKLIST.map((item) => (
-                        <li key={item}>✓ {item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </section>
-              </>
-            ) : (
-              <>
-                <div className="result-insights">
-                  <article>
-                    <h3>Key strengths</h3>
-                    <p>{strongestDimension ? `${strongestDimension.name}: ${strongestDimension.score}/100.` : summary.strengths}</p>
-                  </article>
-                  <article>
-                    <h3>Areas to improve</h3>
-                    <p>{growthDimension ? `${growthDimension.name}: ${growthDimension.score}/100.` : summary.improve}</p>
-                  </article>
-                  <article>
-                    <h3>Short recommendation</h3>
-                    <p>{summary.recommendation}</p>
-                  </article>
-                </div>
-
-                {dashboardScores.length > 0 && <AnalyticsDashboard data={dashboardScores} />}
-              </>
-            )}
+            {dashboardScores.length > 0 && <AnalyticsDashboard data={dashboardScores} />}
 
             <section className="premium-cta-panel" aria-label="Premium report offer">
               <div className="premium-cta-copy">
@@ -1507,22 +1612,6 @@ function AssessmentApp() {
                 </ul>
               </div>
               <div className="premium-cta-form">
-                {isSleepResult && (
-                  <div className="premium-trust-badges">
-                    {PREMIUM_TRUST_BADGES.map((badge) => (
-                      <span key={badge.label}>
-                        {badge.icon} {badge.label}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {isSleepResult && (
-                  <div className="premium-price-block">
-                    <p>One-time payment</p>
-                    <strong>€{PREMIUM_PRICE_EUR}</strong>
-                    <p>No subscription</p>
-                  </div>
-                )}
                 <label htmlFor="report-email">Email for secure report delivery</label>
                 <input
                   id="report-email"
@@ -1537,21 +1626,12 @@ function AssessmentApp() {
                   }}
                 />
                 <button
-                  className={isSleepResult ? "primary-btn premium-unlock-btn" : "primary-btn"}
+                  className="primary-btn"
                   onClick={startPremiumCheckout}
                   disabled={isCheckoutRedirecting}
                 >
-                  {isCheckoutRedirecting
-                    ? "Redirecting to secure checkout..."
-                    : isSleepResult
-                    ? "Unlock My Complete AI Report"
-                    : "Unlock Premium Report"}
+                  {isCheckoutRedirecting ? "Redirecting to secure checkout..." : "Unlock Premium Report"}
                 </button>
-                {isSleepResult && (
-                  <p className="premium-trust-line">
-                    Used by people who want to truly understand their sleep instead of guessing.
-                  </p>
-                )}
                 {checkoutError && (
                   <p className="inline-error" id="report-email-error" role="alert">
                     {checkoutError}
@@ -1575,6 +1655,7 @@ function AssessmentApp() {
 
   const progress = ((currentQuestion + 1) / test.questions.length) * 100;
   const selectedOption = userAnswers[currentQuestion];
+  const visibleAnswers = selectedTest === "sleep" ? sleepAnswerOptions[currentQuestion] || answers : answers;
 
   return (
     <>
@@ -1583,6 +1664,7 @@ function AssessmentApp() {
         description="Complete your assessment with a clear, mobile-friendly questionnaire and progress tracking."
       />
       <main className="page assessment-page quiz-active">
+        <div className="quiz-photo-overlay" aria-hidden="true" />
         <section className="content-panel quiz-panel">
           <nav className="quiz-nav-row" aria-label="Assessment navigation">
             <button
@@ -1591,16 +1673,20 @@ function AssessmentApp() {
               onClick={goBackQuestion}
               disabled={currentQuestion === 0 || isAnswering}
             >
-              <span aria-hidden="true">←</span> Back
+              Nazad
             </button>
+            <div className="quiz-branding" aria-label="MindScore AI sleep story">
+              <span className="quiz-brand-name">MindScore AI</span>
+              <span className="quiz-brand-subtitle">Tvoja priča o snu</span>
+            </div>
             <button type="button" className="quiz-nav-btn quiz-nav-home" onClick={restart}>
-              <span aria-hidden="true">🏠</span> Home
+              Početna
             </button>
           </nav>
 
           <div className="quiz-top">
             <span>
-              Question {currentQuestion + 1} of {test.questions.length}
+              Pitanje {currentQuestion + 1} od {test.questions.length}
             </span>
             <span>{Math.round(progress)}%</span>
           </div>
@@ -1612,7 +1698,7 @@ function AssessmentApp() {
           <h1 className="question-title">{test.questions[currentQuestion]}</h1>
 
           <div className="answers" role="group" aria-label="Answer options">
-            {answers.map((item) => {
+            {visibleAnswers.map((item) => {
               const isSelected = selectedOption === item.points;
               return (
                 <button
@@ -1622,10 +1708,36 @@ function AssessmentApp() {
                   className={isSelected ? "selected" : ""}
                   aria-pressed={isSelected}
                 >
-                  <strong>{item.text}</strong>
+                  <span className="answer-radio" aria-hidden="true">
+                    <span className="answer-radio-dot" />
+                  </span>
+                  <span className="answer-copy">{item.text}</span>
                 </button>
               );
             })}
+          </div>
+
+          <div className="quiz-bottom-nav">
+            <button
+              type="button"
+              className="quiz-bottom-btn quiz-bottom-prev"
+              onClick={goBackQuestion}
+              disabled={currentQuestion === 0 || isAnswering}
+            >
+              Prethodno
+            </button>
+            <button
+              type="button"
+              className="quiz-bottom-btn quiz-bottom-next"
+              onClick={() => {
+                if (typeof selectedOption === "number") {
+                  answerQuestion(selectedOption);
+                }
+              }}
+              disabled={!selectedOption || isAnswering}
+            >
+              Sledeće →
+            </button>
           </div>
 
           {isAnswering && <p className="micro-status">Saving answer...</p>}
@@ -1656,6 +1768,14 @@ function App() {
 
   if (pathname === "/payment-cancelled") {
     return <PaymentCancelledPage />;
+  }
+
+  if (pathname === "/sleep-premium") {
+    return <SleepPremiumDiscoveryPage />;
+  }
+
+  if (pathname === "/sleep-checkout") {
+    return <SleepCheckoutPage />;
   }
 
   return <AssessmentApp />;

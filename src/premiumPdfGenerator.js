@@ -215,27 +215,17 @@ const getProfileInsights = (dimensions, overallScore) => {
 const buildSleepPattern = (profile, overallScore) => {
   const highNames = `${profile.strongest.name} and ${profile.secondStrongest.name}`;
   const lowNames = `${profile.weakest.name} and ${profile.secondWeakest.name}`;
-  const concentration = profile.spread >= 20
-    ? "The difference between these areas is pronounced, so your next step can be focused rather than broad."
-    : "Your scores sit relatively close together, so a simple routine change may support the whole profile.";
+    const concentration = profile.spread >= 20 ? "The difference between these areas is pronounced, so your next step can be focused rather than broad." : "Your scores sit relatively close together, so a simple routine change may support the whole profile.";
   return [
-    `Within this self-assessment, ${highNames} appear relatively more protected, while ${lowNames} may be worth focusing on. Your overall score of ${overallScore}/100 sits between those results, which suggests a mixed sleep picture rather than one single pattern.`,
-    `${concentration} Start with ${profile.weakest.name.toLowerCase()}, then notice whether the strength in ${profile.strongest.name.toLowerCase()} gives you a useful routine to borrow.`,
+    `Within this self-assessment, ${highNames} appear relatively more protected, while ${lowNames} may be worth focusing on. Your overall score of ${overallScore}/100 sits between those results, and the profile shows a ${profileSpreadCategory(profile.spread)} rather than one uniform pattern.`,
+    `${concentration} Start with ${profile.weakest.name.toLowerCase()}, then keep the parts of your routine that already seem to help the strongest area feel more stable.`,
   ];
 };
 
-const dimensionConnection = (major, profile, overallScore) => {
-  const name = major.shortTitle;
-  if (name === profile.strongest.name) {
-    return `${name} is one of the more protected parts of your profile. Notice which cue or timing already supports it, then use that same cue to make ${profile.weakest.name.toLowerCase()} easier to begin.`;
-  }
-  if (name === profile.weakest.name) {
-    return `${name} is the clearest priority within this self-assessment. The gap of ${profile.spread} points from ${profile.strongest.name} suggests that one targeted routine may be more useful than changing everything at once.`;
-  }
-  if (major.score > overallScore) {
-    return `${name} sits above your overall score and can help steady the profile. Protect what is already working here while you focus on ${profile.weakest.name.toLowerCase()}.`;
-  }
-  return `${name} sits below your overall score, alongside ${profile.weakest.name}. Improving either area may make the rest of your sleep routine feel easier to maintain.`;
+const profileSpreadCategory = (spread) => {
+  if (spread >= 20) return "meaningful contrast";
+  if (spread >= 11) return "moderate spread";
+  return "tightly clustered";
 };
 
 const poolFallback = (pool, seed) => {
@@ -907,8 +897,7 @@ const didYouKnowText = (major) => {
   return `A regular sleep and wake rhythm can make bedtime feel more predictable over time. Your ${name} score of ${score} makes routine timing a useful pattern to track.`;
 };
 
-const drawDidYouKnow = (flow, major) => {
-  const text = didYouKnowText(major);
+const drawDidYouKnow = (flow, major, text = didYouKnowText(major)) => {
   const lines = flow.doc.splitTextToSize(text, CONTENT_WIDTH - 18);
   const boxHeight = 16 + lines.length * 5.4;
   ensureSpace(flow, boxHeight + 4, `Did you know: ${major.shortTitle}`);
@@ -957,10 +946,173 @@ const drawInRealLife = (flow, text) => {
   flow.y += boxHeight + 4;
 };
 
+const sleepDimensionSignalText = (major, signals = {}) => {
+  const name = major.shortTitle;
+  if (name.includes("Recovery")) {
+    return signals.stressSleepRecovery === "challenging"
+      ? "After a difficult day, compare how a calmer transition affects how restored you feel the next morning."
+      : "Notice whether the routines that leave you feeling restored are also the easiest to repeat.";
+  }
+  if (name.includes("Continuity")) {
+    return signals.earlyWaking === "challenging" || signals.fallsBackAsleep === "challenging"
+      ? "If you wake early or struggle to settle again, note when it happens and whether the same pattern repeats."
+      : "Notice whether your sleep remains smooth when the usual schedule changes.";
+  }
+  if (name.includes("Wind-Down")) {
+    return signals.racingThoughtsAtBedtime === "challenging"
+      ? "Before bed, write down one unresolved thought and observe whether closing that loop changes the transition into sleep."
+      : "Notice which part of your existing evening transition makes it easiest to shift attention toward sleep.";
+  }
+  if (name.includes("Clarity")) {
+    return signals.daytimeFatigue === "challenging" || signals.morningClarity === "challenging"
+      ? "Compare your clearest and most tired parts of the day with the sleep pattern from the night before."
+      : "Notice whether the routines linked with clearer mornings also support steadier daytime energy.";
+  }
+  return signals.scheduleRecovery === "challenging"
+    ? "After a schedule change, observe how many days it takes before your usual sleep rhythm feels easier again."
+    : "Notice whether a predictable sleep and wake rhythm keeps this area steadier across the week.";
+};
+
+const sleepDimensionEducation = (major) => {
+  if (major.shortTitle.includes("Recovery")) return "Recovery reflects how restored sleep appears to leave you, not simply how long you were in bed.";
+  if (major.shortTitle.includes("Continuity")) return "Continuity is about how smoothly sleep holds together across the night, including waking and settling again.";
+  if (major.shortTitle.includes("Wind-Down")) return "Wind-down describes the transition from daytime attention into a state that is easier to carry into sleep.";
+  if (major.shortTitle.includes("Clarity")) return "Daytime clarity gives context for how the effects of sleep show up in attention and energy after waking.";
+  return "Consistency describes how predictable your sleep and wake rhythm feels across changing days.";
+};
+
+const recoveryPilotFallback = (major, context) => ({
+  scoreExplanation: `Sleep Recovery is the part of sleep that tells you how restored you feel after waking and how ready you are for the day. A score of ${major.score}/100 in a profile like this means sleep is often doing a solid job. It is a clear strength compared with the weaker parts of the profile, but it does not mean every night is perfect or every part of sleep is working equally well.`,
+  answerInterpretation: "Your answers suggest that you often wake up feeling reasonably refreshed and recover fairly well after demanding days. That matters because it means sleep is often giving you useful rest, even when the wider routine is not always predictable.",
+  workingFactors: [
+    "Your answers suggest you often start the day feeling more restored than drained.",
+    "Your results also suggest you are able to bounce back reasonably well after a heavier or more demanding day.",
+    "That is a useful strength because a strong recovery score can make morning energy and mood easier to manage.",
+  ],
+  limitingFactors: [
+    "Sleep Consistency is the clearest area to improve, so the quality of recovery may still feel uneven from one day to the next.",
+    "A stronger recovery score does not automatically make the whole sleep routine predictable. Some nights may still feel less steady or less easy to repeat.",
+    "When the schedule is irregular, you may feel restored on some mornings and less refreshed on others.",
+  ],
+  whyItMatters: "Feeling restored after sleep can make morning energy, concentration, mood, and physical readiness easier to manage. It is not a guarantee of a perfect day, but it is one of the clearest signs that sleep is doing a useful job.",
+  recommendations: [
+    { what: "Keep a consistent wake-up time.", how: "Choose one wake-up time you can realistically keep most days and stay within a similar window instead of changing it dramatically from morning to morning.", why: "A more predictable wake-up routine is one of the simplest ways to make recovery easier to repeat." },
+    { what: "Protect a short wind-down routine.", how: "Pick one calm step you can repeat for 10-20 minutes before bed, such as dimming lights or putting your phone away.", why: "A calmer transition often helps the whole sleep rhythm feel more settled and less variable." },
+    { what: "Keep the first part of the morning easy.", how: "Try to get out of bed without a big rush and avoid stacking several demanding tasks right away.", why: "A gentle start makes the benefits of recovery easier to notice and easier to repeat." },
+    { what: "Track how refreshed you feel when you wake.", how: "Rate yourself from 1 to 5 each morning for seven days and note whether you feel ready to start the day or still heavy and slow to wake.", why: "A simple morning check makes it easier to see whether the routine is genuinely helping your recovery." },
+  ],
+  startTonight: "Decide what time you want to wake up tomorrow. Set your alarm now and use that time as the start of a seven-day test. Keep the rest of tonight simple and calm so the routine feels realistic.",
+  sevenDayExperiment: {
+    plan: "Set one wake-up time for the next seven days and keep your evening wind-down simple and repeatable. Aim for the same basic routine each night, not a perfect routine.",
+    frequency: "Repeat the same wake-up time and your chosen wind-down step for seven mornings and seven nights. Do not change several habits at once.",
+    whatToObserve: ["How refreshed I feel when I wake up", "How easy it is to get out of bed", "Whether my morning energy feels more predictable", "Whether I feel sleepy later in the day"],
+  },
+  ifItDoesNotHelp: "If you do not notice a useful change after seven days, keep the part of the routine that was easiest to follow. Then test one other small change instead of changing everything at once.",
+  realLifeExample: "Imagine your mornings vary depending on the day. Instead of rebuilding your whole sleep routine, choose one wake-up window for the next week. Keep the rest of your routine mostly unchanged so you can see whether that single anchor helps you feel more rested and ready.",
+  didYouKnow: "Recovery is more than time in bed. How refreshed you feel when you wake and how steady you feel through the morning are both useful clues.",
+  professionalAdvice: "If tiredness or poor recovery becomes frequent, affects your daily life, or feels difficult to manage, it may help to speak with a qualified healthcare professional.",
+});
+
+const drawRecoveryRecommendation = (flow, recommendation, index) => {
+  const width = CONTENT_WIDTH;
+  const textWidth = width - 36;
+  const rows = [
+    ["WHAT", recommendation.what],
+    ["HOW", recommendation.how],
+    ["WHY", recommendation.why],
+  ].map(([label, text]) => ({ label, lines: flow.doc.splitTextToSize(toSafeText(text, ""), textWidth) }));
+  const lineHeight = 5.2;
+  const height = 12 + rows.reduce((sum, row) => sum + row.lines.length * lineHeight + 3, 0) + 5;
+  ensureSpace(flow, height + 3, `Sleep Recovery recommendation ${index + 1}`);
+  flow.doc.setFillColor(248, 252, 255);
+  flow.doc.roundedRect(MARGIN_LEFT, flow.y, width, height, 3, 3, "F");
+  flow.doc.setDrawColor(...COLORS.line);
+  flow.doc.roundedRect(MARGIN_LEFT, flow.y, width, height, 3, 3, "S");
+  flow.doc.setFont("helvetica", "bold");
+  flow.doc.setFontSize(9.2);
+  flow.doc.setTextColor(...COLORS.ink);
+  flow.doc.text(`TRY ${index + 1}`, MARGIN_LEFT + 6, flow.y + 8);
+  let y = flow.y + 14;
+  rows.forEach((row) => {
+    flow.doc.setFont("helvetica", "bold");
+    flow.doc.setFontSize(8.6);
+    flow.doc.setTextColor(...COLORS.muted);
+    flow.doc.text(row.label, MARGIN_LEFT + 6, y);
+    flow.doc.setFont("helvetica", "normal");
+    flow.doc.setFontSize(10.2);
+    flow.doc.setTextColor(...COLORS.text);
+    flow.doc.text(row.lines, MARGIN_LEFT + 26, y, { maxWidth: textWidth });
+    y += row.lines.length * lineHeight + 3;
+  });
+  flow.y += height + 3;
+};
+
+const renderSleepRecoveryPilot = (flow, major, context, aiDimension = {}) => {
+  const fallbackPilot = recoveryPilotFallback(major, context);
+  const aiRecommendations = aiDimension.oneThingToTry
+    ? [{
+      what: aiDimension.oneThingToTry,
+      how: aiDimension.inRealLife || "Choose the version of this step that is realistic to repeat for seven days.",
+      why: aiDimension.nextStep || "A concrete, repeatable step makes the supplied recovery pattern easier to observe.",
+    }]
+    : [];
+  const pilot = {
+    ...fallbackPilot,
+    ...(context.sleepProfileNarrative?.sleepRecoveryPilot || {}),
+    ...(aiDimension.scoreSuggests ? {
+      scoreExplanation: aiDimension.scoreSuggests,
+      answerInterpretation: aiDimension.scoreSuggests,
+      whyItMatters: aiDimension.whyThisMatters,
+      workingFactors: [aiDimension.mayBeHelping],
+      limitingFactors: [aiDimension.mayBeGettingInWay],
+      recommendations: [...aiRecommendations, ...fallbackPilot.recommendations.slice(1)],
+      realLifeExample: aiDimension.inRealLife,
+    } : {}),
+  };
+  drawSubsectionTitle(flow, "Your Sleep Recovery score");
+  drawParagraph(flow, pilot.scoreExplanation);
+  drawSubsectionTitle(flow, "What your answers tell us");
+  drawParagraph(flow, pilot.answerInterpretation);
+  drawParagraph(flow, "This does not mean every night will feel easy. It does suggest that sleep is often giving you useful recovery, and that is a strong base to build on.");
+  drawSubsectionTitle(flow, "What seems to be working");
+  (pilot.workingFactors || []).forEach((text) => drawParagraph(flow, text));
+  drawSubsectionTitle(flow, "What may be getting in the way");
+  (pilot.limitingFactors || []).forEach((text) => drawParagraph(flow, text));
+  drawSubsectionTitle(flow, "Why Sleep Recovery matters");
+  drawParagraph(flow, pilot.whyItMatters);
+  if (pilot.didYouKnow) drawDidYouKnow(flow, major, pilot.didYouKnow);
+  drawSubsectionTitle(flow, "What you can do");
+  (pilot.recommendations || []).slice(0, 4).forEach((recommendation, index) => drawRecoveryRecommendation(flow, recommendation, index));
+  drawSubsectionTitle(flow, "Start tonight");
+  drawParagraph(flow, pilot.startTonight);
+  drawSubsectionTitle(flow, "Try this for 7 days");
+  drawParagraph(flow, pilot.sevenDayExperiment?.plan);
+  drawParagraph(flow, pilot.sevenDayExperiment?.frequency);
+  drawSubsectionTitle(flow, "What to notice");
+  const observations = aiDimension.whatToNotice
+    ? [aiDimension.whatToNotice]
+    : (pilot.sevenDayExperiment?.whatToObserve || []);
+  observations.forEach((text) => drawParagraph(flow, text));
+  drawSubsectionTitle(flow, "If the first step does not help");
+  drawParagraph(flow, pilot.ifItDoesNotHelp);
+  drawInRealLife(flow, pilot.realLifeExample);
+  if (pilot.professionalAdvice) {
+    drawSubsectionTitle(flow, "When professional advice may help");
+    drawParagraph(flow, pilot.professionalAdvice);
+  }
+};
+
 const drawThreeTiles = (flow, tiles, bottomGap = 5) => {
   const gap = 4;
   const width = (CONTENT_WIDTH - gap * 2) / 3;
-  const height = 38;
+  flow.doc.setFont("helvetica", "normal");
+  flow.doc.setFontSize(9.4);
+  const tileLines = tiles.map((tile) => {
+    const lines = flow.doc.splitTextToSize(toSafeText(tile.text, ""), width - 8);
+    return Array.isArray(lines) ? lines : [toSafeText(lines, "")];
+  });
+  const lineHeight = 5.2;
+  const height = Math.max(38, 20 + Math.max(...tileLines.map((lines) => lines.length)) * lineHeight);
   ensureSpace(flow, height + bottomGap, "Action card row");
 
   tiles.forEach((tile, index) => {
@@ -976,8 +1128,7 @@ const drawThreeTiles = (flow, tiles, bottomGap = 5) => {
     flow.doc.text(tile.label.toUpperCase(), x + 4, flow.y + 7);
     flow.doc.setFontSize(9.4);
     flow.doc.setTextColor(...COLORS.ink);
-    const lines = flow.doc.splitTextToSize(tile.text, width - 8);
-    flow.doc.text(lines.slice(0, 4), x + 4, flow.y + 15, { maxWidth: width - 8 });
+    flow.doc.text(tileLines[index], x + 4, flow.y + 15, { maxWidth: width - 8 });
   });
 
   flow.y += height + bottomGap;
@@ -998,6 +1149,7 @@ const drawActionPlanCard = (flow, card) => {
     { label: "WHAT TO DO", text: card.what },
     { label: "HOW", text: card.how },
     { label: "WHY", text: card.why },
+    { label: "OBSERVE", text: card.observe },
   ].map((row) => ({
     ...row,
     lines: flow.doc.splitTextToSize(row.text, valueWidth),
@@ -1045,7 +1197,7 @@ const measureActionPlanCardHeight = (doc, card) => {
   const bottomPadding = 8;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.6);
-  const rowHeights = [card.what, card.how, card.why].map((text) => doc.splitTextToSize(text, valueWidth).length * lineHeight);
+  const rowHeights = [card.what, card.how, card.why, card.observe].map((text) => doc.splitTextToSize(toSafeText(text, ""), valueWidth).length * lineHeight);
   const contentHeight = rowHeights.reduce((sum, height, index) => sum + height + (index < rowHeights.length - 1 ? rowGap : 0), 0);
   return Math.max(42, topPadding + contentHeight + bottomPadding) + cardGap;
 };
@@ -1059,12 +1211,22 @@ const measureParagraphHeight = (doc, text) => {
 
 const sleepGuidance = (name) => {
   const key = name.toLowerCase();
-  if (key.includes("recovery")) return { tonight: "Give yourself a calm 20 minutes before bed.", week: "Keep a simple wind-down cue for seven nights.", quick: "Leave tomorrow's first task ready before bed." };
+  if (key.includes("recovery")) return { tonight: "Set one calm 20-minute wind-down block before bed.", week: "Keep a simple evening cue for seven nights.", quick: "Leave tomorrow's first task easy so the morning starts more gently." };
   if (key.includes("continuity")) return { tonight: "Keep the bedroom calm and ready for sleep.", week: "Protect the same wake-up window most days.", quick: "Move one disruption out of reach before bed." };
-  if (key.includes("wind")) return { tonight: "Put one screen away for the final 30 minutes.", week: "Start your wind-down at a repeatable time.", quick: "Write down one thought you do not need to solve tonight." };
+  if (key.includes("wind")) return { tonight: "Set aside one stimulating task for the final 30 minutes.", week: "Start your wind-down at a repeatable time.", quick: "Write down one thought you do not need to solve tonight." };
   if (key.includes("clarity")) return { tonight: "Set up one easier morning step before bed.", week: "Notice when you feel most clear during the day.", quick: "Get daylight early when you can." };
-  if (key.includes("consistency")) return { tonight: "Choose a realistic bedtime window for tonight.", week: "Keep bedtime within a 30-45 minute window.", quick: "Set one reminder to begin winding down." };
+  if (key.includes("consistency")) return { tonight: "Choose a wake-up time you can keep tomorrow and set the alarm now.", week: "Keep the same wake-up window most mornings for seven days.", quick: "Protect the same wake-up time even on low-energy mornings." };
   return { tonight: "Choose one calming step before bed.", week: "Repeat one sleep-supporting habit for seven days.", quick: "Make your next bedtime step easier to start." };
+};
+
+const sleepNarrativeKey = (name) => {
+  const key = name.toLowerCase();
+  if (key.includes("recovery")) return "sleepRecovery";
+  if (key.includes("continuity")) return "sleepContinuity";
+  if (key.includes("wind-down")) return "cognitiveWindDown";
+  if (key.includes("clarity")) return "daytimeClarity";
+  if (key.includes("consistency")) return "sleepConsistency";
+  return "";
 };
 
 const renderCoverPage = (doc, context) => {
@@ -1173,6 +1335,19 @@ const renderMajorSections = (flow, sections, context, tocEntries) => {
     const isGrowth = major.shortTitle === context.profile.weakest.name;
     const isStrongest = major.shortTitle === context.profile.strongest.name;
     const difference = Math.abs(major.score - context.overallScore);
+    const rawAiDimension = context.sleepProfileNarrative?.dimensions?.[sleepNarrativeKey(major.shortTitle)] || {};
+    const aiDimension = {
+      ...rawAiDimension,
+      interpretation: rawAiDimension.scoreSuggests || rawAiDimension.interpretation,
+      personalConnection: rawAiDimension.whyThisMatters || rawAiDimension.personalConnection,
+      whatMayBeHelping: rawAiDimension.mayBeHelping || rawAiDimension.whatMayBeHelping,
+      whatMayBeGettingInTheWay: rawAiDimension.mayBeGettingInWay || rawAiDimension.whatMayBeGettingInTheWay,
+      practicalExperiment: rawAiDimension.inRealLife || rawAiDimension.practicalExperiment,
+      whatToObserve: rawAiDimension.whatToNotice || rawAiDimension.whatToObserve,
+    };
+    const signals = context.sleepProfileNarrative?.answerSignals || {};
+
+    ensureSpace(flow, 62, `Dimension start: ${major.shortTitle}`);
 
     tocEntries.push({ level: 1, title: major.title, page: startDimensionFlow(flow) });
     flow.context = context;
@@ -1181,38 +1356,138 @@ const renderMajorSections = (flow, sections, context, tocEntries) => {
     drawMiniProgressBar(flow, "Overall score", context.overallScore, COLORS.blue);
     drawMiniProgressBar(flow, `Strongest: ${context.strongest.name}`, context.strongest.score, context.strongest.color);
     drawScoreComparisonSentence(flow, major, context);
-    drawSubsectionTitle(flow, "What it means");
-    drawParagraph(flow, dimensionDefinition(major.shortTitle));
-    drawSubsectionTitle(flow, "What this means");
-    const meaning = isGrowth
-      ? `${major.shortTitle} is your lowest result at ${major.score}/100. Your responses suggest that a calmer, more repeatable lead-in to sleep may be worth focusing on first.`
-      : isStrongest
-        ? `${major.shortTitle} is your strongest result at ${major.score}/100. Within this self-assessment, this part of your sleep routine appears relatively more supported.`
-        : `${major.shortTitle} is ${difference} points ${major.score >= context.overallScore ? "above" : "below"} your overall score. It may be worth protecting while you work on the areas that need more attention.`;
-    drawParagraph(flow, meaning);
-    drawDidYouKnow(flow, major);
-    if (major.shortTitle.includes("Wind-Down")) {
-      drawInRealLife(flow, "Instead of aiming for a perfect bedtime routine, try this: around the same time, put your phone on charge, prepare one thing for tomorrow, and spend the last 30 minutes doing something quieter.");
+    if (major.shortTitle === "Sleep Recovery") {
+      renderSleepRecoveryPilot(flow, major, context, aiDimension);
+      return;
     }
-    drawSubsectionTitle(flow, "How it connects to your profile");
-    drawParagraph(flow, dimensionConnection(major, context.profile, context.overallScore));
+    drawSubsectionTitle(flow, "What your score suggests");
+    drawParagraph(flow, aiDimension.interpretation || dimensionDefinition(major.shortTitle));
+    drawSubsectionTitle(flow, "Why this matters for you");
+    const meaning = aiDimension.personalConnection || (() => {
+      if (major.shortTitle.includes("Continuity")) {
+        return signals.earlyWaking === "challenging" || signals.fallsBackAsleep === "challenging"
+          ? "Your score suggests sleep may still be breaking up more than you would like. If you wake or struggle to settle again, it can make the night feel less smooth even when you are getting time in bed."
+          : "Your score suggests sleep is often fairly smooth, but brief awakenings or slow settling can still make the night feel less predictable than it looks on paper.";
+      }
+      if (major.shortTitle.includes("Wind-Down")) {
+        return signals.racingThoughtsAtBedtime === "challenging"
+          ? "Your score suggests your mind may still be active in the final stretch before bed. That can make it harder to switch from daytime thinking into a calmer sleep state."
+          : "Your score suggests the transition into sleep can be reasonable, but it may still be easy to lose a little calm when the evening gets busy.";
+      }
+      if (major.shortTitle.includes("Clarity")) {
+        return signals.daytimeFatigue === "challenging" || signals.morningClarity === "challenging"
+          ? "Your score suggests daytime alertness may be less steady than you would like. A less predictable wake-up rhythm or a busy evening can make mornings feel heavier and thinking feel less clear."
+          : "Your score suggests your mornings and daytime alertness are often okay, but they may still vary across the week depending on how predictable the sleep routine feels.";
+      }
+      if (major.shortTitle.includes("Consistency")) {
+        return "This is the clearest area to improve. A more regular sleep and wake rhythm is likely to make recovery and daytime energy feel more stable over time.";
+      }
+      return isGrowth
+        ? `${major.shortTitle} is your lowest result at ${major.score}/100. Your responses suggest that a calmer, more repeatable lead-in to sleep may be worth focusing on first.`
+        : isStrongest
+          ? `${major.shortTitle} is your strongest result at ${major.score}/100. Within this self-assessment, this part of your sleep routine appears relatively more supported.`
+          : `${major.shortTitle} is ${difference} points ${major.score >= context.overallScore ? "above" : "below"} your overall score. It may be worth protecting while you work on the areas that need more attention.`;
+    })();
+    const whatMayBeHelpingText = aiDimension.whatMayBeHelping || (() => {
+      if (major.shortTitle.includes("Continuity")) {
+        return signals.earlyWaking === "challenging" || signals.fallsBackAsleep === "challenging"
+          ? "Your sleep still has some useful recovery behind it, which suggests the main issue is not that sleep is entirely broken but that it can be less smooth or more easily disrupted."
+          : "Your sleep can still feel reasonably settled when the routine stays predictable, so protecting your usual rhythm is a sensible place to start.";
+      }
+      if (major.shortTitle.includes("Wind-Down")) {
+        return signals.racingThoughtsAtBedtime === "challenging"
+          ? "A calmer pre-sleep routine is likely to help more than a big overhaul, because the problem is often the transition into sleep rather than the whole night itself."
+          : "The part of your evening that already feels calmer is worth keeping because it helps you shift out of daytime thinking more smoothly.";
+      }
+      if (major.shortTitle.includes("Clarity")) {
+        return signals.morningClarity === "challenging"
+          ? "A steadier wake-up routine is likely to help because clearer mornings usually follow better sleep continuity and a calmer transition into the day."
+          : "Your stronger recovery score suggests your mornings can already have some useful energy, which makes a small rhythm change worth testing.";
+      }
+      if (major.shortTitle.includes("Consistency")) {
+        return "This area is still improving, but your stronger recovery score shows that the routine is not starting from zero. The goal is to make the schedule easier to repeat.";
+      }
+      return isStrongest ? `${major.shortTitle} is currently your strongest area at ${major.score}/100.` : `The parts of your routine that are already working well are worth protecting here.`;
+    })();
+    const whatMayBeGettingInTheWayText = aiDimension.whatMayBeGettingInTheWay || (() => {
+      if (major.shortTitle.includes("Continuity")) {
+        return signals.earlyWaking === "challenging" || signals.fallsBackAsleep === "challenging"
+          ? "Late-night disruption, difficulty settling back to sleep, or inconsistent timing can make the night feel less continuous even when you are asleep for enough time."
+          : "A routine that shifts from day to day can make a good night feel less reliable, so the main opportunity is predictability.";
+      }
+      if (major.shortTitle.includes("Wind-Down")) {
+        return signals.racingThoughtsAtBedtime === "challenging"
+          ? "Mentally active evenings can make it harder to settle before sleep, especially when the routine feels unpredictable or tiring."
+          : "A busy evening can leave enough mental activation behind that the transition into sleep feels less easy to repeat.";
+      }
+      if (major.shortTitle.includes("Clarity")) {
+        return signals.daytimeFatigue === "challenging"
+          ? "If daytime tiredness is common, it may be a sign that the sleep rhythm is still too inconsistent to support your best alertness day to day."
+          : "The difference between your stronger and weaker sleep scores can still show up in how clear or slow your mornings feel.";
+      }
+      if (major.shortTitle.includes("Consistency")) {
+        return "The clearest obstacle here is irregular timing. When the sleep and wake times move a lot, it is harder to keep the rest of the profile feeling stable.";
+      }
+      return isGrowth ? `${major.shortTitle} is the clearest priority at ${major.score}/100.` : `The difference from your other scores may be worth watching across the week.`;
+    })();
+    const practicalExperimentText = aiDimension.practicalExperiment || (() => {
+      if (major.shortTitle.includes("Continuity")) {
+        return signals.earlyWaking === "challenging"
+          ? "Imagine you wake briefly during the night and take longer than usual to settle again. Instead of changing the whole evening, test one simpler wind-down routine and notice whether the wake-up is less disruptive."
+          : "Imagine your nights are mostly fine but slightly uneven. Keep the same wake-up window for a week and notice whether sleep feels more settled and less fragmented.";
+      }
+      if (major.shortTitle.includes("Wind-Down")) {
+        return signals.racingThoughtsAtBedtime === "challenging"
+          ? "Imagine the last 20 minutes before bed feel busy and mentally noisy. Put one task or thought aside so you can see whether a calmer transition makes sleep feel easier."
+          : "Imagine your evening routine is reasonable but not consistent. Keep the last part of the night simple and repeatable to see whether the transition into sleep becomes easier.";
+      }
+      if (major.shortTitle.includes("Clarity")) {
+        return signals.morningClarity === "challenging"
+          ? "Imagine mornings feel slower than they should. Keep the same wake-up time for a week and notice whether your first hour feels clearer and more predictable."
+          : "Imagine your daytime energy is decent but not steady. A more consistent wake-up routine may make the mornings and early afternoon feel more even.";
+      }
+      if (major.shortTitle.includes("Consistency")) {
+        return "Imagine your sleep schedule shifts from day to day. Instead of changing several habits, choose one wake-up time and keep it steady for a week to see whether your sleep rhythm feels easier to repeat.";
+      }
+      return sleepDimensionSignalText(major, signals);
+    })();
+    const whatToObserveText = aiDimension.whatToObserve || (() => {
+      if (major.shortTitle.includes("Continuity")) {
+        return "How often I wake during the night, how easy it is to settle again, and whether my morning feels more rested when the night is more settled.";
+      }
+      if (major.shortTitle.includes("Wind-Down")) {
+        return "Whether my mind feels calmer before sleep, whether I fall asleep more easily, and whether the evening feels less mentally active.";
+      }
+      if (major.shortTitle.includes("Clarity")) {
+        return "How clear I feel in the first hour after waking, whether I feel less foggy, and whether daytime energy feels more even.";
+      }
+      if (major.shortTitle.includes("Consistency")) {
+        return "Whether my wake-up time is easier to repeat, whether mornings feel more predictable, and whether I feel more restored by the end of the week.";
+      }
+      return sleepDimensionSignalText(major, signals);
+    })();
+    const whatToNoticeText = aiDimension.whatToObserve || (() => {
+      if (major.shortTitle.includes("Continuity")) return "How often I wake during the night and how easy it is to settle again.";
+      if (major.shortTitle.includes("Wind-Down")) return "Whether my mind feels calmer before sleep and whether I fall asleep more easily.";
+      if (major.shortTitle.includes("Clarity")) return "Whether my mornings feel clearer and my daytime energy more even.";
+      if (major.shortTitle.includes("Consistency")) return "Whether my wake-up time is easier to repeat and whether my morning energy feels more predictable.";
+      return sleepDimensionSignalText(major, signals);
+    })();
 
-    drawSectionTitle(flow, "Your pattern");
-    drawParagraph(flow, isGrowth ? `This is the area where a modest evening adjustment may have the clearest value. Focus on reducing friction before sleep, not on creating a perfect routine.` : isStrongest ? `This strength may be useful because it shows that part of your sleep routine is already working for you. Keep that pattern visible as you make one change elsewhere.` : `This area sits within the middle of your profile. It may respond best to one clear cue you can return to on ordinary days.`);
-    const watchFor = isGrowth
-      ? "Look for the first point in the evening where stimulation starts to crowd out rest. That is often the easiest place to make a small change."
-      : major.shortTitle.includes("Recovery")
-        ? "Notice whether a calm lead-in to bed changes how restored you feel on waking."
-        : major.shortTitle.includes("Continuity")
-          ? "Notice what tends to interrupt your usual sleep routine and whether one small change reduces that friction."
-          : major.shortTitle.includes("Clarity")
-            ? "Notice which morning cue helps you feel most clear, then protect it on ordinary days."
-            : "Notice whether a steadier bedtime window makes this part of your routine easier to maintain.";
-    drawCallout(flow, "Watch for this", watchFor);
+    drawParagraph(flow, meaning);
+    drawDidYouKnow(flow, major, sleepDimensionEducation(major));
+    drawSubsectionTitle(flow, "What may be helping");
+    drawParagraph(flow, whatMayBeHelpingText);
+    drawSubsectionTitle(flow, "What may be getting in the way");
+    drawParagraph(flow, whatMayBeGettingInTheWayText);
+    ensureSpace(flow, 90, `Dimension closing group: ${major.shortTitle}`);
+    drawInRealLife(flow, practicalExperimentText);
+    drawSubsectionTitle(flow, "What to observe over the next 7 days");
+    drawParagraph(flow, whatToObserveText);
     drawThreeTiles(flow, [
-      { label: "One thing to try", text: guidance.tonight, fill: [230, 241, 255] },
-      { label: "What to notice", text: `Over the next 7 days, notice whether ${major.shortTitle.toLowerCase()} feels easier, unchanged, or harder.`, fill: isGrowth ? [255, 240, 236] : [232, 248, 240] },
-      { label: "Next step", text: isStrongest ? `Keep the cue that supports this area.` : guidance.quick, fill: [240, 244, 255] },
+      { label: "One thing to try", text: aiDimension.oneThingToTry || practicalExperimentText, fill: [230, 241, 255] },
+      { label: "What to notice", text: whatToNoticeText, fill: isGrowth ? [255, 240, 236] : [232, 248, 240] },
+      { label: "Next step", text: isStrongest ? `Keep the cue that supports this area.` : aiDimension.nextStep || (major.shortTitle.includes("Consistency") ? "Keep the same wake-up window most mornings." : guidance.quick), fill: [240, 244, 255] },
     ]);
   });
 };
@@ -1249,27 +1524,43 @@ const renderSleepProfilePage = (flow, context, tocEntries) => {
   flow.doc.setFillColor(43, 161, 140);
   [[-12, -10], [10, -11], [12, 5]].forEach(([dx, dy]) => flow.doc.circle(illustrationX + dx, illustrationY + dy, 0.9, "F"));
 
-  const fallbackProfileSummary = `Your five scores form a ${context.profile.spread >= 20 ? "clear contrast" : "fairly even"} profile. ${context.profile.strongest.name} (${context.profile.strongest.score}/100) is your strongest result, while ${context.profile.weakest.name} (${context.profile.weakest.score}/100) is the main area to focus on.`;
-  const fallbackWhatsWorking = `${context.profile.strongest.name} is relatively supported. Protect the cue or routine that helps it.`;
-  const fallbackMainFocus = `${context.profile.weakest.name} sits ${context.profile.spread} points below your strongest area.`;
-  const fallbackWhereToStart = sleepGuidance(context.profile.weakest.name).tonight;
-  const fallbackPuttingItTogether = `Within this self-assessment, ${context.profile.secondStrongest.name} may help support ${context.profile.secondWeakest.name}. Start with one change around ${context.profile.weakest.name.toLowerCase()}, then notice whether the rest of your routine feels easier to maintain.`;
-  const narrative = context.sleepProfileNarrative || {};
-  const profileSummary = narrative.profileSummary || fallbackProfileSummary;
+  const fallbackProfileSummary = `${context.profile.strongest.name} is your strongest area at ${context.profile.strongest.score}/100. ${context.profile.weakest.name} is the clearest area to improve at ${context.profile.weakest.score}/100. The middle three scores are fairly close, so you do not need to rebuild everything. Start with a more regular wake-up time while protecting the routine that already seems to support recovery.`;
+  const fallbackWhatsWorking = `${context.profile.strongest.name} is the strongest part of your profile right now. Keep the parts of your routine that are already helping it feel stable.`;
+  const fallbackMainFocus = `${context.profile.weakest.name} is the area that needs the most attention right now.`;
+  const fallbackWhereToStart = "Choose one wake-up time you can keep most mornings and set the alarm now.";
+  const fallbackPuttingItTogether = `This profile does not need a full reset. Protect the routine that supports ${context.profile.strongest.name.toLowerCase()} and focus on one realistic change: keep a steadier wake-up time before adding anything else.`;
+  const narrative = context.sleepProfileNarrative?.sleepProfile || {};
+  const tileTextFits = (text) => {
+    flow.doc.setFont("helvetica", "normal");
+    flow.doc.setFontSize(9.4);
+    const tileGap = 4;
+    const tileWidth = (CONTENT_WIDTH - tileGap * 2) / 3;
+    const textWidth = tileWidth - 8;
+    const lines = flow.doc.splitTextToSize(toSafeText(text, ""), textWidth);
+    return lines.length <= 6 && lines.every((line) => flow.doc.getTextWidth(line) <= textWidth);
+  };
+  const normalizePuttingItTogether = (text) =>
+    toSafeText(text).replace(/^putting it together\s*:\s*/i, "");
+  const tileNarrative = (field, fallback) => {
+    const text = toSafeText(narrative[field], "");
+    return text && tileTextFits(text) ? text : fallback;
+  };
+  const profileSummary = narrative.profileSummary || narrative.summary || fallbackProfileSummary;
+  const puttingItTogether = normalizePuttingItTogether(narrative.puttingItTogether) || fallbackPuttingItTogether;
   drawParagraph(flow, profileSummary);
 
   context.dimensions.forEach((dimension) => drawMiniProgressBar(flow, dimension.name, dimension.score, dimension.color));
   drawThreeTiles(flow, [
-    { label: "What's working", text: narrative.whatsWorking || fallbackWhatsWorking, fill: [232, 248, 240] },
-    { label: "Your main focus", text: narrative.mainFocus || fallbackMainFocus, fill: [255, 240, 236] },
-    { label: "Where to start", text: narrative.whereToStart || fallbackWhereToStart, fill: [230, 241, 255] },
+    { label: "What's working", text: tileNarrative("whatsWorking", fallbackWhatsWorking), fill: [232, 248, 240] },
+    { label: "Your main focus", text: tileNarrative("mainFocus", fallbackMainFocus), fill: [255, 240, 236] },
+    { label: "Where to start", text: tileNarrative("whereToStart", fallbackWhereToStart), fill: [230, 241, 255] },
   ]);
-  drawCallout(flow, "Putting it together", narrative.puttingItTogether || fallbackPuttingItTogether);
+  drawCallout(flow, "Putting it together", puttingItTogether);
 };
 
 const renderPracticalAppendix = (flow, context, tocEntries) => {
-  const opening = `This plan focuses on ${context.profile.weakest.name}, while keeping ${context.profile.strongest.name} steady.`;
-  const nextStep = "The goal is not a perfect sleep score. The goal is to discover which small behaviors are realistic enough to become part of everyday life, then check what changes in your next assessment.";
+  const opening = `This plan focuses on a steadier wake-up time, while keeping ${context.profile.strongest.name} steady.`;
+  const aiPlan = {};
   flow.headerTitle = "Your action plan";
   flow.headerSubtitle = "A clear plan for the next 30 days";
   const guidance = sleepGuidance(context.growth.name);
@@ -1278,33 +1569,37 @@ const renderPracticalAppendix = (flow, context, tocEntries) => {
       label: "Tonight",
       icon: "moon",
       fill: [230, 241, 255],
-      what: guidance.tonight,
-      how: "Choose one screen or stimulating habit and stop it for the final 30 minutes before bed. Put the device somewhere you do not automatically reach for it.",
-      why: "This gives your mind a clearer transition between daytime stimulation and sleep.",
+      what: aiPlan.tonight?.whatToDo || "Set your alarm for the same wake-up time tomorrow morning.",
+      how: aiPlan.tonight?.how || "Pick the wake-up time you want to keep for the next seven days and set the alarm before bed.",
+      why: aiPlan.tonight?.why || "A steadier wake-up time is the clearest first step because it adds predictability without changing too much at once.",
+      observe: aiPlan.tonight?.whatToObserve || "Notice how easy it feels to get out of bed and whether the morning starts more smoothly.",
     },
     {
       label: "Next 7 days",
       icon: "clock",
       fill: [255, 247, 232],
-      what: "Use the same wind-down window most nights. Wind-down means the period before bed when you deliberately reduce stimulation and prepare for sleep.",
-      how: "Choose a realistic 30-60 minute window. Reduce screen use, finish work tasks, prepare for tomorrow, and pick one calm activity.",
-      why: "Consistency matters more than perfection because a repeatable cue is easier for your body and mind to recognize.",
+      what: aiPlan.next7Days?.whatToDo || "Keep the same wake-up window most mornings for the next seven days.",
+      how: aiPlan.next7Days?.how || "Stay within a similar time each morning and keep the rest of the routine simple enough to repeat.",
+      why: aiPlan.next7Days?.why || "A predictable wake-up window is the easiest way to make recovery and daytime energy more stable over time.",
+      observe: aiPlan.next7Days?.whatToObserve || "Notice whether mornings feel more predictable and whether you feel more ready to start the day.",
     },
     {
       label: "After 7 days",
       icon: "check",
       fill: [240, 244, 255],
-      what: "Review what actually happened during the week.",
-      how: "Ask: did I follow it most days, was it easy enough, did falling asleep feel easier, unchanged, or harder, and what part was unrealistic?",
-      why: "If something was hard, modify it instead of abandoning it. If 60 minutes without your phone is too much, try 30.",
+      what: aiPlan.after7Days?.whatToDo || "Review what actually happened during the first week.",
+      how: aiPlan.after7Days?.how || "Notice what was realistic, what was missed, and whether the target felt easier, unchanged, or harder.",
+      why: aiPlan.after7Days?.why || "Review turns effort into useful information and lets you adjust instead of abandoning the plan.",
+      observe: aiPlan.after7Days?.whatToObserve || "Notice which part helped and which part created friction.",
     },
     {
       label: "Days 8-30",
       icon: "brain",
       fill: [232, 248, 240],
-      what: `Continue the evening routine that helps your mind move from daytime activity toward sleep, especially for ${context.profile.weakest.name}.`,
-      how: "Keep only the behaviors that were realistic in week one. Do less, but do it consistently.",
-      why: "One sustainable habit is more useful than five habits that disappear after a few days.",
+      what: aiPlan.days8to30?.whatToDo || `Continue the routine that supports ${context.profile.weakest.name}.`,
+      how: aiPlan.days8to30?.how || "Keep only the behaviors that were realistic in week one. Do less, but do it consistently.",
+      why: aiPlan.days8to30?.why || "One sustainable habit is more useful than several habits that disappear after a few days.",
+      observe: aiPlan.days8to30?.whatToObserve || "Notice whether the behavior still fits after the first week.",
     },
     {
       label: "Keep going",
@@ -1313,14 +1608,16 @@ const renderPracticalAppendix = (flow, context, tocEntries) => {
       what: `Protect what supports ${context.profile.strongest.name}. Protecting a routine simply means making it easier to repeat.`,
       how: "Keep preparation simple, avoid extra steps, prepare earlier when possible, and return after an imperfect night instead of giving up.",
       why: "Missing one evening does not mean the plan failed. Returning to the routine is part of the plan.",
+      observe: "Notice what helps you return after an imperfect night.",
     },
     {
       label: "After 30 days",
       icon: "chart",
       fill: [248, 252, 255],
-      what: "Re-take the MindScore Sleep assessment and compare all five dimension scores.",
+      what: aiPlan.after30Days || "Re-take the MindScore Sleep assessment and compare all five dimension scores.",
       how: "Look for meaningful changes, identify which habit was easiest to maintain, and decide what to continue next month.",
       why: "A score that does not improve does not automatically mean the month failed. The point is to learn what works for you.",
+      observe: "Notice which behavior was easiest to maintain and what changed across the five areas.",
     },
   ];
   const openingGroupHeight = 15.5 + measureParagraphHeight(flow.doc, opening, 0) + actionCards.slice(0, 3).reduce((sum, card) => sum + measureActionPlanCardHeight(flow.doc, card), 0);
@@ -1328,9 +1625,10 @@ const renderPracticalAppendix = (flow, context, tocEntries) => {
   tocEntries.push({ level: 1, title: "Your Action Plan", page: flow.doc.getNumberOfPages() });
   drawSectionTitle(flow, "Your 30-day action plan", 3);
   drawParagraph(flow, opening, 0);
-  actionCards.forEach((card) => drawActionPlanCard(flow, card));
-  drawInRealLife(flow, "A realistic plan might look like this: at around 10:30 PM, charge your phone away from the bed, prepare for tomorrow, and spend the last 30 minutes doing something quieter.");
-  drawCallout(flow, "Your next step", nextStep);
+  [actionCards.slice(0, 3), actionCards.slice(3)].forEach((group, index) => {
+    ensureSpace(flow, group.reduce((sum, card) => sum + measureActionPlanCardHeight(flow.doc, card), 0), `Action plan group ${index + 1}`);
+    group.forEach((card) => drawActionPlanCard(flow, card));
+  });
 };
 
 const renderClosingPage = (doc, context) => {
@@ -1352,7 +1650,7 @@ const renderClosingPage = (doc, context) => {
   doc.setTextColor(...COLORS.white);
   doc.text("Your result", MARGIN_LEFT + 8, 138);
 
-  const summary = `Your overall score is ${context.overallScore}/100. Your pattern shows more support in ${context.profile.strongest.name} and more room to focus on ${context.profile.weakest.name}. Start with one realistic action, then pay attention to how the wider pattern changes.`;
+  const summary = `Sleep Recovery is your strongest area. ${context.profile.weakest.name} is the area that needs the most attention. Start by keeping a steadier wake-up time while protecting the parts of your routine that already support recovery.`;
 
   const linesRaw = doc.splitTextToSize(summary, CONTENT_WIDTH - 16);
   const lines = Array.isArray(linesRaw) ? linesRaw : [summary];

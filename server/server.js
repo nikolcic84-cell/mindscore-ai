@@ -15,7 +15,7 @@ import { calculateSleepScore, calculateSleepResult } from "../src/psychology/sle
 import {
   SLEEP_PROFILE_NARRATIVE_MODEL,
   SLEEP_PROFILE_NARRATIVE_VERSION,
-  buildSleepProfilePayload,
+  buildSleepReportPayload,
   generateSleepProfileNarrative,
 } from "./sleepProfileNarrative.js";
 
@@ -505,7 +505,7 @@ const generateReportPdfWithRetry = async (assessment, sessionId) => {
 
     if (!sleepProfileNarrative && assessment.assessmentType === "sleep") {
       const narrativeStartedAt = Date.now();
-      const payload = buildSleepProfilePayload({
+      const payload = buildSleepReportPayload({
         assessment,
         dimensions: assessment.dimensions,
         overallScore: assessment.score,
@@ -806,6 +806,10 @@ app.post("/api/admin/premium-report/:assessmentId/regenerate", async (req, res) 
       finalScore: assessment.score,
       assessmentDate: assessment.assessmentDate,
       selectedTestTitle: assessment.testName,
+      sleepProfileNarrative:
+        assessment.sleepProfileNarrativeVersion === SLEEP_PROFILE_NARRATIVE_VERSION
+          ? assessment.sleepProfileNarrative
+          : null,
     });
     const filename = `MindScore-AI-Premium-Report-${assessmentId}-QA.pdf`;
     const pdfPath = path.join(REPORTS_DIR, filename);
@@ -850,6 +854,9 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
 
     const safeAssessmentType = toSafeText(assessmentType, testName);
     const recalculated = recalculateAssessment(answers, safeAssessmentType);
+    const checkoutCancelUrl = safeAssessmentType === "sleep"
+      ? `${CHECKOUT_CANCEL_URL}?return_to=%2Fsleep-checkout`
+      : CHECKOUT_CANCEL_URL;
 
     const assessmentId = makeAssessmentId();
     const now = new Date();
@@ -895,7 +902,7 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
         },
       ],
       success_url: CHECKOUT_SUCCESS_URL,
-      cancel_url: CHECKOUT_CANCEL_URL,
+      cancel_url: checkoutCancelUrl,
       metadata: {
         assessmentId,
         assessmentType: safeAssessmentType,
