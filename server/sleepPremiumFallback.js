@@ -75,10 +75,10 @@ const getPlan = (priority) => {
     ["Zabeleži kako trenutno doživljavaš ovaj deo sna, bez menjanja rutine.", "Koji je bio tvoj prvi utisak o ovoj temi?"],
     ["Izaberi jednu malu, realnu stvar povezanu sa ovim delom sna i isprobaj je.", "Šta si primetio/la u vezi sa odabranim korakom?"],
     ["Ako ti je prethodni korak odgovarao, ponovi ga na sličan način.", "Da li je bilo nečeg sličnog ili drugačijeg?"],
-    ["Uporedi svoj doživljaj sa prvim danom, bez očekivanja određenog ishoda.", "Kako bi opisao/la ${focus} danas?"],
+    ["Uporedi svoj doživljaj sa prvim danom, bez očekivanja određenog ishoda.", `Kako bi opisao/la ${focus} danas?`],
     ["Ako želiš, napravi samo malu izmenu u koraku koji isprobavaš.", "Koja verzija koraka ti je delovala jednostavnije?"],
     ["Ponovi najjednostavniji korak koji želiš još jednom da isprobaš.", "Šta je bilo lako da ponoviš?"],
-    ["Pregledaj beleške i odluči šta želiš da nastaviš da posmatraš.", "Koji utisak o ${focus} želiš da zapamtiš?"],
+    ["Pregledaj beleške i odluči šta želiš da nastaviš da posmatraš.", `Koji utisak o ${focus} želiš da zapamtiš?`],
   ];
   return steps.map(([action, observe], index) => ({
     day: index + 1,

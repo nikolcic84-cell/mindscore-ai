@@ -117,7 +117,7 @@ const makeSchema = (input) => {
       area: { type: "string", enum: [priority.title] },
       explanation: customerText(COPY_LIMITS.priorityExplanation, "Briefly explain why the fixed deterministic priority is the sensible first focus using supplied answers and at least one complete exact answer quote. Do not diagnose or claim a cause."),
     }),
-    connections: arraySchema(2, 4, customerText(COPY_LIMITS.connection, "A short non-causal relationship or contrast grounded in at least two exact selected answers. Quote the complete answers verbatim in Serbian quotation marks.")),
+    connections: arraySchema(2, 4, customerText(COPY_LIMITS.connection, "Every connection MUST include two distinct complete answer texts selected by this user, from two different questionIds. Copy each full answer exactly, character for character, in its own Serbian quotation marks. Paraphrased or partial answer evidence does not count. Do not use the same selected answer twice.")),
     stable_or_tracking: objectSchema({
       mode: { type: "string", enum: [stableMode] },
       title: fixedTextSchema(stableMode === "stable" ? "ŠTA VREDI DA ZADRŽIŠ" : "ŠTA JOŠ VREDI DA PRATIŠ"),
@@ -209,8 +209,14 @@ export const validateSleepPremiumReport = (candidate, input) => {
     return invalid("connections", "array of 2–4 concise answer-grounded connections", candidate.connections, "Connections must contain two to four items.");
   }
   for (let index = 0; index < candidate.connections.length; index += 1) {
-    const answerQuotes = getExactAnswerQuotes(candidate.connections[index], input);
-    if (!hasText(candidate.connections[index], COPY_LIMITS.connection) || new Set(answerQuotes.map(({ questionId }) => questionId)).size < 2) {
+    const connection = candidate.connections[index];
+    const answerQuotes = getExactAnswerQuotes(connection, input);
+    const quotedAnswerTexts = [...connection.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => match[1].trim());
+    if (
+      !hasText(connection, COPY_LIMITS.connection) ||
+      new Set(answerQuotes.map(({ questionId }) => questionId)).size < 2 ||
+      new Set(quotedAnswerTexts).size < 2
+    ) {
       return invalid(`connections[${index}]`, "nonblank connection, at most 500 characters, citing two distinct exact selected answers", candidate.connections[index], `Connection ${index + 1} is invalid or not grounded in two exact answers.`);
     }
   }

@@ -44,6 +44,7 @@ for (const points of personas) {
   assert.equal(report.review_questions.length, 3);
   assert.equal(new Set(report.review_questions).size, 3);
   assert.equal(report.review_questions.every((question) => question.endsWith("?")), true);
+  assert.equal(report.seven_day_plan.some(({ action, observe }) => action.includes("${focus}") || observe.includes("${focus}")), false);
   const overview = getSleepPremiumAreaOverview(profileInput);
   assert.deepEqual(overview.map(({ key }) => key), ["recovery", "sleepOnset", "continuity", "rhythm"]);
   assert.equal(overview.every(({ title, status }) => title && ["Deluje mirnije", "Vredi pratiti", "Ovde se najviše izdvaja"].includes(status)), true);
@@ -101,6 +102,9 @@ assert.match(prompt, /postepen, koherentan mini-eksperiment/);
 assert.match(prompt, /ne izvodi ocene/);
 assert.equal(prompt.includes("mappedValue"), false);
 assert.equal(prompt.includes("internalScores"), false);
+assert.match(schema.schema.properties.connections.items.description, /two distinct complete answer texts.*two different questionIds/i);
+assert.match(prompt, /SVAKA pojedinačna stavka OBAVEZNO mora sadržati DVA RAZLIČITA/);
+assert.ok(prompt.includes(`„${input.answers[0].answer}“ i „${input.answers[1].answer}“`), "prompt example uses two verbatim answers selected in this fixture");
 
 const expectInvalid = (candidate, field) => {
   const result = validateSleepPremiumReport(candidate, input);
@@ -144,6 +148,19 @@ expectInvalid(alteredQuote, "connections[0]");
 const singleQuote = structuredClone(fallback);
 singleQuote.connections[0] = `Odgovor „${input.answers[0].answer}“ vredi sagledati pažljivo.`;
 expectInvalid(singleQuote, "connections[0]");
+for (let index = 0; index < fallback.connections.length; index += 1) {
+  const oneQuoteAtIndex = structuredClone(fallback);
+  oneQuoteAtIndex.connections[index] = `Odgovor „${input.answers[0].answer}“ vredi posmatrati kao jedan deo tvoje priče.`;
+  expectInvalid(oneQuoteAtIndex, `connections[${index}]`);
+}
+const [firstEvidence, secondEvidence] = input.answers.slice(0, 2);
+const exactTwoAnswerConnection = `Odgovori „${firstEvidence.answer}“ i „${secondEvidence.answer}“ daju dva odvojena pogleda koja vredi posmatrati zajedno.`;
+const exactTwoAnswerReport = structuredClone(fallback);
+exactTwoAnswerReport.connections[0] = exactTwoAnswerConnection;
+assert.equal(validateSleepPremiumReport(exactTwoAnswerReport, input).valid, true, "two distinct exact selected answers pass connection validation");
+const paraphrasedEvidenceReport = structuredClone(fallback);
+paraphrasedEvidenceReport.connections[0] = `Odgovori „${firstEvidence.answer} (parafrazirano)“ i „${secondEvidence.answer}“ daju dva odvojena pogleda.`;
+expectInvalid(paraphrasedEvidenceReport, "connections[0]");
 
 const aiResult = await generateSleepPremiumReport({
   input,
