@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./test-sleep-premium-theme-plan.js";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import { SLEEP_ANSWER_OPTIONS, SLEEP_QUESTIONS } from "../src/psychology/sleepAssessmentContent.js";
