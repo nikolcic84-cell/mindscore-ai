@@ -12,6 +12,9 @@ import { fileURLToPath } from "url";
 import { buildPremiumPdf } from "../src/premiumPdfGenerator.js";
 import { calculateDimensions } from "../src/psychology/dimensions.js";
 import { calculateSleepScore, calculateSleepResult } from "../src/psychology/sleepScoring.js";
+import { buildSleepPremiumInput } from "./sleepPremiumInput.js";
+import { generateSleepPremiumReport } from "./sleepPremiumGenerator.js";
+import { validateSleepPremiumReport } from "./sleepPremiumSchema.js";
 
 dotenv.config();
 
@@ -743,6 +746,93 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
+
+const isPremiumAiPreviewEnabled = () => process.env.ENABLE_PREMIUM_AI_PREVIEW === "true";
+const PREMIUM_AI_PREVIEW_ANSWER_POINTS = Object.freeze([4, 5, 2, 3, 5, 4, 4, 3, 4, 4, 3, 3]);
+const MAX_PREMIUM_AI_PREVIEWS_PER_PROCESS = 3;
+let premiumAiPreviewCount = 0;
+
+if (isPremiumAiPreviewEnabled()) {
+  app.get("/__dev/premium-ai-preview", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    return res.sendFile(path.join(__dirname, "dev", "premium-ai-preview.html"));
+  });
+
+  app.post("/api/dev/premium-ai-preview", rateLimit(60_000, 1), async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    if (!process.env.OPENAI_API_KEY || !_openaiClient?.responses?.parse) {
+      return res.status(503).json({ error: "Real Premium AI preview is unavailable on this service." });
+    }
+    if (premiumAiPreviewCount >= MAX_PREMIUM_AI_PREVIEWS_PER_PROCESS) {
+      return res.status(429).json({ error: "Preview generation limit reached. Disable and re-enable the staging preview service to reset it." });
+    }
+    premiumAiPreviewCount += 1;
+
+    try {
+      const input = buildSleepPremiumInput(PREMIUM_AI_PREVIEW_ANSWER_POINTS);
+      const generation = await generateSleepPremiumReport({
+        input,
+        openaiClient: _openaiClient,
+        apiKeyAvailable: true,
+        fallbackOnError: false,
+        timeoutMs: 60_000,
+      });
+      if (generation.source !== "ai") {
+        return res.status(502).json({ error: "Real Premium AI preview did not return an AI report." });
+      }
+
+      const validation = validateSleepPremiumReport(generation.report, input);
+      if (!validation.valid) {
+        return res.status(502).json({
+          error: "Generated report failed Premium validation.",
+          diagnostic: validation.diagnostic || { field: "unknown", expected: "valid Premium report", received: { type: "unknown" } },
+        });
+      }
+
+      const report = validation.report;
+      return res.json({
+        source: "REAL_OPENAI",
+        report: {
+          profile: report.profile,
+          mainArea: report.mainArea,
+          connections: report.connections,
+          positiveOrWatch: {
+            title: report.positiveOrWatch.title,
+            text: report.positiveOrWatch.text,
+          },
+          startingPoint: report.startingPoint,
+          tonight: report.tonight,
+          sevenDayPlan: report.sevenDayPlan,
+          tracking: report.tracking,
+          closing: report.closing,
+        },
+      });
+    } catch (error) {
+      const diagnostic = error?.code === "PREMIUM_SCHEMA_VALIDATION" ? error.diagnostic : null;
+      const safeStatus = Number(error?.status || error?.statusCode) || undefined;
+      const safeCategory = error?.name === "PremiumAITimeoutError"
+        ? "timeout"
+        : diagnostic
+          ? "schema/JSON validation error"
+          : safeStatus === 401 || safeStatus === 403
+            ? "authentication error"
+            : safeStatus === 429
+              ? "rate limit error"
+              : "generation error";
+      console.error("[dev-preview] Premium AI preview failed", {
+        category: safeCategory,
+        ...(safeStatus ? { status: safeStatus } : {}),
+        ...(diagnostic ? { field: diagnostic.field, expected: diagnostic.expected, received: diagnostic.received } : {}),
+      });
+      return res.status(502).json({
+        error: "Unable to generate a validated Premium AI preview.",
+        diagnostic: diagnostic
+          ? { category: safeCategory, ...diagnostic }
+          : { category: safeCategory, ...(safeStatus ? { status: safeStatus } : {}) },
+      });
+    }
+  });
+}
 
 app.post("/api/admin/premium-report/:assessmentId/regenerate", async (req, res) => {
   try {

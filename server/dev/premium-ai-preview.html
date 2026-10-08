@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="sr-Latn">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Premium AI — developerski pregled</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #07111f; color: #eaf2ff; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 15% 0%, #10284a 0, #07111f 48rem); }
+      main { width: min(920px, calc(100% - 32px)); margin: 0 auto; padding: 52px 0 80px; }
+      .eyebrow { color: #80dcff; font-size: .76rem; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+      h1 { margin: 12px 0 10px; font-size: clamp(2rem, 5vw, 3.2rem); letter-spacing: -.045em; }
+      .intro { max-width: 700px; color: #aec0d7; line-height: 1.65; }
+      .callout, .control, .report-section { border: 1px solid rgba(148, 180, 220, .19); border-radius: 18px; background: rgba(12, 27, 47, .86); box-shadow: 0 18px 55px rgba(0, 0, 0, .16); }
+      .callout { margin: 24px 0; padding: 16px 18px; color: #c1d2e6; font-size: .92rem; line-height: 1.6; }
+      .callout strong { color: #f5fbff; }
+      .control { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; padding: 18px; }
+      label { display: block; margin: 0 0 8px; color: #b8c9dd; font-size: .85rem; font-weight: 700; }
+      input { width: 100%; min-height: 46px; border: 1px solid #344b68; border-radius: 10px; padding: 0 13px; background: #081626; color: #eef7ff; font: inherit; }
+      button { min-height: 46px; border: 0; border-radius: 10px; padding: 0 18px; background: linear-gradient(110deg, #47d5ee, #7292ff); color: #061324; font: inherit; font-weight: 850; cursor: pointer; }
+      button:disabled { cursor: wait; opacity: .65; }
+      .hint { margin: 8px 0 0; color: #8096b1; font-size: .78rem; }
+      #status { min-height: 26px; margin: 13px 2px 18px; color: #9fb4ce; font-size: .9rem; }
+      #status[data-kind="error"] { color: #ffb5b5; }
+      #status[data-kind="success"] { color: #8ff0cb; }
+      #report { display: grid; gap: 14px; }
+      .report-section { padding: 22px 24px; }
+      .report-section h2 { margin: 0 0 13px; color: #87ddff; font-size: 1rem; letter-spacing: .01em; }
+      .report-section h3 { margin: 16px 0 7px; color: #f3f7fc; font-size: .92rem; }
+      .report-section p { margin: 8px 0 0; color: #d4e0ef; line-height: 1.75; white-space: pre-wrap; }
+      .report-section ul, .report-section ol { display: grid; gap: 10px; margin: 10px 0 0; padding-left: 22px; color: #d4e0ef; line-height: 1.65; }
+      .day { padding: 12px 14px; border: 1px solid rgba(148, 180, 220, .12); border-radius: 12px; background: rgba(5, 16, 29, .55); }
+      .day strong { display: block; margin-bottom: 4px; color: #f2f7ff; }
+      @media (max-width: 640px) { main { padding-top: 32px; } .control { grid-template-columns: 1fr; } button { width: 100%; } .report-section { padding: 18px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">Developerski pregled · staging only</div>
+      <h1>Premium AI izveštaj</h1>
+      <p class="intro">Prikaži kompletan izveštaj iz stvarnog Premium generatora, uz uključenu postojeću validaciju. Koriste se samo fiksni odgovori iz izolovanog staging testa; ne koristi se korisnički nalog, naplata, e-pošta ili PDF.</p>
+      <div class="callout"><strong>Stvarni AI izlaz.</strong> Ovaj pregled ne pravi fixture niti simulaciju. Jedan zahtev troši jedan OpenAI poziv. Sadržaj se prikazuje samo u ovoj stranici i ne čuva se u pregledaču.</div>
+      <div class="control">
+        <p class="hint">Koristi se samo fiksni sintetički staging uzorak. Najviše tri generisanja po pokretanju servera i jedno po IP adresi u minuti.</p>
+        <button id="generate" type="button">Generiši stvarni AI pregled</button>
+      </div>
+      <div id="status" role="status" aria-live="polite"></div>
+      <div id="report" aria-live="polite"></div>
+    </main>
+    <script>
+      const button = document.querySelector("#generate");
+      const status = document.querySelector("#status");
+      const reportRoot = document.querySelector("#report");
+
+      const element = (tag, text, className = "") => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null) node.textContent = String(text);
+        return node;
+      };
+      const section = (title) => {
+        const node = element("section", undefined, "report-section");
+        node.append(element("h2", title));
+        reportRoot.append(node);
+        return node;
+      };
+      const paragraph = (parent, text) => parent.append(element("p", text));
+      const list = (parent, items, ordered = false) => {
+        const node = document.createElement(ordered ? "ol" : "ul");
+        for (const item of items) node.append(element("li", item));
+        parent.append(node);
+      };
+      const renderReport = (report) => {
+        reportRoot.replaceChildren();
+        const profile = section("1. Tvoj profil sna");
+        paragraph(profile, report.profile.name);
+        const summary = section("2. Sažetak profila");
+        paragraph(summary, report.profile.summary);
+
+        const mainArea = section("3. Glavna oblast sna");
+        mainArea.append(element("h3", report.mainArea.title));
+        paragraph(mainArea, report.mainArea.explanation);
+
+        const connections = section("4. Kako se tvoji odgovori povezuju");
+        paragraph(connections, report.connections.title);
+        list(connections, report.connections.items);
+
+        const positive = section("5. Šta već ide dobro — ili šta vredi pratiti");
+        positive.append(element("h3", report.positiveOrWatch.title));
+        paragraph(positive, report.positiveOrWatch.text);
+
+        const starting = section("6. Gde ima najviše smisla da počneš");
+        paragraph(starting, report.startingPoint.text);
+
+        const tonight = section("7. Koraci za večeras");
+        paragraph(tonight, report.tonight.title);
+        list(tonight, report.tonight.actions, true);
+
+        const plan = section("8. Plan za narednih sedam dana");
+        const days = document.createElement("ol");
+        for (const day of report.sevenDayPlan) {
+          const item = element("li", undefined, "day");
+          item.append(element("strong", `${day.day}. dan · ${day.title}`));
+          item.append(element("span", day.action));
+          days.append(item);
+        }
+        plan.append(days);
+
+        const tracking = section("9. Šta da pratiš");
+        paragraph(tracking, report.tracking.title);
+        list(tracking, report.tracking.items);
+
+        const closing = section("10. Završna napomena");
+        paragraph(closing, report.closing);
+      };
+
+      button.addEventListener("click", async () => {
+        reportRoot.replaceChildren();
+        status.dataset.kind = "";
+        status.textContent = "Zahtev je poslat. Čekam stvarni AI odgovor i validaciju…";
+        button.disabled = true;
+        try {
+          const response = await fetch("/api/dev/premium-ai-preview", {
+            method: "POST",
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            status.dataset.kind = "error";
+            status.textContent = data.error || "Pregled nije dostupan.";
+            const diagnostic = data.diagnostic;
+            if (diagnostic) {
+              const details = [diagnostic.category, diagnostic.field, diagnostic.expected]
+                .filter(Boolean)
+                .join(" · ");
+              if (details) status.textContent += ` (${details})`;
+            }
+            return;
+          }
+          if (data.source !== "REAL_OPENAI" || !data.report) {
+            throw new Error("Odgovor nije označen kao stvarni OpenAI izlaz.");
+          }
+          renderReport(data.report);
+          status.dataset.kind = "success";
+          status.textContent = "Stvarni OpenAI izveštaj je prošao Premium validaciju.";
+        } catch {
+          status.dataset.kind = "error";
+          status.textContent = "Pregled nije uspeo. Proveri dostupnost staging servisa i pokušaj ponovo.";
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
