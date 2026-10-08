@@ -111,7 +111,7 @@ const makeSchema = (input) => {
   return objectSchema({
     version: { type: "integer", enum: [2] },
     profile: { type: "string", enum: [input.profile] },
-    profile_explanation: customerText(COPY_LIMITS.profileExplanation, "At most two short personalized Serbian paragraphs about what this deterministic profile means for this person. Cite at least one complete exact selected answer in Serbian quotation marks. Do not repeat generic Free-result profile text."),
+    profile_explanation: customerText(COPY_LIMITS.profileExplanation, "At most two short personalized Serbian paragraphs about what this deterministic profile means for this person. MUST include at least one complete selected answer copied verbatim, character for character, in Serbian quotation marks. Paraphrased evidence is invalid. Do not repeat generic Free-result profile text."),
     priority: objectSchema({
       title: fixedTextSchema("TVOJ PRIORITET #1"),
       area: { type: "string", enum: [priority.title] },

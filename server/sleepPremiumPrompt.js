@@ -3,6 +3,8 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
     profile: input.profile,
     answers: input.answers.map(({ questionId, question, answer }) => ({ questionId, question, answer })),
   };
+  const profileExampleAnswer = input.answers[0].answer;
+  const profileExplanationExample = `Primer obaveznog citata u profile_explanation: Tvoj odgovor „${profileExampleAnswer}“ daje konkretan lični oslonac za tumačenje profila.`;
   const connectionExampleIds = input.answers.slice(0, 2).map(({ questionId }) => questionId);
   const connectionExample = `Validan primer strukture connections stavke: ${JSON.stringify({ questionIds: connectionExampleIds, text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })}`;
   return [
@@ -11,7 +13,8 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
     "JSON je jedna stabilna, verzionisana struktura koja se koristi i za prikaz izveštaja. Ne dodaj ključeve. Koristi tačno nazive polja iz šeme.",
     `Profil je nepromenljiv i mora biti tačno: ${enforced.profile}. Prioritet je unapred izabran i mora ostati tačno „${enforced.priorityArea}“. Ne biraj alternativni prioritet, ne menjaj profil i ne izvodi ocene.`,
       `stable_or_tracking.mode je konačan: ${enforced.mode}. Zadrži i unapred propisan naslov sekcije: „${enforced.stableTitle}“. Dozvoljene stvarno mirnije oblasti su: ${enforced.stableAreas.length ? enforced.stableAreas.join(", ") : "nema"}. Kod stable navedi isključivo jednu od navedenih oblasti; kod tracking opiši samo šta je korisno da se posmatra. Nikada ne prikazuj interne nazive stanja.`,
-      `profile_explanation: 1–2 lične, kratke rečenice o tome kako profil pruža okvir za odgovore ove osobe, najviše ${enforced.profileExplanationMaxLength} znakova. Citiraj bar jedan ceo izabrani odgovor doslovno. Nemoj prepisivati generički opis profila ili predstavljati profil kao dijagnozu.`,
+    `profile_explanation: 1–2 lične, kratke rečenice o tome kako profil pruža okvir za odgovore ove osobe, najviše ${enforced.profileExplanationMaxLength} znakova. OBAVEZNO uključi najmanje jedan ceo answer iz trenutnih 12 odgovora, kopiran VERBATIM, potpuno identično znak po znak, unutar srpskih navodnika „…“. Nemoj parafrazirati citirani odgovor; pre slanja proveri da se tekst između navodnika tačno poklapa sa nekim ulaznim answer poljem. Nemoj prepisivati generički opis profila ili predstavljati profil kao dijagnozu.`,
+    profileExplanationExample,
       `priority: naslov mora biti „TVOJ PRIORITET #1“, oblast mora biti tačno „${enforced.priorityArea}“. Explanation kratko obrazlaže zašto je to dobar prvi fokus uz direktne odgovore i citira bar jedan ceo odgovor doslovno; bez uzroka i bez tvrdnji koje nisu potkrepljene.`,
     `connections: vrati 2–4 objekta, svaki tačno oblika {"questionIds": ["Qx", "Qy"], "text": "..."}. Svaki questionIds niz mora imati tačno dva različita ID-ja iz questionId polja ulaznih odgovora i oni predstavljaju dokaze za tu stavku. Polje text sadrži samo prirodan, kratak srpski opis veze između tema tih odgovora; ne mora da ponavlja ili citira tekst odgovora. U text nemoj prikazivati Q-ID oznake. Ne tvrdi uzročnost.`,
     connectionExample,

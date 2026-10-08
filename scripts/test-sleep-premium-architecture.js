@@ -123,8 +123,12 @@ assert.equal(schema.schema.properties.connections.items.properties.questionIds.m
 assert.deepEqual(schema.schema.properties.connections.items.properties.questionIds.items.enum, input.answers.map(({ questionId }) => questionId));
 assert.equal(schema.schema.properties.connections.items.properties.text.maxLength, 500);
 assert.match(schema.schema.properties.connections.items.properties.text.description, /natural.*Serbian.*Do not include or display question IDs/i);
+assert.match(schema.schema.properties.profile_explanation.description, /MUST include at least one complete selected answer copied verbatim/i);
 assert.match(prompt, /tačno dva različita ID-ja iz questionId polja ulaznih odgovora/);
 assert.match(prompt, /ne mora da ponavlja ili citira tekst odgovora/);
+assert.match(prompt, /OBAVEZNO uključi najmanje jedan ceo answer.*kopiran VERBATIM/s);
+assert.match(prompt, /Nemoj parafrazirati citirani odgovor/);
+assert.ok(prompt.includes(`Tvoj odgovor „${input.answers[0].answer}“ daje konkretan lični oslonac`), "profile explanation example uses a complete selected answer from the current input");
 assert.ok(prompt.includes(JSON.stringify({ questionIds: input.answers.slice(0, 2).map(({ questionId }) => questionId), text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })), "prompt includes a valid connection object example with actual available question IDs");
 
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
@@ -163,6 +167,15 @@ expectInvalid(unrelatedAction, "seven_day_plan[0]");
 const unsafeMedicalCopy = structuredClone(fallback);
 unsafeMedicalCopy.profile_explanation = "Tvoji odgovori potvrđuju da imaš nesanicu.";
 expectInvalid(unsafeMedicalCopy, "profile_explanation");
+const noAnswerProfileExplanation = structuredClone(fallback);
+noAnswerProfileExplanation.profile_explanation = "Tvoji odgovori pružaju nekoliko korisnih pogleda na tvoju noć i ono što želiš da pratiš.";
+expectInvalid(noAnswerProfileExplanation, "profile_explanation");
+const paraphrasedProfileEvidence = structuredClone(fallback);
+paraphrasedProfileEvidence.profile_explanation = `Tvoj odgovor „${input.answers[0].answer.slice(0, -1)}.“ daje konkretan lični oslonac za tumačenje profila.`;
+expectInvalid(paraphrasedProfileEvidence, "profile_explanation");
+const exactProfileEvidence = structuredClone(fallback);
+exactProfileEvidence.profile_explanation = `Tvoj odgovor „${input.answers[0].answer}“ daje konkretan lični oslonac za tumačenje profila.`;
+assert.equal(validateSleepPremiumReport(exactProfileEvidence, input).valid, true, "one complete exact selected answer satisfies profile explanation evidence");
 const unsafeCause = structuredClone(fallback);
 unsafeCause.priority.explanation = `Odgovor „${input.answers[0].answer}“ je uzrok tvog problema sa snom.`;
 expectInvalid(unsafeCause, "priority.explanation");
