@@ -8,7 +8,7 @@ import {
   getSleepPremiumStrengthMode,
   validateSleepPremiumReport,
 } from "../server/sleepPremiumSchema.js";
-import { generateSleepPremiumReport } from "../server/sleepPremiumGenerator.js";
+import { generateSleepPremiumReport, SLEEP_PREMIUM_AI_TIMEOUT_MS } from "../server/sleepPremiumGenerator.js";
 import { generateSleepPremiumPreview, isPremiumAiPreviewEnabled } from "../server/sleepPremiumPreview.js";
 import { buildSleepPremiumPrompt } from "../server/sleepPremiumPrompt.js";
 import { SLEEP_ANSWER_OPTIONS, SLEEP_QUESTIONS } from "../src/psychology/sleepAssessmentContent.js";
@@ -122,6 +122,7 @@ assert.equal(q12Input.answers[11].mappedValue, 0);
 assert.ok(buildSleepPremiumFallback(q12Input).mainArea.explanation.includes(q12Input.answers[11].answer));
 
 const validationInput = makeInput(personas["MIRNA NOĆ"]);
+assert.equal(SLEEP_PREMIUM_AI_TIMEOUT_MS, 60_000);
 const validReport = makeValidReport(validationInput);
 const exactEvidence = validationInput.answers[0].answer;
 const explanationWith = (text) => {

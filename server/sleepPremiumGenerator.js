@@ -4,7 +4,7 @@ import { buildSleepPremiumPrompt } from "./sleepPremiumPrompt.js";
 import { buildSleepPremiumJsonSchema, validateSleepPremiumReport } from "./sleepPremiumSchema.js";
 
 const MODEL = "gpt-5-mini";
-const TIMEOUT_MS = 20_000;
+const TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_TOKENS = 5000;
 
 const classifyGenerationFailure = (error) => {
