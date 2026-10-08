@@ -5,6 +5,30 @@ import { validateSleepPremiumReport } from "./sleepPremiumSchema.js";
 export const isPremiumAiPreviewEnabled = (env = process.env) => env.ENABLE_PREMIUM_AI_PREVIEW === "true";
 
 const logPreviewStatus = (log, label, details = {}) => log(label, details);
+const getFallbackDiagnostic = (generation) => {
+  switch (generation?.failureType) {
+    case "missing_api_key":
+      return { code: "MISSING_API_KEY", reason: "OpenAI API key unavailable." };
+    case "timeout":
+      return { code: "TIMEOUT", reason: "OpenAI request timed out.", ...(generation.status ? { status: generation.status } : {}) };
+    case "invalid_json":
+      return { code: "INVALID_JSON", reason: "Invalid AI JSON." };
+    case "incomplete_response":
+      return { code: "INCOMPLETE_RESPONSE", reason: "Incomplete OpenAI response." };
+    case "schema_validation_failure":
+      return {
+        code: "SCHEMA_VALIDATION_FAILURE",
+        reason: "Schema validation failed.",
+        ...(generation.failureDiagnostic ? { field: generation.failureDiagnostic.field, expected: generation.failureDiagnostic.expected, received: generation.failureDiagnostic.received } : {}),
+      };
+    case "openai_http_error":
+      return { code: "OPENAI_HTTP_ERROR", reason: "OpenAI HTTP/API error.", ...(generation.status ? { status: generation.status } : {}) };
+    case "openai_request_failed":
+      return { code: "OPENAI_REQUEST_FAILED", reason: "OpenAI request failed." };
+    default:
+      return { code: "OTHER_GENERATOR_ERROR", reason: "Other Premium generator error." };
+  }
+};
 const getCustomerFacingReport = (report) => ({
   profile: report.profile,
   mainArea: report.mainArea,
@@ -25,6 +49,7 @@ export const generateSleepPremiumPreview = async ({
   answers,
   openaiClient,
   apiKeyAvailable = false,
+  timeoutMs,
   log = () => {},
 }) => {
   if (!enabled) return { status: 404, body: { error: "Preview unavailable." } };
@@ -44,6 +69,8 @@ export const generateSleepPremiumPreview = async ({
       openaiClient,
       apiKeyAvailable,
       fallbackOnError: true,
+      includeFailureDiagnostics: true,
+      ...(timeoutMs ? { timeoutMs } : {}),
     });
   } catch (error) {
     const diagnostic = error?.code === "PREMIUM_SCHEMA_VALIDATION" ? error.diagnostic : null;
@@ -73,14 +100,31 @@ export const generateSleepPremiumPreview = async ({
   }
 
   const fallbackUsed = generation.source === "fallback";
+  const fallbackDiagnostic = fallbackUsed ? getFallbackDiagnostic(generation) : null;
   logPreviewStatus(log, `REAL AI: ${fallbackUsed ? "FAILED" : "SUCCESS"}`, { deterministicProfile: input.profile });
-  logPreviewStatus(log, "SCHEMA: PASS", { deterministicProfile: input.profile });
-  logPreviewStatus(log, `FALLBACK USED: ${fallbackUsed ? "YES" : "NO"}`, { deterministicProfile: input.profile });
+  const schemaStatus = !fallbackUsed
+    ? "PASS"
+    : generation.failureType === "invalid_json" || generation.failureType === "schema_validation_failure"
+      ? "FAIL"
+      : "NOT RUN";
+  logPreviewStatus(log, `SCHEMA: ${schemaStatus}`, {
+    deterministicProfile: input.profile,
+    ...(fallbackDiagnostic?.field ? { field: fallbackDiagnostic.field, expected: fallbackDiagnostic.expected, received: fallbackDiagnostic.received } : {}),
+  });
+  logPreviewStatus(log, `FALLBACK USED: ${fallbackUsed ? "YES" : "NO"}`, {
+    deterministicProfile: input.profile,
+    ...(fallbackDiagnostic ? {
+      reason: fallbackDiagnostic.code,
+      ...(fallbackDiagnostic.status ? { status: fallbackDiagnostic.status } : {}),
+      ...(fallbackDiagnostic.field ? { field: fallbackDiagnostic.field, expected: fallbackDiagnostic.expected, received: fallbackDiagnostic.received } : {}),
+    } : {}),
+  });
 
   return {
     status: 200,
     body: {
       source: fallbackUsed ? "fallback" : "ai",
+      ...(fallbackDiagnostic ? { fallbackDiagnostic } : {}),
       deterministicProfile: input.profile,
       report: getCustomerFacingReport(validation.report),
     },

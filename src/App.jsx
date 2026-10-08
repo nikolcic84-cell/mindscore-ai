@@ -1086,13 +1086,16 @@ function useSavedSleepAssessment() {
   return savedAssessment;
 }
 
-function PremiumAiPreviewReport({ report, source, deterministicProfile }) {
+function PremiumAiPreviewReport({ report, source, deterministicProfile, fallbackDiagnostic }) {
   return (
     <section className="premium-staging-preview-report" aria-label="Staging Premium AI report preview">
       <div className="premium-staging-preview-banner">
         <strong>STAGING PREVIEW</strong>
-        <span>{source === "fallback" ? "Postojeći rezervni izveštaj" : "Stvarni AI izveštaj"}</span>
+        <span>{source === "fallback" ? "FALLBACK" : "AI_GENERATED"}</span>
       </div>
+      {source === "fallback" && fallbackDiagnostic?.reason && (
+        <p className="premium-staging-preview-reason">{fallbackDiagnostic.reason}</p>
+      )}
       <section>
         <h3>Tvoj profil sna</h3>
         <p className="premium-preview-profile">{deterministicProfile}</p>
@@ -1316,6 +1319,7 @@ function SleepPremiumDiscoveryPage() {
                       report={previewResult.report}
                       source={previewResult.source}
                       deterministicProfile={previewResult.deterministicProfile}
+                      fallbackDiagnostic={previewResult.fallbackDiagnostic}
                     />
                   )}
                 </div>

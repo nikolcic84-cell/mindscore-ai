@@ -7,6 +7,21 @@ const MODEL = "gpt-5-mini";
 const TIMEOUT_MS = 20_000;
 const MAX_OUTPUT_TOKENS = 5000;
 
+const classifyGenerationFailure = (error) => {
+  const status = Number(error?.status || error?.statusCode) || null;
+  if (error?.name === "PremiumAITimeoutError") return { failureType: "timeout", status };
+  if (error?.code === "PREMIUM_SCHEMA_VALIDATION") return { failureType: "schema_validation_failure", status };
+  if (error?.message === "AI response was incomplete.") return { failureType: "incomplete_response", status };
+  if (error instanceof SyntaxError || /json output text|valid json|unexpected end of json|incomplete/i.test(error?.message || "")) {
+    return { failureType: "invalid_json", status };
+  }
+  if (status) return { failureType: "openai_http_error", status };
+  if (error?.name === "APIConnectionError" || error?.name === "APIError" || error?.name === "OpenAIError") {
+    return { failureType: "openai_request_failed", status };
+  }
+  return { failureType: "other_generator_error", status };
+};
+
 const validateGeneratedReport = (candidate, input) => {
   const validation = validateSleepPremiumReport(candidate, input);
   if (!validation.valid) {
@@ -69,11 +84,17 @@ export const generateSleepPremiumReport = async ({
   apiKeyAvailable = false,
   fallbackOnError = true,
   timeoutMs = TIMEOUT_MS,
+  includeFailureDiagnostics = false,
 }) => {
   const fallback = () => buildSleepPremiumFallback(input);
   if (!apiKeyAvailable || !openaiClient?.responses?.parse) {
     if (!fallbackOnError) throw new Error("Premium AI client or OPENAI_API_KEY is unavailable.");
-    return { report: fallback(), source: "fallback", reason: "AI client or API key unavailable." };
+    return {
+      report: fallback(),
+      source: "fallback",
+      reason: "AI client or API key unavailable.",
+      ...(includeFailureDiagnostics ? { failureType: "missing_api_key", failureStatus: null } : {}),
+    };
   }
 
   const schema = buildSleepPremiumJsonSchema(input);
@@ -107,7 +128,14 @@ export const generateSleepPremiumReport = async ({
     return { report, source: "ai", reason: "ok" };
   } catch (error) {
     if (!fallbackOnError) throw error;
-    return { report: fallback(), source: "fallback", reason: error?.message || "AI generation failed." };
+    const failure = classifyGenerationFailure(error);
+    return {
+      report: fallback(),
+      source: "fallback",
+      reason: error?.message || "AI generation failed.",
+      ...(includeFailureDiagnostics ? failure : {}),
+      ...(includeFailureDiagnostics && error?.diagnostic ? { failureDiagnostic: error.diagnostic } : {}),
+    };
   }
 };
 

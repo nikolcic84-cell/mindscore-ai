@@ -189,9 +189,83 @@ assert.equal(invalidAiPreview.status, 200);
 assert.equal(invalidAiPreview.body.source, "fallback");
 assert.equal(invalidAiPreview.body.deterministicProfile, "BUDAN UM");
 assert.equal(invalidAiPreview.body.report.profile.name, "BUDAN UM");
+assert.deepEqual(invalidAiPreview.body.fallbackDiagnostic, {
+  code: "SCHEMA_VALIDATION_FAILURE",
+  reason: "Schema validation failed.",
+  field: "profile.name",
+  expected: "exact deterministic profile string",
+  received: { type: "string", length: 9, blank: false },
+});
 assert.equal(invalidPreviewLogs.some(({ event }) => event === "REAL AI: FAILED"), true);
-assert.equal(invalidPreviewLogs.some(({ event }) => event === "SCHEMA: PASS"), true);
+assert.equal(invalidPreviewLogs.some(({ event, details }) => event === "SCHEMA: FAIL" && details.field === "profile.name"), true);
 assert.equal(invalidPreviewLogs.some(({ event }) => event === "FALLBACK USED: YES"), true);
+
+const invalidJsonPreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas["BUDAN UM"],
+  openaiClient: { responses: { parse: async () => { throw new SyntaxError("provider included private response details"); } } },
+  apiKeyAvailable: true,
+});
+assert.equal(invalidJsonPreview.body.source, "fallback");
+assert.equal(invalidJsonPreview.body.fallbackDiagnostic.code, "INVALID_JSON");
+assert.equal(invalidJsonPreview.body.fallbackDiagnostic.reason, "Invalid AI JSON.");
+assert.equal(JSON.stringify(invalidJsonPreview.body).includes("private response details"), false);
+
+const incompletePreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas["BUDAN UM"],
+  openaiClient: mockClient({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" } }),
+  apiKeyAvailable: true,
+});
+assert.equal(incompletePreview.body.source, "fallback");
+assert.equal(incompletePreview.body.fallbackDiagnostic.code, "INCOMPLETE_RESPONSE");
+assert.equal(incompletePreview.body.fallbackDiagnostic.reason, "Incomplete OpenAI response.");
+
+const httpFailurePreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas["BUDAN UM"],
+  openaiClient: { responses: { parse: async () => { const error = new Error("request contained private details"); error.status = 503; throw error; } } },
+  apiKeyAvailable: true,
+});
+assert.equal(httpFailurePreview.body.source, "fallback");
+assert.deepEqual(httpFailurePreview.body.fallbackDiagnostic, {
+  code: "OPENAI_HTTP_ERROR",
+  reason: "OpenAI HTTP/API error.",
+  status: 503,
+});
+assert.equal(JSON.stringify(httpFailurePreview.body).includes("private details"), false);
+
+const missingKeyLogs = [];
+const missingKeyPreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas["BUDAN UM"],
+  apiKeyAvailable: false,
+  log: (event, details) => missingKeyLogs.push({ event, details }),
+});
+assert.equal(missingKeyPreview.body.source, "fallback");
+assert.equal(missingKeyPreview.body.fallbackDiagnostic.code, "MISSING_API_KEY");
+assert.equal(missingKeyLogs.some(({ event }) => event === "SCHEMA: NOT RUN"), true);
+
+const timeoutPreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas["BUDAN UM"],
+  openaiClient: { responses: { parse: () => new Promise(() => {}) } },
+  apiKeyAvailable: true,
+  timeoutMs: 1,
+});
+assert.equal(timeoutPreview.body.source, "fallback");
+assert.equal(timeoutPreview.body.fallbackDiagnostic.code, "TIMEOUT");
+assert.equal(timeoutPreview.body.fallbackDiagnostic.reason, "OpenAI request timed out.");
+
+const otherFailurePreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas["BUDAN UM"],
+  openaiClient: { responses: { parse: async () => { throw new Error("sensitive provider message"); } } },
+  apiKeyAvailable: true,
+});
+assert.equal(otherFailurePreview.body.source, "fallback");
+assert.equal(otherFailurePreview.body.fallbackDiagnostic.code, "OTHER_GENERATOR_ERROR");
+assert.equal(JSON.stringify(otherFailurePreview.body).includes("sensitive provider message"), false);
 const naturalMainArea = explanationWith(`Pri buđenju si izabrao/la „${exactEvidence}“. Vredi posmatrati ovaj deo sna zajedno sa ostatkom noći.`);
 assert.equal(validateSleepPremiumReport(naturalMainArea, validationInput).valid, true);
 
