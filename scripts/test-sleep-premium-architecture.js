@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
+import { SLEEP_ANSWER_OPTIONS, SLEEP_QUESTIONS } from "../src/psychology/sleepAssessmentContent.js";
 import { buildSleepPremiumInput } from "../server/sleepPremiumInput.js";
 import { buildSleepPremiumFallback } from "../server/sleepPremiumFallback.js";
 import {
@@ -33,6 +35,31 @@ const mockClient = (response, onRequest = () => {}) => ({
 });
 const input = buildSleepPremiumInput(personas[0]);
 const fallback = buildSleepPremiumFallback(input);
+const canonicalEvidence = (reportInput) => reportInput.answers.map(({ questionId, question, answer }) => ({ questionId, question, answer }));
+const assertSupportingAnchors = (report, reportInput) => {
+  const support = report.supporting_content;
+  assert.deepEqual(support.answer_evidence, canonicalEvidence(reportInput), "evidence preserves all twelve original selections in order, without internal scores");
+  for (const [key, anchor, entries] of [
+    ["connections", "connectionIndex", report.connections],
+    ["tracking", "itemIndex", report.stable_or_tracking.items],
+    ["alternatives", "alternativeIndex", report.alternatives],
+  ]) {
+    assert.deepEqual(support[key].map((entry) => entry[anchor]), entries.map((_, index) => index), `${key} contexts anchor every existing entry once, in order`);
+  }
+  assert.deepEqual(support.days.map(({ day }) => day), report.seven_day_plan.map(({ day }) => day));
+};
+// Only acceptance fixtures that intentionally resize concise arrays use this helper.
+// Rejection fixtures keep their mismatched counts so the runtime must reject them.
+const matchSupportingCounts = (report) => {
+  for (const [key, anchor, entries] of [
+    ["connections", "connectionIndex", report.connections],
+    ["tracking", "itemIndex", report.stable_or_tracking.items],
+    ["alternatives", "alternativeIndex", report.alternatives],
+  ]) {
+    const context = report.supporting_content[key][0].context;
+    report.supporting_content[key] = entries.map((_, index) => ({ [anchor]: index, context }));
+  }
+};
 assert.deepEqual(
   new Set(personas.map((points) => buildSleepPremiumInput(points).profile)),
   new Set(["MIRNA NOĆ", "UMORAN SAN", "BUDAN UM", "ISPREKIDAN SAN", "SAN POD PRITISKOM"]),
@@ -43,10 +70,13 @@ for (const points of personas) {
   const profileInput = buildSleepPremiumInput(points);
   const report = buildSleepPremiumFallback(profileInput);
   assert.equal(validateSleepPremiumReport(report, profileInput).valid, true);
+  assertSupportingAnchors(report, profileInput);
   assert.equal(report.profile, profileInput.profile);
   assert.equal(report.priority.area, getSleepPremiumPriority(profileInput).title);
   assert.equal(report.stable_or_tracking.mode, getSleepPremiumStrengthMode(profileInput));
-  assert.equal(report.connections.length >= 2 && report.connections.length <= 4, true);
+  assert.equal(report.stable_or_tracking.title, "ŠTA JOŠ VREDI DA PRATIŠ");
+  assert.equal(report.stable_or_tracking.items.length, 3);
+  assert.equal(report.connections.length, 4);
   assert.equal(report.connections.every(({ questionIds, text }) =>
     questionIds.length === 2 &&
     questionIds[0] !== questionIds[1] &&
@@ -56,6 +86,23 @@ for (const points of personas) {
   assert.equal(report.connections.every(({ text }) => !/\bQ(?:[1-9]|1[0-2])\b/.test(text)), true);
   assert.equal(report.seven_day_plan.length, 7);
   assert.deepEqual(report.seven_day_plan.map(({ day }) => day), [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal(new Set(report.seven_day_plan.map(({ action }) => action)).size, 7);
+  const firstExperiment = report.seven_day_plan[1].action;
+  const secondExperiment = report.seven_day_plan[4].action;
+  assert.notEqual(firstExperiment, secondExperiment, "days 2 and 5 are different practical experiments");
+  for (const action of [firstExperiment, secondExperiment]) {
+    assert.match(action, /pripremi|napiši|čitanja|namesti|izaberi|odaberi|ostavi|završi|pauzu/iu,
+      "experiment does something concrete, not only observing or tracking");
+    assert.doesNotMatch(action, /^(?:zabeleži|primeti|prati|uporedi)\b/iu);
+  }
+  assert.equal(report.seven_day_plan.every(({ action, observe }) =>
+    action.toLowerCase().includes(report.priority.area.toLowerCase()) && observe.toLowerCase().includes(report.priority.area.toLowerCase())
+  ), false, "fallback does not mechanically repeat the priority label in all 14 texts");
+  assert.ok(report.profile_explanation.length <= 180, "fallback introduction stays brief");
+  assert.deepEqual(report.connections.map(({ questionIds }) => questionIds), [["Q1", "Q8"], ["Q2", "Q7"], ["Q3", "Q12"], ["Q9", "Q10"]]);
+  for (const { questionIds, text } of report.connections) {
+    for (const id of questionIds) assert.ok(text.includes(profileInput.answers.find(({ questionId }) => questionId === id).answer));
+  }
   assert.equal(report.alternatives.length >= 1 && report.alternatives.length <= 2, true);
   assert.equal(report.review_questions.length, 3);
   assert.equal(new Set(report.review_questions).size, 3);
@@ -65,14 +112,62 @@ for (const points of personas) {
   assert.deepEqual(overview.map(({ key }) => key), ["recovery", "sleepOnset", "continuity", "rhythm"]);
   assert.equal(overview.every(({ title, status }) => title && ["Deluje mirnije", "Vredi pratiti", "Ovde se najviše izdvaja"].includes(status)), true);
   assert.equal(JSON.stringify(overview).match(/STABLE|MIXED|WEAK|score|\d/iu), null);
+  assert.equal(profileInput.answers.length, 12);
+  profileInput.answers.forEach(({ questionId, question, answer }, index) => {
+    assert.equal(questionId, `Q${index + 1}`);
+    assert.equal(question, SLEEP_QUESTIONS[index]);
+    assert.equal(answer, SLEEP_ANSWER_OPTIONS[index].find(({ points: optionPoints }) => optionPoints === points[index]).text);
+  });
 }
 
-const contractKeys = ["version", "profile", "profile_explanation", "priority", "connections", "stable_or_tracking", "seven_day_plan", "alternatives", "review_questions", "after_seven_days", "closing"];
+const contractKeys = ["version", "profile", "profile_explanation", "priority", "connections", "stable_or_tracking", "seven_day_plan", "alternatives", "review_questions", "after_seven_days", "closing", "supporting_content"];
 assert.deepEqual(Object.keys(fallback), contractKeys);
 const schema = buildSleepPremiumJsonSchema(input);
 assert.equal(schema.strict, true);
 assert.equal(schema.schema.additionalProperties, false);
 assert.deepEqual(schema.schema.required, contractKeys);
+assert.deepEqual(schema.schema.properties.version.enum, [2], "support is additive within v2, not a second report version");
+const supportSchema = schema.schema.properties.supporting_content;
+const assertExactObjectSchema = (object, keys) => {
+  assert.equal(object.type, "object");
+  assert.equal(object.additionalProperties, false);
+  assert.deepEqual(Object.keys(object.properties), keys);
+  assert.deepEqual(object.required, keys);
+};
+assertExactObjectSchema(supportSchema, ["answer_evidence", "priority", "connections", "tracking", "days", "alternatives"]);
+assertExactObjectSchema(supportSchema.properties.answer_evidence.items, ["questionId", "question", "answer"]);
+assert.equal(supportSchema.properties.answer_evidence.minItems, 12);
+assert.equal(supportSchema.properties.answer_evidence.maxItems, 12);
+for (const key of ["questionId", "question", "answer"]) {
+  assert.deepEqual(supportSchema.properties.answer_evidence.items.properties[key].enum, input.answers.map((entry) => entry[key]));
+}
+assertExactObjectSchema(supportSchema.properties.priority, ["context", "evidenceQuestionIds"]);
+const supportIdsSchema = supportSchema.properties.priority.properties.evidenceQuestionIds;
+assert.equal(supportIdsSchema.minItems, 1);
+assert.equal(supportIdsSchema.maxItems, 12);
+assert.deepEqual(supportIdsSchema.items.enum, input.answers.map(({ questionId }) => questionId));
+for (const [key, anchor, minItems, maxItems] of [
+  ["connections", "connectionIndex", 2, 4], ["tracking", "itemIndex", 1, 3], ["alternatives", "alternativeIndex", 1, 2],
+]) {
+  const collection = supportSchema.properties[key];
+  assert.equal(collection.minItems, minItems);
+  assert.equal(collection.maxItems, maxItems);
+  assertExactObjectSchema(collection.items, [anchor, "context"]);
+  assert.deepEqual(collection.items.properties[anchor], { type: "integer", minimum: 0, maximum: maxItems - 1 });
+  assert.equal(collection.items.properties.context.maxLength, 500);
+  assert.equal(collection.items.properties.context.pattern, "\\S");
+}
+assert.equal(supportSchema.properties.priority.properties.context.maxLength, 500);
+assert.equal(supportSchema.properties.days.minItems, 7);
+assert.equal(supportSchema.properties.days.maxItems, 7);
+assertExactObjectSchema(supportSchema.properties.days.items, ["day", "rationale", "reflection"]);
+assert.deepEqual(supportSchema.properties.days.items.properties.day, { type: "integer", minimum: 1, maximum: 7 });
+assert.equal(supportSchema.properties.days.items.properties.rationale.maxLength, 250);
+const reflectionSchema = supportSchema.properties.days.items.properties.reflection.anyOf;
+assert.equal(reflectionSchema[0].type, "string");
+assert.equal(reflectionSchema[0].maxLength, 200);
+assert.equal(reflectionSchema[0].pattern, "\\S");
+assert.deepEqual(reflectionSchema[1], { type: "null" });
 assert.deepEqual(schema.schema.properties.profile.enum, [input.profile]);
 assert.equal(schema.schema.properties.review_questions.minItems, 3);
 assert.equal(schema.schema.properties.review_questions.maxItems, 3);
@@ -105,73 +200,269 @@ priorityFixture.answers.find(({ questionId }) => questionId === "Q6").mappedValu
 priorityFixture.answers.find(({ questionId }) => questionId === "Q12").mappedValue = 1;
 assert.equal(getSleepPremiumPriority(priorityFixture).key, "continuity");
 
-const prompt = buildSleepPremiumPrompt(input, {
-  profile: input.profile,
-  priorityArea: getSleepPremiumPriority(input).title,
-  mode: getSleepPremiumStrengthMode(input),
-  stableTitle: schema.schema.properties.stable_or_tracking.properties.title.enum[0],
-  stableAreas: getSleepPremiumAreaOverview(input).filter(({ status }) => status === "Deluje mirnije").map(({ title }) => title),
-  profileExplanationMaxLength: schema.schema.properties.profile_explanation.maxLength,
+const promptFor = (reportInput) => buildSleepPremiumPrompt(reportInput, {
+  profile: reportInput.profile,
+  priorityArea: getSleepPremiumPriority(reportInput).title,
+  mode: getSleepPremiumStrengthMode(reportInput),
+  stableTitle: "ŠTA JOŠ VREDI DA PRATIŠ",
+  stableAreas: getSleepPremiumAreaOverview(reportInput).filter(({ status }) => status === "Deluje mirnije").map(({ title }) => title),
+  profileExplanationMaxLength: buildSleepPremiumJsonSchema(reportInput).schema.properties.profile_explanation.maxLength,
 });
-assert.match(prompt, /review_questions: vrati TAČNO tri/);
-assert.match(prompt, /TAČNO sedam objekata redom sa day vrednostima 1–7/);
-assert.match(prompt, /SVAKI dan, i action i observe/);
-assert.match(schema.schema.properties.seven_day_plan.items.properties.action.description, /explicitly names the fixed priority.*Each of the seven actions must independently state the connection/i);
-assert.match(schema.schema.properties.seven_day_plan.items.properties.observe.description, /explicitly names the same fixed priority.*Never observe a different sleep area/i);
-assert.match(prompt, /ne izvodi ocene/);
-assert.equal(prompt.includes("mappedValue"), false);
-assert.equal(prompt.includes("internalScores"), false);
+// Writing quality is instructed in the prompt, not enforced by a semantic runtime gate.
+for (const points of personas) {
+  const reportInput = buildSleepPremiumInput(points);
+  const reportPrompt = promptFor(reportInput);
+  const properties = buildSleepPremiumJsonSchema(reportInput).schema.properties;
+  const fixedLine = reportPrompt.split("\n").find((line) => line.startsWith("Fiksni podaci: "));
+  assert.deepEqual(JSON.parse(fixedLine.slice("Fiksni podaci: ".length)), {
+    profile: reportInput.profile, priorityArea: getSleepPremiumPriority(reportInput).title,
+    mode: getSleepPremiumStrengthMode(reportInput), trackingTitle: "ŠTA JOŠ VREDI DA PRATIŠ",
+  });
+  const answersLine = reportPrompt.split("\n").find((line) => line.startsWith("Svih 12 kanonskih odgovora: "));
+  assert.deepEqual(JSON.parse(answersLine.slice("Svih 12 kanonskih odgovora: ".length)),
+    reportInput.answers.map(({ questionId, question, answer }) => ({ questionId, question, answer })),
+    "all 12 canonical questions and exact selected strings reach the model, without scores");
+  assert.doesNotMatch(reportPrompt, /mappedValue|internalScores|OBAVEZNO uključi|VERBATIM|SVAKI dan, i action i observe|U svih 14 tekstova/);
+  for (const instruction of [
+    /prirodnom, direktnom srpskom.*sa ti/,
+    /Vrati samo JSON.*version: 2.*Ne dodaj sekcije ili ključeve/,
+    /Model nikada ne bira profil ili prioritet; ne menjaj ih i ne izvodi ocene/,
+    /Naslov je UVEK „ŠTA JOŠ VREDI DA PRATIŠ“, nezavisno od mode/,
+    /profile_explanation: jedna ili dve kratke rečenice.*do 180.*bez ponavljanja naziva profila/,
+    /priority.explanation: objasni zašto krenuti baš od fiksnog prioriteta.*relevantne izabrane odgovore.*konkretan pravac/,
+    /Razlikuj ono što osoba već radi od onoga što može tek da proba/,
+    /Sažmi ih prirodno.*nije potreban citat u svakoj rečenici/,
+    /Ako koristiš navodnike.*prekopiraj ceo odgovarajući answer tačno, sa svim znakovima/,
+    /Ne izmišljaj posao, porodicu, smene, obaveze, navike ili osećanja/,
+    /connections: 2–4 smislene veze ili kontrasta.*tačno questionIds i text.*tačno dva različita ID-ja/,
+    /jutro i dan, veče i misli, tok noći i ukupni utisak, trajanje i raspored/,
+    /Kontrast navedi samo kada ga odgovori podržavaju.*ne tvrdi da jedno objašnjava drugo.*ID-jeve nikada/,
+    /stable_or_tracking.items: 1–3 konkretne sporedne stvari.*iz preostalih odgovora/,
+    /To nisu novi prioriteti, lista problema, dijagnoze ili generičke pohvale/,
+    /TAČNO sedam objekata redom sa day vrednostima 1–7.*action <=300.*observe <=250.*action <=150.*observe <=100/,
+    /bez stalnog ponavljanja naziva prioriteta/,
+    /dan 1 početno zapažanje.*dan 2 mali praktičan eksperiment.*dan 3 prilagodi.*dan 4 uporedi.*dan 5 DRUGI, stvarno različit eksperiment.*dan 6 ponovi.*dan 7 pregledaj/,
+    /ne ista navika sa drugim trajanjem.*Prvi eksperiment ostaje uz prioritet.*uz kontekst ostalih odgovora/,
+    /Ne menjaj više stvari odjednom, ne svodi plan na pisanje beležaka/,
+    /ako već postoji mirna rutina bez ekrana, ne predstavljaj odlaganje telefona kao neophodan korak/,
+    /misli aktivne uprkos mirnoj rutini.*završavanje planiranja pre nje.*Ne pretpostavljaj telefon ako je izabran TV/,
+    /alternatives: 1–2 konkretna, stvarno drugačija pristupa.*AKO TI PRVI KORAK NE ODGOVARA/,
+    /Naslov ne dodaj kao JSON ključ.*Osloni se na druge odgovore, naročito večernju rutinu i misli/,
+    /Ne nuditi samo praćenje, zapisivanje ili manju verziju istog eksperimenta/,
+    /review_questions: vrati TAČNO tri kratka, različita pitanja/,
+    /after_seven_days: objasni kako uporediti početak i kraj.*bez obećanja ishoda/,
+    /JSON je jedini prihvaćeni izveštaj za web i budući PDF/,
+    /Ne generiši zasebnu PDF verziju ili drugi izveštaj/,
+    /PDF kasnije koristi iste sačuvane podatke.*ne obećavaj da je PDF već dostupan/,
+    /supporting_content je samo dopunsko objašnjenje ISTE analize, ne novi plan/,
+    /answer_evidence: prekopiraj svih 12 originalnih \{questionId, question, answer\} redom i bez izmene/,
+    /priority: context do 500.*postojeći razlog.*evidenceQuestionIds navodi 1–12 različitih originalnih ID-jeva/,
+    /Ne dodaj drugi profil, prioritet ili medicinsko objašnjenje/,
+    /supporting_content.connections: za svaku postojeću vezu tačno jedan \{connectionIndex, context\}, indeksi od nule redom/,
+    /tracking: tačno jedan \{itemIndex, context\} po postojećoj sporednoj stavci, indeksi od nule redom/,
+    /alternatives: tačno jedan \{alternativeIndex, context\} po postojećem pristupu, indeksi od nule redom/,
+    /Svi context tekstovi do 500.*ne dodaj drugačije korake ili protivrečna tumačenja/,
+    /supporting_content.days: tačno sedam \{day, rationale, reflection\} objekata redom/,
+    /rationale do 250.*već navedene radnje, bez nove radnje ili obećanja/,
+    /reflection je kratko pitanje do 200.*istoj radnji i zapažanju ili null/,
+    /Ne prepisuj i ne menjaj action ili observe/,
+    /Za osvrt i završetak koristi postojeće review_questions, after_seven_days i closing, ne njihove nezavisne kopije/,
+    /Sve zaštite od medicinskih, uzročnih i internih tvrdnji važe i za dopunski tekst/,
+    /closing: kratka mirna informativna napomena/,
+    /Zabranjeno.*dijagnoze.*medicinske tvrdnje.*uzročna objašnjenja.*obećanja.*ocene, procenti.*interni\/tehnički termini/,
+    /Praktična trajanja malih postupaka su dozvoljena/,
+    /Ne koristi robotske fraze.*Izbegni ponavljanje iste poruke/,
+  ]) assert.match(reportPrompt, instruction);
+  assert.deepEqual(properties.profile.enum, [reportInput.profile]);
+  for (const key of ["questionId", "question", "answer"]) {
+    assert.deepEqual(properties.supporting_content.properties.answer_evidence.items.properties[key].enum, reportInput.answers.map((entry) => entry[key]));
+  }
+  assert.deepEqual(properties.priority.properties.area.enum, [getSleepPremiumPriority(reportInput).title]);
+  assert.deepEqual(properties.stable_or_tracking.properties.mode.enum, [getSleepPremiumStrengthMode(reportInput)]);
+  assert.deepEqual(properties.stable_or_tracking.properties.title.enum, ["ŠTA JOŠ VREDI DA PRATIŠ"]);
+  assert.equal(properties.stable_or_tracking.properties.items.minItems, 1);
+  assert.equal(properties.stable_or_tracking.properties.items.maxItems, 3);
+  assert.match(properties.profile_explanation.description, /short natural Serbian.*selected answers as context; no mandatory quote/i);
+  assert.match(properties.priority.properties.explanation.description, /why this fixed priority.*naturally.*relevant selected answers/i);
+  assert.match(properties.seven_day_plan.items.properties.action.description, /concrete.*selected answers.*Day 1 baseline.*day 2 practical change.*day 5 a different small experiment.*Do not merely repeat tracking or the priority label/i);
+  assert.match(properties.seven_day_plan.items.properties.observe.description, /very short.*conversational Serbian.*Do not repeat the priority label mechanically/i);
+  assert.match(properties.alternatives.items.description, /genuinely different practical approach supported by another part of the selected answers/i);
+}
 assert.equal(schema.schema.properties.connections.items.type, "object");
 assert.equal(schema.schema.properties.connections.items.properties.questionIds.minItems, 2);
 assert.equal(schema.schema.properties.connections.items.properties.questionIds.maxItems, 2);
 assert.deepEqual(schema.schema.properties.connections.items.properties.questionIds.items.enum, input.answers.map(({ questionId }) => questionId));
 assert.equal(schema.schema.properties.connections.items.properties.text.maxLength, 500);
 assert.match(schema.schema.properties.connections.items.properties.text.description, /natural.*Serbian.*Do not include or display question IDs/i);
-assert.match(schema.schema.properties.profile_explanation.description, /MUST include at least one complete selected answer copied verbatim/i);
-assert.match(prompt, /tačno dva različita ID-ja iz questionId polja ulaznih odgovora/);
-assert.match(prompt, /ne mora da ponavlja ili citira tekst odgovora/);
-assert.match(prompt, /OBAVEZNO uključi najmanje jedan ceo answer.*kopiran VERBATIM/s);
-assert.match(prompt, /Nemoj parafrazirati citirani odgovor/);
-assert.ok(prompt.includes(`Tvoj odgovor „${input.answers[0].answer}“ daje konkretan lični oslonac`), "profile explanation example uses a complete selected answer from the current input");
-assert.match(prompt, /KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO/);
-assert.match(prompt, /Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj/);
-assert.match(prompt, /priority: title mora biti tačno/);
-assert.match(prompt, /Explanation mora jasno obrazložiti ZAŠTO JE UPRAVO OVAJ FIKSNI PRIORITET/);
-assert.match(prompt, /OBAVEZNO uključi najmanje jedan relevantan selected answer iz liste DOKAZI ZA OVAJ PRIORITET/);
-assert.match(prompt, /KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO/);
-assert.match(prompt, /Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj citirani odgovor/);
-assert.match(prompt, /Proveri pre slanja da se ceo tekst između navodnika poklapa znak po znak/);
-assert.ok(prompt.includes(`Tema ${getSleepPremiumPriority(input).title} je smislen prvi fokus za razmatranje. Tvoj odgovor „${input.answers[0].answer}“`), "priority example has a verbatim answer and preserves the fixed priority");
-assert.ok(prompt.includes(JSON.stringify({ questionIds: input.answers.slice(0, 2).map(({ questionId }) => questionId), text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })), "prompt includes a valid connection object example with actual available question IDs");
-
 const onsetInput = buildSleepPremiumInput(personas[2]);
 const onsetPriority = getSleepPremiumPriority(onsetInput);
 assert.equal(onsetPriority.title, "Period pre sna");
-const onsetPrompt = buildSleepPremiumPrompt(onsetInput, {
-  profile: onsetInput.profile,
-  priorityArea: onsetPriority.title,
-  mode: getSleepPremiumStrengthMode(onsetInput),
-  stableTitle: schema.schema.properties.stable_or_tracking.properties.title.enum[0],
-  stableAreas: getSleepPremiumAreaOverview(onsetInput).filter(({ status }) => status === "Deluje mirnije").map(({ title }) => title),
-  profileExplanationMaxLength: schema.schema.properties.profile_explanation.maxLength,
-});
-assert.match(onsetPrompt, /SVAKI dan, i action i observe moraju izričito da uključe naziv fiksnog prioriteta/);
-assert.match(onsetPrompt, /U svih 14 tekstova koristi jednostavan svakodnevni srpski/);
-assert.match(onsetPrompt, /dijagnoza.*uzročnih tvrdnji.*WEAK.*MIXED.*obećanja/s);
-assert.match(onsetPrompt, /probaj.*obrati pažnju.*zabeleži.*vidi kako ti odgovara.*uporedi kako se osećaš/s);
-assert.ok(onsetPrompt.includes("„Period pre sna“"), "plan instructions and example are bound to the deterministic sleep-onset priority");
-const onsetEvidenceList = onsetInput.answers
-  .filter(({ questionId }) => ["Q2", "Q6"].includes(questionId))
-  .map(({ questionId, answer }) => ({ questionId, answer }));
-assert.ok(onsetPrompt.includes(`DOKAZI ZA OVAJ PRIORITET (kopiraj answer string doslovno): ${JSON.stringify(onsetEvidenceList)}`), "priority prompt gives the model the exact relevant selected answer strings");
-assert.ok(onsetPrompt.includes(`Tvoj odgovor „${onsetInput.answers.find(({ questionId }) => questionId === "Q2").answer}“`), "priority example quotes a relevant selected answer verbatim");
-assert.ok(onsetPrompt.includes('"day":7') && onsetPrompt.includes('"action":"Za prioritet'));
+const onsetPrompt = promptFor(onsetInput);
+assert.match(onsetPrompt, /Završi sadržaj koji gledaš.*deset minuta bez ekrana/);
 
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
 const previewHtml = await readFile(new URL("../server/dev/premium-ai-preview.html", import.meta.url), "utf8");
-assert.ok(appSource.includes("report.connections.map((connection, index) => <li key={index}>{connection.text}</li>)"));
-assert.ok(appSource.includes("report.connections.map((connection, index) => <li key={`connection-${index}`}>{connection.text}</li>)"));
-assert.ok(previewHtml.includes("report.connections.map((connection) => connection.text)"));
+const appCss = await readFile(new URL("../src/App.css", import.meta.url), "utf8");
+const extract = (source, pattern, label) => {
+  const match = source.match(pattern);
+  assert.ok(match, `${label} is present`);
+  return match[0];
+};
+const reactPreview = extract(appSource, /function PremiumAiPreviewReport\([\s\S]*?(?=\nfunction SleepPremiumDiscoveryPage\()/u, "React preview component");
+const paidRenderer = extract(appSource, /function SleepPremiumPaidReport\([\s\S]*?(?=\nfunction PaymentSuccessPage\()/u, "paid renderer");
+const htmlRenderer = extract(previewHtml, /const renderReport = \(source\) => \{[\s\S]*?(?=\n\s*button.addEventListener)/u, "HTML renderer");
+const headings = [
+  "TVOJ PRIORITET #1", "KAKO SE TVOJIH 12 ODGOVORA POVEZUJE", "ŠTA JOŠ VREDI DA PRATIŠ",
+  "TVOJ LIČNI PLAN ZA 7 DANA", "AKO TI PRVI KORAK NE ODGOVARA", "TVOJ PDF PLAN",
+];
+assert.deepEqual([...reactPreview.matchAll(/<h3>([^<]+)<\/h3>/gu)].map((match) => match[1]), headings,
+  "exactly six headings in the preview component, not elsewhere in App");
+assert.deepEqual([...htmlRenderer.matchAll(/\bsection\("([^"]+)"\)/gu)].map((match) => match[1]), headings);
+assert.ok(paidRenderer.includes("report.connections.map((connection, index) => <li key={index}>{connection.text}</li>)"));
+assert.ok(reactPreview.includes("report.connections.map((connection, index) => <li key={`connection-${index}`}>{connection.text}</li>)"));
+assert.ok(htmlRenderer.includes("report.connections.map((connection) => connection.text)"));
+assert.match(reactPreview, /source === "fallback" \? "FALLBACK" : "AI_GENERATED"/);
+assert.match(reactPreview, /source === "fallback" && fallbackDiagnostic\?\.reason/);
+assert.match(htmlRenderer, /source === "fallback"[\s\S]*Osnovni plan[\s\S]*AI plan/);
+for (const body of [reactPreview, htmlRenderer]) {
+  assert.doesNotMatch(body, /AKO PRVI KORAK NE POMOGNE|ŠTA VREDI DA ZADRŽIŠ/);
+  assert.doesNotMatch(body, /\bfetch\s*\(|\b(?:build|generate|download)\w*Pdf\s*\(|\b(?:jsPDF|Blob|createObjectURL)\b|download\s*=|onClick\s*=|addEventListener\s*\(/iu,
+    "rendering consumes the accepted report without fetching, generation or download handlers");
+  assert.doesNotMatch(body, /localStorage|sessionStorage|JSON\.parse|JSON\.stringify|buildSleepPremiumFallback|generateSleepPremiumReport/);
+  for (const field of ["profile", "profile_explanation", "priority.area", "priority.explanation", "connections", "stable_or_tracking.items", "seven_day_plan", "alternatives", "review_questions", "after_seven_days", "closing"]) {
+    assert.ok(body.includes(`report.${field}`), `renderer uses accepted ${field}`);
+  }
+}
+assert.match(reactPreview, /PDF nije dostupan u staging pregledu/);
+assert.match(reactPreview, /iste prihvaćene podatke ovog izveštaja, bez nove analize ili izmene plana/);
+assert.match(htmlRenderer, /PDF još nije dostupan.*isti prihvaćeni izveštaj i isti plan.*bez novog AI generisanja/);
+assert.match(previewHtml, /let acceptedReport = null/);
+assert.match(htmlRenderer, /const report = acceptedReport/);
+assert.match(previewHtml, /acceptedReport = data\.report;\s*renderReport\(data\.source\)/);
+assert.match(previewHtml, /\["ai", "fallback"\]\.includes\(data\.source\)/);
+assert.equal([...previewHtml.matchAll(/\bfetch\s*\(/gu)].length, 1, "only the existing AI preview request remains");
+assert.doesNotMatch(previewHtml, /localStorage|sessionStorage|indexedDB|application\/pdf|createObjectURL|\bjsPDF\b|\bdownload\s*=/iu);
+assert.match(appSource, /<PremiumAiPreviewReport\s+report=\{previewResult\.report\}\s+source=\{previewResult\.source\}/u);
+
+// Mobile-safe styles are scoped to the preview, including list reset and readable plan labels.
+const reportCss = extract(appCss, /\.premium-staging-preview-report \{[\s\S]*?(?=\n\.sleep-discovery-back \{)/u, "scoped preview CSS");
+const cssRules = [...reportCss.matchAll(/([^{}]+)\{([^{}]*)\}/gu)];
+assert.ok(cssRules.length > 20);
+for (const [, selectors] of cssRules) {
+  for (const selector of selectors.trim().split(",")) assert.ok(selector.trim().startsWith(".premium-staging-preview-report"), `preview-only selector: ${selector}`);
+}
+const cssRule = (selector) => {
+  const rule = cssRules.find(([, selectors]) => selectors.trim() === selector);
+  assert.ok(rule, `responsive rule exists: ${selector}`);
+  return rule[2];
+};
+assert.match(cssRule(".premium-staging-preview-report"), /grid-template-columns:\s*minmax\(0, 1fr\)/);
+assert.match(cssRule(".premium-staging-preview-report"), /width:\s*100%;[\s\S]*min-width:\s*0/);
+assert.match(cssRule(".premium-staging-preview-report"), /padding:\s*clamp\([\s\S]*overflow-wrap:\s*anywhere/);
+assert.match(cssRule(".premium-staging-preview-report .premium-staging-preview-banner"), /flex-wrap:\s*wrap/);
+assert.match(cssRule(".premium-staging-preview-report .premium-preview-plan"), /padding:\s*0;\s*list-style:\s*none/);
+assert.match(cssRule(".premium-staging-preview-report dt"), /color:[\s\S]*font-weight:\s*700/);
+assert.match(reportCss, /\.premium-staging-preview-report dd \{[\s\S]*line-height:\s*1\.65;\s*overflow-wrap:\s*anywhere/);
+assert.match(reportCss, /\.premium-staging-preview-report dl > div \{\s*min-width:\s*0/);
+assert.match(reportCss, /\.premium-staging-preview-report \* \{\s*box-sizing:\s*border-box/);
+assert.doesNotMatch(reportCss, /height:\s*\d+px|overflow:\s*hidden|white-space:\s*nowrap/);
+assert.match(previewHtml, /name="viewport" content="width=device-width, initial-scale=1"/);
+assert.match(previewHtml, /#report \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
+assert.match(previewHtml, /\.report-section \.days \{[^}]*list-style: none; padding: 0/);
+
+// Execute the actual HTML script with a minimal DOM; no network, browser storage or PDF facilities.
+const makeNode = (tagName, textContent = "") => ({
+  tagName, textContent, children: [], dataset: {}, attributes: {}, className: "",
+  append(...nodes) { this.children.push(...nodes); },
+  replaceChildren(...nodes) { this.children = nodes; },
+  setAttribute(name, value) { this.attributes[name] = value; },
+  classList: { add() {} },
+  addEventListener() {},
+});
+const domNodes = Object.fromEntries(["#generate", "#status", "#report"].map((selector) => [selector, makeNode("div")]));
+const htmlContext = {
+  document: { querySelector: (selector) => domNodes[selector], createElement: (tag) => makeNode(tag) },
+};
+const htmlScript = extract(previewHtml, /<script>[\s\S]*?<\/script>/u, "preview script").replace(/^<script>|<\/script>$/gu, "");
+runInNewContext(htmlScript, htmlContext, { timeout: 1000 });
+const descendants = (node) => [node, ...node.children.flatMap(descendants)];
+const renderAcceptedHtml = (report, source) => {
+  htmlContext.testReport = report;
+  htmlContext.testSource = source;
+  runInNewContext("acceptedReport = testReport; renderReport(testSource);", htmlContext, { timeout: 1000 });
+  assert.equal(runInNewContext("acceptedReport === testReport", htmlContext), true, "rendering retains the same accepted object");
+  const nodes = descendants(domNodes["#report"]);
+  assert.deepEqual(nodes.filter(({ tagName }) => tagName === "h2").map(({ textContent }) => textContent), headings);
+  assert.equal(domNodes["#report"].children[0].dataset.source, source);
+  assert.match(domNodes["#report"].children[0].textContent, source === "ai" ? /^AI plan/ : /^Osnovni plan/);
+  for (const text of [report.profile, report.profile_explanation, report.priority.area, report.priority.explanation,
+    ...report.connections.map(({ text }) => text), ...report.stable_or_tracking.items,
+    ...report.seven_day_plan.flatMap(({ action, observe }) => [action, observe]), ...report.alternatives,
+    ...report.review_questions, report.after_seven_days, report.closing]) {
+    assert.ok(nodes.some(({ textContent }) => textContent === text), "accepted customer text is displayed verbatim");
+  }
+  assert.equal(nodes.filter(({ className }) => className === "day").length, 7);
+  assert.equal(nodes.filter(({ tagName }) => tagName === "details").length, 1);
+  assert.equal(nodes.some(({ tagName }) => ["button", "a", "iframe"].includes(tagName)), false, "no PDF controls in rendered report");
+};
+
+// Same deterministic scores must not collapse different canonical selections into identical advice.
+const sameScoreOnsets = [
+  [5, 3, 5, 5, 5, 1, 3, 5, 5, 5, 5, 5], // scrolling, active thoughts
+  [5, 1, 5, 5, 5, 3, 3, 5, 5, 5, 5, 5], // TV, active thoughts
+  [5, 1, 5, 5, 5, 4, 2, 5, 5, 5, 5, 5], // calm routine, planning
+  [5, 1, 5, 5, 5, 5, 1, 5, 5, 5, 5, 5], // no screens, busy mind
+  [5, 1, 5, 5, 5, 1, 5, 5, 5, 5, 5, 5], // scrolling, quiet mind
+].map(buildSleepPremiumInput);
+const onsetVariants = sameScoreOnsets.map(buildSleepPremiumFallback);
+for (let index = 0; index < sameScoreOnsets.length; index += 1) {
+  const variantInput = sameScoreOnsets[index];
+  const report = onsetVariants[index];
+  assert.deepEqual(variantInput.dimensions, sameScoreOnsets[0].dimensions, "all four dimension scores/states are identical");
+  assert.equal(variantInput.profile, "BUDAN UM");
+  assert.equal(report.priority.area, "Period pre sna");
+  assert.equal(validateSleepPremiumReport(report, variantInput).valid, true);
+  for (const id of ["Q2", "Q7"]) assert.ok(report.priority.explanation.includes(variantInput.answers.find(({ questionId }) => questionId === id).answer));
+  renderAcceptedHtml(report, "fallback");
+}
+assert.match(onsetVariants[0].seven_day_plan[1].action, /Ostavi telefon van dohvata/);
+assert.match(onsetVariants[1].seven_day_plan[1].action, /Završi sadržaj koji gledaš/);
+assert.doesNotMatch(onsetVariants[1].seven_day_plan[1].action, /telefon/iu, "TV answer never becomes an invented phone habit");
+for (const report of onsetVariants.slice(2, 4)) {
+  assert.match(report.connections[1].text, /Već imaš miran završetak večeri, ali misli ostaju aktivne/);
+  assert.match(report.priority.explanation, /Već imaš miran završetak večeri/);
+  assert.match(report.seven_day_plan[1].action, /Pre svoje mirne rutine napiši jednu obavezu/);
+  assert.match(report.seven_day_plan[4].action, /Umesto pisanja obaveze.*tihog čitanja/);
+  assert.doesNotMatch(report.seven_day_plan[1].action, /telefon|ekran/iu);
+}
+assert.notEqual(onsetVariants[0].connections[1].text, onsetVariants[1].connections[1].text);
+assert.notEqual(onsetVariants[0].priority.explanation, onsetVariants[1].priority.explanation);
+assert.notEqual(onsetVariants[0].seven_day_plan[1].action, onsetVariants[1].seven_day_plan[1].action);
+assert.notEqual(onsetVariants[1].priority.explanation, onsetVariants[2].priority.explanation);
+assert.notEqual(onsetVariants[1].seven_day_plan[1].action, onsetVariants[2].seven_day_plan[1].action);
+assert.match(onsetVariants[0].alternatives[0], /tihog čitanja/);
+assert.match(onsetVariants[4].alternatives[0], /mirno sedenje/);
+assert.notEqual(onsetVariants[0].alternatives[0], onsetVariants[4].alternatives[0], "alternative responds to a different thoughts answer despite equal scores");
+const recoveryVariants = [
+  [1, 5, 5, 4, 5, 5, 5, 4, 5, 5, 1, 5],
+  [3, 5, 5, 1, 5, 5, 5, 1, 5, 5, 5, 5],
+].map(buildSleepPremiumInput);
+assert.deepEqual(recoveryVariants[0].dimensions, recoveryVariants[1].dimensions);
+const recoveryReports = recoveryVariants.map(buildSleepPremiumFallback);
+assert.equal(recoveryVariants[0].profile, recoveryVariants[1].profile);
+assert.equal(recoveryReports[0].priority.area, "Osećaj po buđenju");
+assert.equal(recoveryReports[1].priority.area, recoveryReports[0].priority.area);
+assert.match(recoveryReports[0].connections[0].text, /Jutarnji osećaj i energija kasnije nisu isti/);
+assert.match(recoveryReports[1].connections[0].text, /Jutro i energija tokom dana daju sličan utisak/);
+assert.notEqual(recoveryReports[0].priority.explanation, recoveryReports[1].priority.explanation);
+assert.match(recoveryReports[0].seven_day_plan[2].action, /Premesti pripremu stvari ranije/);
+assert.match(recoveryReports[1].seven_day_plan[2].action, /Pripremi samo prvu stvar/);
+const rhythmInput = buildSleepPremiumInput([5, 5, 5, 5, 3, 5, 5, 5, 2, 2, 5, 5]);
+const rhythmReport = buildSleepPremiumFallback(rhythmInput);
+assert.equal(rhythmReport.priority.area, "Vreme spavanja i buđenja");
+assert.match(rhythmReport.seven_day_plan[1].action, /realan okvir za ustajanje/);
+assert.match(rhythmReport.seven_day_plan[4].action, /večernji podsetnik/);
+assert.match(rhythmReport.alternatives[0], /postojeće aktivnosti, umesto za sat/);
 
 const expectInvalid = (candidate, field, validationInput = input) => {
   const before = structuredClone(candidate);
@@ -188,6 +479,110 @@ const expectValid = (candidate, validationInput = input) => {
   assert.equal(result.report, candidate, "validation returns the original report without sanitization");
   assert.deepEqual(candidate, before, "accepted reports are not mutated by validation");
 };
+
+// Exact shapes prohibit structural overrides. Arbitrary prose can still contradict
+// another sentence semantically: consistency is instructed, not guaranteed by keywords.
+const mutateSupport = (mutate, field) => {
+  const report = structuredClone(fallback);
+  mutate(report.supporting_content);
+  expectInvalid(report, field);
+};
+for (const key of ["profile", "seven_day_plan", "new_plan", "review_questions", "after_seven_days", "closing"]) {
+  mutateSupport((support) => { support[key] = structuredClone(fallback[key] ?? []); }, "supporting_content");
+}
+for (const key of ["area", "title", "action", "observe", "explanation"]) {
+  mutateSupport((support) => { support.priority[key] = "Drugi fokus."; }, "supporting_content.priority");
+}
+for (const key of ["action", "observe", "actions", "alternatives"]) {
+  mutateSupport((support) => { support.days[0][key] = key === "actions" ? ["Drugi postupak."] : "Drugi postupak."; }, "supporting_content.days[0]");
+}
+for (const key of ["text", "action", "actions", "alternatives", "steps", "new_alternatives"]) {
+  mutateSupport((support) => { support.alternatives[0][key] = ["Drugi pristup."]; }, "supporting_content.alternatives[0]");
+}
+for (const [section, key] of [["connections", "questionIds"], ["connections", "text"], ["tracking", "items"], ["tracking", "action"]]) {
+  mutateSupport((support) => { support[section][0][key] = ["Druga stavka."]; }, `supporting_content.${section}[0]`);
+}
+for (const [key, anchor] of [["connections", "connectionIndex"], ["tracking", "itemIndex"], ["alternatives", "alternativeIndex"], ["days", "day"]]) {
+  for (const value of [undefined, null, {}, "contexts", [], fallback.supporting_content[key].slice(0, -1), [...fallback.supporting_content[key], fallback.supporting_content[key][0]]]) {
+    mutateSupport((support) => { support[key] = value; }, `supporting_content.${key}`);
+  }
+  const start = key === "days" ? 1 : 0;
+  for (const value of [undefined, null, `${start}`, true, -1, 0.5, 99, start + 1]) {
+    mutateSupport((support) => { support[key][0][anchor] = value; }, `supporting_content.${key}[0]`);
+  }
+  for (const value of [null, [], "context", {}]) {
+    mutateSupport((support) => { support[key][0] = value; }, `supporting_content.${key}[0]`);
+  }
+  for (const property of Object.keys(fallback.supporting_content[key][0])) {
+    mutateSupport((support) => { delete support[key][0][property]; }, `supporting_content.${key}[0]`);
+  }
+  mutateSupport((support) => { support[key][0].extra = true; }, `supporting_content.${key}[0]`);
+  if (fallback.supporting_content[key].length > 1) {
+    mutateSupport((support) => { [support[key][0], support[key][1]] = [support[key][1], support[key][0]]; }, `supporting_content.${key}[0]`);
+    mutateSupport((support) => { support[key][1][anchor] = start; }, `supporting_content.${key}[1]`);
+  } else {
+    // Use a valid two-alternative fixture so reorder/duplicate tests reach anchors,
+    // rather than failing only because the supporting count mismatches.
+    for (const reorder of [true, false]) {
+      const report = structuredClone(fallback);
+      report.alternatives.push(report.alternatives[0]);
+      matchSupportingCounts(report);
+      expectValid(report);
+      if (reorder) report.supporting_content[key].reverse();
+      else report.supporting_content[key][1][anchor] = start;
+      expectInvalid(report, `supporting_content.${key}[${reorder ? 0 : 1}]`);
+    }
+  }
+}
+for (const value of [undefined, null, [], "support", {}]) {
+  const report = structuredClone(fallback);
+  report.supporting_content = value;
+  expectInvalid(report, "supporting_content");
+}
+for (const key of Object.keys(fallback.supporting_content)) {
+  mutateSupport((support) => { delete support[key]; }, "supporting_content");
+}
+for (const value of [undefined, null, [], "priority", {}]) {
+  mutateSupport((support) => { support.priority = value; }, "supporting_content.priority");
+}
+for (const key of ["context", "evidenceQuestionIds"]) {
+  mutateSupport((support) => { delete support.priority[key]; }, "supporting_content.priority");
+}
+for (const ids of [undefined, null, "Q1", [], ["Q13"], ["unknown"], [1], ["Q1", "Q1"], [...input.answers.map(({ questionId }) => questionId), "Q1"]]) {
+  mutateSupport((support) => { support.priority.evidenceQuestionIds = ids; }, "supporting_content.priority.evidenceQuestionIds");
+}
+for (const ids of [["Q1"], input.answers.map(({ questionId }) => questionId), ["Q12", "Q1"]]) {
+  const report = structuredClone(fallback);
+  report.supporting_content.priority.evidenceQuestionIds = ids;
+  expectValid(report); // Priority references are a set, not a positional mapping.
+}
+for (const value of [undefined, null, {}, [], fallback.supporting_content.answer_evidence.slice(0, 11), [...fallback.supporting_content.answer_evidence, fallback.supporting_content.answer_evidence[0]]]) {
+  mutateSupport((support) => { support.answer_evidence = value; }, "supporting_content.answer_evidence");
+}
+// All positions must match their original triple, not merely an allowed enum value.
+for (let index = 0; index < 12; index += 1) {
+  for (const key of ["questionId", "question", "answer"]) {
+    const other = input.answers.find((entry) => entry[key] !== input.answers[index][key]);
+    assert.ok(other, `a different canonical ${key} exists for the forgery test`);
+    for (const value of [undefined, null, 7, {}, "forged", other[key]]) {
+      mutateSupport((support) => { support.answer_evidence[index][key] = value; }, `supporting_content.answer_evidence[${index}]`);
+    }
+    mutateSupport((support) => { delete support.answer_evidence[index][key]; }, `supporting_content.answer_evidence[${index}]`);
+  }
+  mutateSupport((support) => { support.answer_evidence[index].mappedValue = 1; }, `supporting_content.answer_evidence[${index}]`);
+}
+mutateSupport((support) => { support.answer_evidence.reverse(); }, "supporting_content.answer_evidence[0]");
+mutateSupport((support) => { support.answer_evidence[1] = structuredClone(support.answer_evidence[0]); }, "supporting_content.answer_evidence[1]");
+for (const value of [null, [], {}, "answer"]) {
+  mutateSupport((support) => { support.answer_evidence[0] = value; }, "supporting_content.answer_evidence[0]");
+}
+const nullReflections = structuredClone(fallback);
+nullReflections.supporting_content.days.forEach((day) => { day.reflection = null; });
+expectValid(nullReflections);
+const mixedReflections = structuredClone(fallback);
+mixedReflections.supporting_content.days.forEach((day, index) => { if (index % 2 === 0) day.reflection = null; });
+expectValid(mixedReflections);
+assertSupportingAnchors(nullReflections, input);
 
 const wrongProfile = structuredClone(fallback);
 wrongProfile.profile = "BUDAN UM";
@@ -352,9 +747,9 @@ const unrelatedPriorityEvidence = structuredClone(onsetPriorityFallback);
 unrelatedPriorityEvidence.priority.explanation = `U okviru teme Tok noći, tvoj odgovor „${exactOnsetAnswer}“ daje konkretan lični kontekst za ovaj prioritet.`;
 expectValid(unrelatedPriorityEvidence, onsetInput);
 assert.deepEqual(onsetPlanFallback.seven_day_plan.map(({ day }) => day), [1, 2, 3, 4, 5, 6, 7]);
-assert.equal(onsetPlanFallback.seven_day_plan.every(({ action, observe }) =>
-  action.toLowerCase().includes("period pre sna") && observe.toLowerCase().includes("period pre sna")
-), true, "every action and observation explicitly stays on the fixed priority");
+assert.match(onsetPlanFallback.seven_day_plan[1].action, /Ostavi telefon van dohvata/);
+assert.match(onsetPlanFallback.seven_day_plan[4].action, /Ranije uveče.*obaveze/);
+assert.notEqual(onsetPlanFallback.seven_day_plan[1].action, onsetPlanFallback.seven_day_plan[4].action);
 const safeExploratoryPlan = structuredClone(onsetPlanFallback);
 const safeExploratoryActions = [
   "Za period pre sna, zabeleži početni utisak bez menjanja rutine.",
@@ -453,6 +848,7 @@ relaxedReport.alternatives = [repeatedObservation, repeatedObservation];
 relaxedReport.review_questions = Array(3).fill("Šta primećuješ u svojim beleškama");
 relaxedReport.after_seven_days = repeatedObservation;
 relaxedReport.closing = "Ova beleška je informativna i ostavlja prostor za tvoja lična zapažanja.";
+matchSupportingCounts(relaxedReport);
 const textFields = [
   ["profile_explanation", 700, "profile_explanation"],
   ["priority.explanation", 700, "priority.explanation"],
@@ -467,6 +863,22 @@ const textFields = [
   ["after_seven_days", 500, "after_seven_days"],
   ["closing", 350, "closing"],
 ];
+// Exercise every prose slot at the allowed maximum counts, including contexts
+// that are absent from the deliberately shorter relaxed acceptance fixture.
+const supportingCopyFixture = structuredClone(relaxedReport);
+supportingCopyFixture.connections = Array.from({ length: 4 }, () => structuredClone(relaxedReport.connections[0]));
+supportingCopyFixture.stable_or_tracking.items = Array(3).fill(repeatedObservation);
+matchSupportingCounts(supportingCopyFixture);
+const supportingTextFields = [
+  ["supporting_content.priority.context", 500, "supporting_content.priority"],
+  ...supportingCopyFixture.supporting_content.connections.map((_, index) => [`supporting_content.connections.${index}.context`, 500, `supporting_content.connections[${index}]`]),
+  ...supportingCopyFixture.supporting_content.tracking.map((_, index) => [`supporting_content.tracking.${index}.context`, 500, `supporting_content.tracking[${index}]`]),
+  ...supportingCopyFixture.supporting_content.days.flatMap((_, index) => [
+    [`supporting_content.days.${index}.rationale`, 250, `supporting_content.days[${index}]`],
+    [`supporting_content.days.${index}.reflection`, 200, `supporting_content.days[${index}]`],
+  ]),
+  ...supportingCopyFixture.supporting_content.alternatives.map((_, index) => [`supporting_content.alternatives.${index}.context`, 500, `supporting_content.alternatives[${index}]`]),
+];
 const setField = (report, path, value, remove = false) => {
   const keys = path.split(".");
   const key = keys.pop();
@@ -474,6 +886,12 @@ const setField = (report, path, value, remove = false) => {
   if (remove) delete parent[key];
   else parent[key] = value;
 };
+for (const [path] of supportingTextFields) setField(supportingCopyFixture, path, repeatedObservation);
+for (const [path] of supportingTextFields) {
+  const parentPath = path.split(".").slice(0, -1);
+  if (parentPath.reduce((current, key) => current?.[key], relaxedReport)) setField(relaxedReport, path, repeatedObservation);
+}
+expectValid(supportingCopyFixture, onsetInput);
 for (const [path] of textFields) {
   const text = path.split(".").reduce((current, key) => current[key], relaxedReport);
   assert.equal(/[„“"]/.test(text), false, "relaxed report body contains no quotes");
@@ -498,9 +916,11 @@ assert.deepEqual(relaxedReport, relaxedBefore);
 
 // Every customer body field retains nonblank/type/length and global safety/privacy checks.
 const safeLengthText = (length) => "Lična beleška. ".repeat(Math.ceil(length / "Lična beleška. ".length)).slice(0, length);
-for (const [path, limit, diagnosticField] of textFields) {
+for (const [path, limit, diagnosticField] of [...textFields, ...supportingTextFields]) {
+  const fixture = path.startsWith("supporting_content.") ? supportingCopyFixture : relaxedReport;
   for (const value of [undefined, null, 7, true, {}, [], "", " \n\t ", safeLengthText(limit + 1)]) {
-    const report = structuredClone(relaxedReport);
+    if (value === null && path.endsWith(".reflection")) continue; // Required key, nullable value.
+    const report = structuredClone(fixture);
     setField(report, path, value, value === undefined);
     const missingField = !path.includes(".") ? "$"
       : path === "priority.explanation" ? "priority"
@@ -508,12 +928,12 @@ for (const [path, limit, diagnosticField] of textFields) {
           : diagnosticField;
     expectInvalid(report, value === undefined ? missingField : diagnosticField, onsetInput);
   }
-  const atLimit = structuredClone(relaxedReport);
+  const atLimit = structuredClone(fixture);
   setField(atLimit, path, safeLengthText(limit));
   expectValid(atLimit, onsetInput);
   const safetyField = path.replace(/\.(\d+)/gu, "[$1]");
   for (const unsafe of ["Ovo uzrokuje loš san.", "Ovo potvrđuje nesanicu.", "Ovo će sigurno poboljšati san.", "scoring", "rezultat 42", "prag 42", "Q2"]) {
-    const report = structuredClone(relaxedReport);
+    const report = structuredClone(fixture);
     setField(report, path, unsafe);
     expectInvalid(report, safetyField, onsetInput);
   }
@@ -524,11 +944,29 @@ for (const [path, limit, diagnosticField] of textFields) {
     "12345678-1234-1234-1234-123456789abc", "+381 60 123 4567",
   ]) {
     for (const text of [sensitive, `„${sensitive}“`]) {
-      const report = structuredClone(relaxedReport);
+      const report = structuredClone(fixture);
       setField(report, path, text);
       expectInvalid(report, safetyField, onsetInput);
       assert.equal(validateSleepPremiumReport(report, onsetInput).reason, "Report contains sensitive customer-facing content.");
     }
+  }
+  if (path.startsWith("supporting_content.")) {
+    for (const [phrase, category] of retainedSafetyPhrases) {
+      for (const text of [phrase, `„${phrase}“`, `"${phrase}"`]) {
+        const report = structuredClone(fixture);
+        setField(report, path, text);
+        expectInvalid(report, safetyField, onsetInput);
+        assert.equal(diagnoseSleepPremiumCustomerSafety(safetyField, text, onsetInput).category, category);
+      }
+    }
+    for (const sentence of naturalPatternSentences) {
+      const report = structuredClone(fixture);
+      setField(report, path, sentence);
+      expectValid(report, onsetInput);
+    }
+    const canonicalQuote = structuredClone(fixture);
+    setField(canonicalQuote, path, `Tvoj odgovor „${stableAnswer}“ je lični kontekst.`);
+    expectValid(canonicalQuote, onsetInput);
   }
 }
 for (const candidate of [null, [], {}, "{}", 2, true]) expectInvalid(candidate, "$", onsetInput);
@@ -549,7 +987,7 @@ for (const [path, field, values] of [
   ["stable_or_tracking", "stable_or_tracking", [null, [], "", {}]],
   ["stable_or_tracking.mode", "stable_or_tracking", [undefined, null, "", "tracking", 2]],
   ["stable_or_tracking.title", "stable_or_tracking.title", [undefined, null, "", "DRUGI NASLOV", 2]],
-  ["stable_or_tracking.items", "stable_or_tracking.items", [null, {}, [], Array(3).fill(repeatedObservation)]],
+  ["stable_or_tracking.items", "stable_or_tracking.items", [null, {}, [], Array(4).fill(repeatedObservation)]],
   ["seven_day_plan", "seven_day_plan", [null, {}, [], relaxedReport.seven_day_plan.slice(0, 6), [...relaxedReport.seven_day_plan, relaxedReport.seven_day_plan[0]]]],
   ["seven_day_plan.0", "seven_day_plan[0]", [null, [], "", {}]],
   ["seven_day_plan.0.day", "seven_day_plan[0]", [undefined, null, "1", 0, 2, 8, 1.5]],
@@ -572,19 +1010,36 @@ for (const path of ["priority", "connections.0", "stable_or_tracking", "seven_da
 for (const count of [2, 3, 4]) {
   const report = structuredClone(relaxedReport);
   report.connections = Array.from({ length: count }, () => structuredClone(relaxedReport.connections[0]));
+  matchSupportingCounts(report);
   expectValid(report, onsetInput);
 }
 for (const count of [1, 2]) {
   const report = structuredClone(relaxedReport);
   report.stable_or_tracking.items = Array(count).fill(repeatedObservation);
   report.alternatives = Array(count).fill(repeatedObservation);
+  matchSupportingCounts(report);
   expectValid(report, onsetInput);
 }
+const threeTrackingItems = structuredClone(relaxedReport);
+threeTrackingItems.stable_or_tracking.items = Array(3).fill(repeatedObservation);
+matchSupportingCounts(threeTrackingItems);
+expectValid(threeTrackingItems, onsetInput);
 expectInvalid(relaxedReport, "input.profile", { ...onsetInput, profile: "UNKNOWN" });
 const trackingInput = buildSleepPremiumInput(personas[4]);
 assert.equal(getSleepPremiumStrengthMode(trackingInput), "tracking");
 const trackingReport = buildSleepPremiumFallback(trackingInput);
+assert.equal(trackingReport.stable_or_tracking.title, "ŠTA JOŠ VREDI DA PRATIŠ");
+for (const count of [1, 2, 3, 4]) {
+  const report = structuredClone(trackingReport);
+  report.stable_or_tracking.items = Array(count).fill(repeatedObservation);
+  if (count <= 3) {
+    matchSupportingCounts(report);
+    expectValid(report, trackingInput);
+  }
+  else expectInvalid(report, "stable_or_tracking.items", trackingInput);
+}
 trackingReport.stable_or_tracking.items = ["Odvoji trenutak za šetnju i zabeleži utisak."];
+matchSupportingCounts(trackingReport);
 expectValid(trackingReport, trackingInput);
 trackingReport.stable_or_tracking.mode = "stable";
 expectInvalid(trackingReport, "stable_or_tracking", trackingInput);
@@ -812,7 +1267,7 @@ try {
   // Reproduce the reported nested failure path, not the unknown real 121-character text.
   const nestedFailure = structuredClone(onsetPlanFallback);
   const nestedRejectedText = "Ovo uzrokuje loš san.";
-  nestedFailure.connections.push({ questionIds: ["Q2", "Q6"], text: nestedRejectedText });
+  nestedFailure.connections[2] = { questionIds: ["Q2", "Q6"], text: nestedRejectedText };
   const nestedValidation = validateSleepPremiumReport(nestedFailure, onsetInput);
   assert.equal(nestedValidation.valid, false);
   assert.equal(nestedValidation.diagnostic.field, "connections[2].text");
@@ -983,6 +1438,55 @@ assert.equal(preview.body.report.profile, "BUDAN UM");
 assert.equal(preview.body.report.profile, preview.body.deterministicProfile, "valid v2 staging preview profile matches the deterministic profile");
 assert.equal(preview.body.report.review_questions.length, 3);
 assert.equal(Object.hasOwn(preview.body.report, "source"), false);
+assert.deepEqual(preview.body.report, onsetPlanFallback, "accepted AI preview returns the exact validated content");
+renderAcceptedHtml(preview.body.report, preview.body.source);
+
+// One model response carries both concise mobile copy and supporting context.
+// This verifies the future-PDF data contract, not a PDF renderer that does not exist.
+const singleSourceAiFixture = structuredClone(onsetPlanFallback);
+singleSourceAiFixture.profile_explanation = "Veče i misli su početak ovog kratkog plana.";
+singleSourceAiFixture.priority.explanation = "Počni od prelaza u krevet i probaj jedan mali postupak.";
+singleSourceAiFixture.seven_day_plan[1].action = "Ostavi telefon van dohvata pre kreveta; ostatak večeri ne menjaj.";
+singleSourceAiFixture.seven_day_plan[1].observe = "Kako ti prija ovaj prelaz?";
+singleSourceAiFixture.alternatives[0] = "Ako ti prvi korak ne odgovara, probaj pet minuta tihog čitanja van kreveta.";
+singleSourceAiFixture.supporting_content.priority.context = "Dopunski osvrt ostaje uz isti prvi fokus i isti mali pokušaj.";
+singleSourceAiFixture.supporting_content.days[1].rationale = "Jedan pokušaj ostavlja ostatak tvoje večeri nepromenjenim.";
+singleSourceAiFixture.supporting_content.days[1].reflection = null;
+singleSourceAiFixture.supporting_content.alternatives[0].context = "Čitanje je ponuđeno umesto prvog koraka, ne kao nova obaveza uz njega.";
+expectValid(singleSourceAiFixture, onsetInput);
+let singleSourceRequests = 0;
+const singleSourcePreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas[2],
+  openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(singleSourceAiFixture) }, (request) => {
+    singleSourceRequests += 1;
+    assert.deepEqual(request.text.format, buildSleepPremiumJsonSchema(onsetInput));
+    assert.equal(request.input, onsetPrompt);
+  }),
+  apiKeyAvailable: true,
+});
+assert.equal(singleSourcePreview.status, 200);
+assert.equal(singleSourcePreview.body.source, "ai", "custom copy must be accepted, not silently replaced by fallback");
+const acceptedSingleReport = singleSourcePreview.body.report;
+const singleReportBeforeRender = structuredClone(acceptedSingleReport);
+const supportBeforeRender = acceptedSingleReport.supporting_content;
+assert.deepEqual(acceptedSingleReport, singleSourceAiFixture);
+assert.deepEqual(Object.keys(acceptedSingleReport), contractKeys, "one v2 object, with no second PDF report or plan");
+assertSupportingAnchors(acceptedSingleReport, onsetInput);
+assert.deepEqual(supportBeforeRender.answer_evidence, canonicalEvidence(onsetInput));
+for (const field of ["profile", "profile_explanation", "priority", "connections", "stable_or_tracking", "seven_day_plan", "alternatives", "review_questions", "after_seven_days", "closing"]) {
+  assert.deepEqual(acceptedSingleReport[field], singleSourceAiFixture[field], `single accepted ${field} is reused, not independently generated for PDF`);
+}
+renderAcceptedHtml(acceptedSingleReport, "ai");
+renderAcceptedHtml(acceptedSingleReport, "ai");
+assert.equal(singleSourceRequests, 1, "acceptance and repeated mobile rendering require exactly one model request, no PDF request");
+assert.equal(acceptedSingleReport.supporting_content, supportBeforeRender, "mobile rendering retains the original support reference for future PDF use");
+assert.deepEqual(acceptedSingleReport, singleReportBeforeRender, "rendering does not replace, trim or rewrite either concise or supporting copy");
+assert.equal(runInNewContext("acceptedReport.supporting_content === testReport.supporting_content", htmlContext), true);
+for (const key of ["pdf_report", "pdf_plan", "pdf_text"]) {
+  const secondPdfObject = { ...acceptedSingleReport, [key]: structuredClone(singleSourceAiFixture) };
+  expectInvalid(secondPdfObject, "$", onsetInput);
+}
 
 const malformedPreview = await generateSleepPremiumPreview({
   enabled: true,
@@ -995,5 +1499,20 @@ assert.equal(malformedPreview.body.source, "fallback");
 assert.equal(malformedPreview.body.fallbackDiagnostic.code, "INVALID_JSON");
 assert.deepEqual(malformedPreview.body.fallbackDiagnostic.jsonDiagnostics, malformedJson.jsonDiagnostics);
 assert.equal(JSON.stringify(malformedPreview.body).includes("private answer text"), false);
+assert.deepEqual(malformedPreview.body.report, onsetPlanFallback, "fallback preview returns the same deterministic report");
+renderAcceptedHtml(malformedPreview.body.report, malformedPreview.body.source);
+for (const points of personas) {
+  const expected = buildSleepPremiumFallback(buildSleepPremiumInput(points));
+  for (const source of ["ai", "fallback"]) {
+    const result = await generateSleepPremiumPreview({
+      enabled: true, answers: points, apiKeyAvailable: source === "ai",
+      openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(expected) }),
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.source, source);
+    assert.deepEqual(result.body.report, expected);
+    renderAcceptedHtml(result.body.report, source);
+  }
+}
 
-console.log("Premium v2 strict contract, personalized fallback, deterministic selector, safety rules, timeout and staging preview passed.");
+console.log("Premium v2 six-section single-source prompt/schema, canonical supporting evidence/anchors, all supporting prose safety/privacy/limits, one-request AI/mobile reuse, six personas, same-score personalized fallback, accepted AI/fallback rendering, scoped mobile CSS, structural/safety diagnostics and staging preview passed.");

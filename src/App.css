@@ -6962,96 +6962,213 @@ input:focus-visible {
 
 .premium-staging-preview-report {
   display: grid;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
   margin-top: 12px;
-  padding: 13px;
-  border: 1px solid rgba(184, 167, 255, 0.32);
-  border-radius: 14px;
-  background: rgba(14, 13, 24, 0.66);
+  padding: clamp(12px, 3vw, 22px);
+  border: 1px solid rgba(110, 221, 255, 0.28);
+  border-radius: 20px;
+  background: linear-gradient(155deg, #10243a, #081321 70%);
+  color: #edf8ff;
+  box-shadow: 0 16px 40px rgba(3, 10, 24, 0.22);
   text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.premium-staging-preview-report,
+.premium-staging-preview-report * {
+  box-sizing: border-box;
+}
+
+.premium-staging-preview-report > *,
+.premium-staging-preview-report li,
+.premium-staging-preview-report dl,
+.premium-staging-preview-report dl > div {
+  min-width: 0;
 }
 
 .premium-staging-preview-report > section {
-  padding: 12px;
-  border: 1px solid rgba(249, 242, 255, 0.1);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.025);
+  padding: clamp(14px, 3vw, 20px);
+  border: 1px solid rgba(169, 210, 240, 0.12);
+  border-radius: 14px;
+  background: rgba(169, 210, 240, 0.035);
 }
 
-.premium-staging-preview-banner {
+.premium-staging-preview-report .premium-staging-preview-banner {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  color: #d8ccff;
+  color: #89dfff;
   font-size: 0.67rem;
 }
 
-.premium-staging-preview-banner strong {
+.premium-staging-preview-report .premium-staging-preview-banner strong {
   letter-spacing: 0.09em;
 }
 
-.premium-staging-preview-banner span {
-  color: rgba(249, 242, 255, 0.62);
+.premium-staging-preview-report .premium-staging-preview-banner span {
+  padding: 4px 7px;
+  border: 1px solid rgba(110, 221, 255, 0.2);
+  border-radius: 6px;
+  color: #bdd6e8;
   text-align: right;
 }
 
-.premium-staging-preview-reason {
+.premium-staging-preview-report .premium-staging-preview-reason {
   padding: 7px 9px;
   border-radius: 8px;
   background: rgba(245, 158, 11, 0.09);
-  color: #f6d5a0 !important;
-  font-size: 0.7rem !important;
+  color: #f6d5a0;
+  font-size: 0.75rem;
 }
 
 .premium-staging-preview-report h3 {
-  margin: 0 0 7px;
-  color: #f4edff;
-  font-size: 0.82rem;
+  margin: 0 0 12px;
+  color: #a5e8ff;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.025em;
   line-height: 1.45;
 }
 
 .premium-staging-preview-report p,
 .premium-staging-preview-report li,
-.premium-preview-plan span {
-  color: rgba(249, 242, 255, 0.82);
-  font-size: 0.76rem;
+.premium-staging-preview-report dd {
+  color: #c7d9e8;
+  font-size: 0.86rem;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
 
 .premium-staging-preview-report p,
 .premium-staging-preview-report ul,
-.premium-staging-preview-report ol {
+.premium-staging-preview-report ol,
+.premium-staging-preview-report dl,
+.premium-staging-preview-report dd {
   margin: 0;
 }
 
 .premium-staging-preview-report ul,
 .premium-staging-preview-report ol {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding-left: 20px;
+}
+
+.premium-staging-preview-report li::marker {
+  color: #7edcff;
+}
+
+.premium-staging-preview-report .premium-preview-profile-header {
+  display: grid;
   gap: 6px;
-  padding-left: 19px;
+  padding: 2px 4px;
 }
 
-.premium-preview-profile {
-  margin-bottom: 5px !important;
-  color: #e4d9ff !important;
-  font-weight: 850;
+.premium-staging-preview-report .premium-preview-eyebrow {
+  color: #93adbf;
+  font-size: 0.72rem;
 }
 
-.premium-preview-plan li {
-  padding-left: 2px;
+.premium-staging-preview-report .premium-preview-profile {
+  color: #edf8ff;
+  font-size: 1.05rem;
+  font-weight: 800;
 }
 
-.premium-preview-plan strong,
-.premium-preview-plan span {
-  display: block;
+.premium-staging-preview-report > .premium-preview-priority {
+  padding: clamp(18px, 4vw, 26px);
+  border-color: rgba(110, 221, 255, 0.5);
+  background: linear-gradient(135deg, rgba(29, 139, 184, 0.2), rgba(29, 139, 184, 0.045));
+  box-shadow: inset 3px 0 0 #6eddff;
 }
 
-.premium-preview-plan strong {
-  margin-bottom: 2px;
-  color: #f4edff;
-  font-size: 0.76rem;
+.premium-staging-preview-report .premium-preview-priority-area {
+  margin-bottom: 10px;
+  color: #f2fbff;
+  font-size: clamp(1.3rem, 5vw, 1.7rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+
+.premium-staging-preview-report .premium-preview-plan {
+  padding: 0;
+  list-style: none;
+}
+
+.premium-staging-preview-report .premium-preview-plan > li {
+  padding: 14px;
+  border: 1px solid rgba(110, 221, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(4, 15, 29, 0.45);
+}
+
+.premium-staging-preview-report .premium-preview-day {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(110, 221, 255, 0.1);
+  color: #a5e8ff;
+  font-size: 0.78rem;
+}
+
+.premium-staging-preview-report dl {
+  display: grid;
+  gap: 12px;
+}
+
+.premium-staging-preview-report dt {
+  margin-bottom: 3px;
+  color: #edf8ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.premium-staging-preview-report .premium-preview-review {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(169, 210, 240, 0.16);
+}
+
+.premium-staging-preview-report summary {
+  padding: 5px 0;
+  color: #a5e8ff;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.premium-staging-preview-report summary:focus-visible {
+  outline: 2px solid #6eddff;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.premium-staging-preview-report .premium-preview-review ol {
+  margin: 12px 0;
+}
+
+.premium-staging-preview-report .premium-preview-pdf-status {
+  margin-bottom: 7px;
+  color: #edf8ff;
+  font-weight: 700;
+}
+
+.premium-staging-preview-report .premium-preview-closing {
+  padding: 0 4px 4px;
+}
+
+.premium-staging-preview-report .premium-preview-closing p {
+  color: #99b3c6;
+  font-size: 0.8rem;
 }
 
 .sleep-discovery-back {

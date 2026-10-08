@@ -1241,7 +1241,7 @@ function useSavedSleepAssessment() {
   return savedAssessment;
 }
 
-function PremiumAiPreviewReport({ report, source, deterministicProfile, fallbackDiagnostic }) {
+function PremiumAiPreviewReport({ report, source, fallbackDiagnostic }) {
   return (
     <section className="premium-staging-preview-report" aria-label="Staging Premium AI report preview">
       <div className="premium-staging-preview-banner">
@@ -1251,51 +1251,53 @@ function PremiumAiPreviewReport({ report, source, deterministicProfile, fallback
       {source === "fallback" && fallbackDiagnostic?.reason && (
         <p className="premium-staging-preview-reason">{fallbackDiagnostic.reason}</p>
       )}
-      <section>
-        <h3>Tvoj profil sna</h3>
-        <p className="premium-preview-profile">{deterministicProfile || report.profile}</p>
+      <header className="premium-preview-profile-header">
+        <span className="premium-preview-eyebrow">Tvoj profil sna</span>
+        <p className="premium-preview-profile">{report.profile}</p>
         <p>{report.profile_explanation}</p>
-      </section>
-      <section>
-        <h3>{report.priority.area}</h3>
+      </header>
+      <section className="premium-preview-priority">
+        <h3>TVOJ PRIORITET #1</h3>
+        <p className="premium-preview-priority-area">{report.priority.area}</p>
         <p>{report.priority.explanation}</p>
       </section>
       <section>
-        <h3>Tvoja povezana zapažanja</h3>
+        <h3>KAKO SE TVOJIH 12 ODGOVORA POVEZUJE</h3>
         <ul>{report.connections.map((connection, index) => <li key={`connection-${index}`}>{connection.text}</li>)}</ul>
       </section>
       <section>
-        <h3>{report.stable_or_tracking.title}</h3>
+        <h3>ŠTA JOŠ VREDI DA PRATIŠ</h3>
         <ul>{report.stable_or_tracking.items.map((item, index) => <li key={`mode-${index}`}>{item}</li>)}</ul>
       </section>
       <section>
-        <h3>Plan za narednih 7 dana</h3>
+        <h3>TVOJ LIČNI PLAN ZA 7 DANA</h3>
         <ol className="premium-preview-plan">
           {report.seven_day_plan.map((day) => (
             <li key={day.day}>
-              <strong>Dan {day.day}</strong>
-              <span>{day.action}</span>
-              <span>{day.observe}</span>
+              <strong className="premium-preview-day">Dan {day.day}</strong>
+              <dl>
+                <div><dt>Šta da probaš</dt><dd>{day.action}</dd></div>
+                <div><dt>Šta da primetiš</dt><dd>{day.observe}</dd></div>
+              </dl>
             </li>
           ))}
         </ol>
+        <details className="premium-preview-review">
+          <summary>Osvrt posle 7 dana</summary>
+          <ol>{report.review_questions.map((item, index) => <li key={`question-${index}`}>{item}</li>)}</ol>
+          <p>{report.after_seven_days}</p>
+        </details>
       </section>
       <section>
-        <h3>Alternativni pristupi</h3>
+        <h3>AKO TI PRVI KORAK NE ODGOVARA</h3>
         <ul>{report.alternatives.map((item, index) => <li key={`alternative-${index}`}>{item}</li>)}</ul>
       </section>
-      <section>
-        <h3>Pitanja za osvrt</h3>
-        <ol>{report.review_questions.map((item, index) => <li key={`question-${index}`}>{item}</li>)}</ol>
+      <section className="premium-preview-pdf">
+        <h3>TVOJ PDF PLAN</h3>
+        <p className="premium-preview-pdf-status">PDF nije dostupan u staging pregledu.</p>
+        <p>Ovaj pregled ne pravi niti preuzima PDF. Budući PDF treba da koristi iste prihvaćene podatke ovog izveštaja, bez nove analize ili izmene plana.</p>
       </section>
-      <section>
-        <h3>Posle sedam dana</h3>
-        <p>{report.after_seven_days}</p>
-      </section>
-      <section>
-        <h3>Završna poruka</h3>
-        <p>{report.closing}</p>
-      </section>
+      <footer className="premium-preview-closing"><p>{report.closing}</p></footer>
     </section>
   );
 }

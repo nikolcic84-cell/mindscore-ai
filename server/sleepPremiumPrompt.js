@@ -1,60 +1,41 @@
 export const buildSleepPremiumPrompt = (input, enforced) => {
-  const customerInput = {
-    profile: input.profile,
-    answers: input.answers.map(({ questionId, question, answer }) => ({ questionId, question, answer })),
+  const answers = input.answers.map(({ questionId, question, answer }) => ({ questionId, question, answer }));
+  const q6 = input.answers.find(({ questionId }) => questionId === "Q6");
+  const examples = {
+    "Osećaj po buđenju": "Probaj da pripremiš odeću i stvari za jutro još uveče; ujutru primeti koliko ti je lako da započneš dan.",
+    "Period pre sna": q6?.mappedValue <= 2
+      ? "Završi sadržaj koji gledaš pre odlaska u krevet i probaj deset minuta bez ekrana; primeti kako ti prija taj prelaz."
+      : "Već imaš miran završetak večeri: probaj da obaveze za sutra ostaviš na papiru pre te rutine, umesto da dodaješ još pravila.",
+    "Tok noći": "Pre spavanja namesti svetlo i posteljinu kako ti prija; ako se spontano probudiš, ujutru se priseti šta ti je tada smetalo.",
+    "Vreme spavanja i buđenja": "Izaberi realan okvir za ustajanje prema svojim obavezama, bez skraćivanja vremena za san; primeti da li je izvodljiv.",
+    "Više delova tvoje noći": "Prvo probaj jednostavniji završetak večeri, a drugi eksperiment neka bude priprema stvari za jutro; ne uvodi ih istog dana.",
+    "Tvoj san u celini": "Zadrži ono što ti već prija i probaj mali večernji prelaz, poput pripreme stvari za sutra pre mirne rutine.",
   };
-  const priorityEvidenceQuestionIds = {
-    "Osećaj po buđenju": ["Q1", "Q8"],
-    "Period pre sna": ["Q2", "Q6"],
-    "Tok noći": ["Q3", "Q12"],
-    "Vreme spavanja i buđenja": ["Q5", "Q10"],
-    "Više delova tvoje noći": ["Q1", "Q3"],
-    "Tvoj san u celini": ["Q1", "Q12"],
-  }[enforced.priorityArea] || [];
-  const priorityEvidence = input.answers
-    .filter(({ questionId }) => priorityEvidenceQuestionIds.includes(questionId))
-    .map(({ questionId, answer }) => ({ questionId, answer }));
-  const priorityEvidenceAnswer = priorityEvidence[0]?.answer || input.answers[0].answer;
-  const priorityExplanationExample = `Primer za priority.explanation uz isti prioritet „${enforced.priorityArea}“: Tema ${enforced.priorityArea} je smislen prvi fokus za razmatranje. Tvoj odgovor „${priorityEvidenceAnswer}“ daje konkretan lični kontekst.`;
-  const profileExampleAnswer = input.answers[0].answer;
-  const profileExplanationExample = `Primer obaveznog citata u profile_explanation: Tvoj odgovor „${profileExampleAnswer}“ daje konkretan lični oslonac za tumačenje profila.`;
-  const connectionExampleIds = input.answers.slice(0, 2).map(({ questionId }) => questionId);
-  const connectionExample = `Validan primer strukture connections stavke: ${JSON.stringify({ questionIds: connectionExampleIds, text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })}`;
-  const planExampleSteps = [
-    ["zabeleži početni utisak o ovoj temi, bez promene rutine", "obrati pažnju na to kako doživljavaš ovu temu uobičajenog dana"],
-    ["probaj jedan mali korak samo u okviru ove teme", "zabeleži šta primećuješ tokom ili posle tog koraka u istoj temi"],
-    ["ponovi mali korak u okviru iste teme", "vidi kako ti odgovara taj korak u istoj temi"],
-    ["uporedi iskustvo iz ove teme sa početnim utiskom", "uporedi kako se osećaš u vezi sa istom temom"],
-    ["probaj malu izmenu koraka unutar iste teme", "obrati pažnju na to šta primećuješ posle te izmene u istoj temi"],
-    ["ponovi najjednostavniji korak vezan za ovu temu", "zabeleži šta se događa u okviru ove teme pri ponavljanju"],
-    ["pregledaj beleške i utiske o ovoj temi", "vidi šta si primetio/la baš o ovoj temi tokom sedam dana"],
-  ];
-  const planFocusExample = `Primer koherentnog napredovanja za stvarni prioritet „${enforced.priorityArea}“ (samo primer strukture): ${JSON.stringify({ seven_day_plan: planExampleSteps.map(([action, observe], index) => ({ day: index + 1, action: `Za prioritet „${enforced.priorityArea}“: ${action}.`, observe: `U vezi sa prioritetom „${enforced.priorityArea}“: ${observe}.` })) })}. Za stvarni izveštaj napiši personalizovane, bezbedne predloge, ali zadrži ovu doslednu vezu sa prioritetom u SVAKOM action i observe polju.`;
   return [
-    "Ti si pažljiv autor vrednog, personalizovanog informativnog izveštaja o snu, na prirodnom srpskom jeziku.",
-    "Vrati isključivo JSON koji tačno odgovara strogoj JSON šemi. Bez markdown-a, uvoda ili teksta posle JSON-a.",
-    "JSON je jedna stabilna, verzionisana struktura koja se koristi i za prikaz izveštaja. Ne dodaj ključeve. Koristi tačno nazive polja iz šeme.",
-    `Profil je nepromenljiv i mora biti tačno: ${enforced.profile}. Prioritet je unapred izabran i mora ostati tačno „${enforced.priorityArea}“. Ne biraj alternativni prioritet, ne menjaj profil i ne izvodi ocene.`,
-      `stable_or_tracking.mode je konačan: ${enforced.mode}. Zadrži i unapred propisan naslov sekcije: „${enforced.stableTitle}“. Dozvoljene stvarno mirnije oblasti su: ${enforced.stableAreas.length ? enforced.stableAreas.join(", ") : "nema"}. Kod stable navedi isključivo jednu od navedenih oblasti; kod tracking opiši samo šta je korisno da se posmatra. Nikada ne prikazuj interne nazive stanja.`,
-    `profile_explanation: 1–2 lične, kratke rečenice o tome kako profil pruža okvir za odgovore ove osobe, najviše ${enforced.profileExplanationMaxLength} znakova. OBAVEZNO uključi najmanje jedan ceo answer iz trenutnih 12 odgovora, kopiran VERBATIM, potpuno identično znak po znak, unutar srpskih navodnika „…“. Nemoj parafrazirati citirani odgovor; pre slanja proveri da se tekst između navodnika tačno poklapa sa nekim ulaznim answer poljem. Nemoj prepisivati generički opis profila ili predstavljati profil kao dijagnozu.`,
-    profileExplanationExample,
-    `priority: title mora biti tačno „TVOJ PRIORITET #1“, area tačno „${enforced.priorityArea}“. Explanation mora jasno obrazložiti ZAŠTO JE UPRAVO OVAJ FIKSNI PRIORITET smislen prvi fokus; ne menjaj ga. OBAVEZNO uključi najmanje jedan relevantan selected answer iz liste DOKAZI ZA OVAJ PRIORITET ispod, kopiran VERBATIM iz ulaznog answer polja i stavljen unutar srpskih navodnika „…“. KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO. Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj citirani odgovor; sačuvaj svaki znak, interpunkciju i dijakritik. Izaberi tekst direktno iz liste, nemoj ga ponovo sastavljati iz sećanja. Proveri pre slanja da se ceo tekst između navodnika poklapa znak po znak sa jednim answer stringom iz liste. Tekst oko citata neka jednostavno i prirodno obrazloži fiksni prioritet, bez medicinske tvrdnje, dijagnoze ili uzročnog objašnjenja.`,
-    `DOKAZI ZA OVAJ PRIORITET (kopiraj answer string doslovno): ${JSON.stringify(priorityEvidence)}`,
-    priorityExplanationExample,
-    `connections: vrati 2–4 objekta, svaki tačno oblika {"questionIds": ["Qx", "Qy"], "text": "..."}. Svaki questionIds niz mora imati tačno dva različita ID-ja iz questionId polja ulaznih odgovora i oni predstavljaju dokaze za tu stavku. Polje text sadrži samo prirodan, kratak srpski opis veze između tema tih odgovora; ne mora da ponavlja ili citira tekst odgovora. U text nemoj prikazivati Q-ID oznake. Ne tvrdi uzročnost.`,
-    connectionExample,
-    `Za svaku connections stavku proveri da su oba ID-ja preuzeta iz ulaznih odgovora, da su međusobno različita, i da je text čitljiv korisniku bez izlaganja ID-ja. Odgovor u textu personalizuj prema izabranim stavkama, ali nema potrebe za doslovnim citatima.`,
-    `stable_or_tracking.items: vrati 1–2 kratke stavke. Naslov i mode su fiksni. Ne nazovi oblast snagom ako to ne podržavaju dostavljeni odgovori i fiksni režim.`,
-    `seven_day_plan: vrati TAČNO sedam objekata redom sa day vrednostima 1–7 i tačno postojećim poljima day, action i observe. Za SVAKI dan, i action i observe moraju izričito da uključe naziv fiksnog prioriteta „${enforced.priorityArea}“ ili njegov jasan prirodan opis koji ostaje prepoznatljiv kao ista tema. Action je konkretan mali, praktičan korak unutar te teme. Observe govori šta da primeti baš u vezi sa tom temom i tim dnevnim korakom. U svih 14 tekstova koristi jednostavan svakodnevni srpski i istraživački ton, npr. „probaj“, „obrati pažnju“, „zabeleži“, „vidi kako ti odgovara“, „uporedi kako se osećaš“. Svaki action i observe mora biti ne-medicinski; bez dijagnoza, simptoma kao dokaza, tretmana, lekova ili terapijskih uputstava; bez uzročnih tvrdnji; bez internih/tehničkih izraza kao scoring, dimensions, thresholds, classifier, WEAK, STABLE, MIXED ili AI confidence; bez cifara/rezultata; i bez obećanja da nešto poboljša, popravi, reši, reguliše, vrati ili izazove bolji san. Ova ograničenja važe za SVAKU pojedinačnu stavku, ne samo za plan u celini. Ne prelazi na druge oblasti sna i ne piši generičke dane čija je veza sa prioritetom samo podrazumevana. Zadrži progresiju: dan 1 početno zapažanje; dan 2 uvedi mali korak unutar prioriteta; dan 3 ponovi u istoj temi; dan 4 uporedi; dan 5 blago prilagodi korak u istoj temi; dan 6 ponovi održiv korak; dan 7 pregledaj zapažanja o istoj temi. Ne menjaj više stvari odjednom i ne obećavaj ishod.`,
-    planFocusExample,
-    "alternatives: vrati 1–2 praktične alternativne načine rada na istom prioritetu, ne nepovezane generičke savete.",
-    "review_questions: vrati TAČNO tri kratka pitanja za lični osvrt posle plana. Pitanja su različita i vezana za isti prioritet.",
-      "after_seven_days: kratak, personalizovan predlog kako uporediti zapažanja sa početnim utiskom, bez zaključka da je nešto uzrokovalo promenu.",
-    "closing: kratka, smirena wellness napomena, ne dijagnoza. Možeš reći da razgovor sa zdravstvenim stručnjakom može biti koristan ako teškoće dugo traju i znatno utiču na svakodnevicu. Bez alarmiranja.",
-    "Kada bilo koje polje zahteva answer kao dokaz, KOPIRAJ selected answer TAČNO. Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj ga. Profil i priority explanation moraju sadržati ceo verbatim answer u srpskim navodnicima. U connections se oslanjaj na questionIds i prirodan opis; ne stavljaj ID-jeve u tekst namenjen korisniku. Ne izmišljaj životne okolnosti, navike, osećanja ili činjenice.",
-    "Zabranjeno u svim customer-facing tekstovima: dijagnoze i medicinske tvrdnje; pripisivanje uzroka; tvrdnje da nešto sigurno poboljšava, popravlja, leči, reguliše ili rešava san; lekovi ili terapija; ocene, brojevi, procenti i pragovi; interni/tehnički/AI izrazi; obećanja i zastrašivanje.",
-    "Piši jasno, toplo i sažeto na srpskom. Obraćaj se direktno osobi, predlaži bez naređivanja, ne ponavljaj iste savete u svakoj sekciji. Personalizacija mora proizaći iz dostavljenih odgovora.",
-    `Fiksni podaci: ${JSON.stringify({ profile: enforced.profile, priorityArea: enforced.priorityArea, mode: enforced.mode, stableTitle: enforced.stableTitle })}`,
-    `Lični odgovori: ${JSON.stringify(customerInput)}`,
+    "Pišeš koristan plaćeni Premium Result o snu na prirodnom, direktnom srpskom. Obraćaj se osobi sa ti, bez stručnog žargona i praznih fraza.",
+    "Vrati samo JSON prema dostavljenoj strogoj šemi, version: 2. Zadrži tačno ključeve profile, profile_explanation, priority, connections, stable_or_tracking, seven_day_plan, alternatives, review_questions, after_seven_days, closing i supporting_content, uz version. Ne dodaj sekcije ili ključeve.",
+    `Profil je konačan: „${enforced.profile}“. priority.title je tačno „TVOJ PRIORITET #1“, priority.area tačno „${enforced.priorityArea}“. Model nikada ne bira profil ili prioritet; ne menjaj ih i ne izvodi ocene.`,
+    `stable_or_tracking.mode mora ostati „${enforced.mode}“ samo radi kompatibilnosti. Naslov je UVEK „ŠTA JOŠ VREDI DA PRATIŠ“, nezavisno od mode. Ne prikazuj režim ili interne podatke u tekstu.`,
+    "Šest celina plaćene vrednosti: prioritet, povezivanje odgovora, dodatno praćenje, sedmodnevni plan, drugi pristup i isti sačuvani plan za budući PDF. profile_explanation je samo vrlo kratak uvodni tekst, ne glavna analiza.",
+    `profile_explanation: jedna ili dve kratke rečenice, poželjno do 180 znakova, nikada više od ${enforced.profileExplanationMaxLength || 700}. Ukratko opiši sliku odgovora, bez ponavljanja naziva profila ili generičkog Free opisa.`,
+    "priority.explanation: objasni zašto krenuti baš od fiksnog prioriteta, uz relevantne izabrane odgovore i jedan konkretan pravac za narednu nedelju. Razlikuj ono što osoba već radi od onoga što može tek da proba. Najviše 700 znakova.",
+    "Svih 12 kanonskih pitanja i izabranih odgovora ispod koristi kao kontekst. Sažmi ih prirodno gde je korisno; nije potreban citat u svakoj rečenici. Ako koristiš navodnike „…“, prekopiraj ceo odgovarajući answer tačno, sa svim znakovima. Ne izmišljaj posao, porodicu, smene, obaveze, navike ili osećanja koji nisu navedeni.",
+    "connections: 2–4 smislene veze ili kontrasta iz cele slike, ne samo ponavljanje dva odgovora. Svaki objekat ima tačno questionIds i text. questionIds sadrži tačno dva različita ID-ja iz ulaznih odgovora, kao podršku, ne kao prikaz korisniku. text do 500 znakova treba da poveže iskustva i kaže šta je praktično korisno uočiti. Uključi različite teme: jutro i dan, veče i misli, tok noći i ukupni utisak, trajanje i raspored. Kontrast navedi samo kada ga odgovori podržavaju; ne tvrdi da jedno objašnjava drugo. ID-jeve nikada ne piši u korisnički tekst.",
+    "stable_or_tracking.items: 1–3 konkretne sporedne stvari koje osoba može da primeti naredne nedelje. Biraj ih iz preostalih odgovora: npr. razlika između dana sa alarmom i bez njega, lakoća ustajanja, misli pred san ili deo dana kada energija opada. To nisu novi prioriteti, lista problema, dijagnoze ili generičke pohvale.",
+    "seven_day_plan: vrati TAČNO sedam objekata redom sa day vrednostima 1–7, svaki sa day, action i observe. action <=300 znakova, observe <=250; za mobilni prikaz ciljaj action <=150 i observe <=100. Kratak konkretan postupak i jedno jednostavno zapažanje, bez stalnog ponavljanja naziva prioriteta.",
+    "Napredovanje plana: dan 1 početno zapažanje bez promene; dan 2 mali praktičan eksperiment; dan 3 prilagodi njegov obim ili trenutak; dan 4 uporedi sa početkom; dan 5 DRUGI, stvarno različit eksperiment, ne ista navika sa drugim trajanjem; dan 6 ponovi lakši praktičan postupak; dan 7 pregledaj iskustvo. Prvi eksperiment ostaje uz prioritet, drugi istražuje drugi praktičan pristup toj temi uz kontekst ostalih odgovora. Ne menjaj više stvari odjednom, ne svodi plan na pisanje beležaka.",
+    `Jedan primer za trenutni prioritet, prilagodi ostalim odgovorima umesto da ga slepo prepišeš: ${examples[enforced.priorityArea] || examples["Tvoj san u celini"]}`,
+    "Posebno poštuj odgovor o poslednjem delu večeri: ako već postoji mirna rutina bez ekrana, ne predstavljaj odlaganje telefona kao neophodan korak. Ako su misli aktivne uprkos mirnoj rutini, probaj završavanje planiranja pre nje. Ne pretpostavljaj telefon ako je izabran TV.",
+    "alternatives: 1–2 konkretna, stvarno drugačija pristupa kada prvi postupak ne odgovara, pod naslovom prikaza „AKO TI PRVI KORAK NE ODGOVARA“. Naslov ne dodaj kao JSON ključ. Osloni se na druge odgovore, naročito večernju rutinu i misli. Ne nuditi samo praćenje, zapisivanje ili manju verziju istog eksperimenta; objasni šta osoba može da uradi umesto njega.",
+    "review_questions: vrati TAČNO tri kratka, različita pitanja: šta je primećeno, koji postupak je izvodljiv i šta ima smisla probati sledeće. after_seven_days: objasni kako uporediti početak i kraj, šta zadržati i kada pokušati drugi pristup, bez obećanja ishoda.",
+    "Ovaj JSON je jedini prihvaćeni izveštaj za web i budući PDF. Ne generiši zasebnu PDF verziju ili drugi izveštaj. PDF kasnije koristi iste sačuvane podatke; u korisničkom tekstu ne obećavaj da je PDF već dostupan.",
+    "supporting_content je samo dopunsko objašnjenje ISTE analize, ne novi plan. answer_evidence: prekopiraj svih 12 originalnih {questionId, question, answer} redom i bez izmene. priority: context do 500 znakova dopunjuje postojeći razlog za prvi fokus; evidenceQuestionIds navodi 1–12 različitih originalnih ID-jeva. Ne dodaj drugi profil, prioritet ili medicinsko objašnjenje.",
+    "supporting_content.connections: za svaku postojeću vezu tačno jedan {connectionIndex, context}, indeksi od nule redom; dopuni kontekst te iste veze bez nove interpretacije. tracking: tačno jedan {itemIndex, context} po postojećoj sporednoj stavci, indeksi od nule redom. alternatives: tačno jedan {alternativeIndex, context} po postojećem pristupu, indeksi od nule redom. Svi context tekstovi do 500 znakova, poželjno kraći; ne dodaj drugačije korake ili protivrečna tumačenja.",
+    "supporting_content.days: tačno sedam {day, rationale, reflection} objekata redom. rationale do 250 znakova objašnjava praktičnost već navedene radnje, bez nove radnje ili obećanja. reflection je kratko pitanje do 200 znakova o istoj radnji i zapažanju ili null. Ne prepisuj i ne menjaj action ili observe. Za osvrt i završetak koristi postojeće review_questions, after_seven_days i closing, ne njihove nezavisne kopije. Sve zaštite od medicinskih, uzročnih i internih tvrdnji važe i za dopunski tekst.",
+    "closing: kratka mirna informativna napomena. Ako teškoće dugo traju i znatno utiču na svakodnevicu, možeš predložiti razgovor sa zdravstvenim stručnjakom, bez alarmiranja.",
+    "Zabranjeno u korisničkim tekstovima: dijagnoze, medicinske tvrdnje, lekovi, terapija, uzročna objašnjenja, obećanja boljeg sna, ocene, procenti i interni/tehnički termini. Praktična trajanja malih postupaka su dozvoljena. Ne tvrdi da nešto leči, rešava, reguliše, popravlja ili sigurno poboljšava san.",
+    "Ne koristi robotske fraze „lični oslonac“, „smislen fokus za razmatranje“, „paralelno“ ili „bez donošenja zaključaka“. Piši jasno: šta odgovori pokazuju, šta konkretno probati i šta primetiti. Izbegni ponavljanje iste poruke u više celina.",
+    `Fiksni podaci: ${JSON.stringify({ profile: enforced.profile, priorityArea: enforced.priorityArea, mode: enforced.mode, trackingTitle: "ŠTA JOŠ VREDI DA PRATIŠ" })}`,
+    `Svih 12 kanonskih odgovora: ${JSON.stringify(answers)}`,
   ].join("\n");
 };

@@ -20,10 +20,13 @@ const COPY_LIMITS = Object.freeze({
   reviewQuestion: 200,
   afterSevenDays: 500,
   closing: 350,
+  supportingContext: 500,
+  actionRationale: 250,
+  reflectionPrompt: 200,
 });
 const REPORT_KEYS = [
   "version", "profile", "profile_explanation", "priority", "connections", "stable_or_tracking",
-  "seven_day_plan", "alternatives", "review_questions", "after_seven_days", "closing",
+  "seven_day_plan", "alternatives", "review_questions", "after_seven_days", "closing", "supporting_content",
 ];
 
 const keysEqual = (value, expected) =>
@@ -111,11 +114,11 @@ const makeSchema = (input) => {
   return objectSchema({
     version: { type: "integer", enum: [2] },
     profile: { type: "string", enum: [input.profile] },
-    profile_explanation: customerText(COPY_LIMITS.profileExplanation, "At most two short personalized Serbian paragraphs about what this deterministic profile means for this person. MUST include at least one complete selected answer copied verbatim, character for character, in Serbian quotation marks. Paraphrased evidence is invalid. Do not repeat generic Free-result profile text."),
+    profile_explanation: customerText(COPY_LIMITS.profileExplanation, "One or two short natural Serbian sentences introducing the person's fixed profile. Use the selected answers as context; no mandatory quote or diagnosis."),
     priority: objectSchema({
       title: fixedTextSchema("TVOJ PRIORITET #1"),
       area: { type: "string", enum: [priority.title] },
-      explanation: customerText(COPY_LIMITS.priorityExplanation, "Briefly explain why the fixed deterministic priority is the sensible first focus using supplied answers and at least one complete exact answer quote. Do not diagnose or claim a cause."),
+      explanation: customerText(COPY_LIMITS.priorityExplanation, "Explain directly why this fixed priority is a useful first focus, referring naturally to relevant selected answers. Do not diagnose, discover a medical cause, or promise an outcome."),
     }),
     connections: arraySchema(2, 4, objectSchema({
       questionIds: arraySchema(2, 2, { type: "string", enum: input.answers.map(({ questionId }) => questionId) }),
@@ -123,18 +126,46 @@ const makeSchema = (input) => {
     })),
     stable_or_tracking: objectSchema({
       mode: { type: "string", enum: [stableMode] },
-      title: fixedTextSchema(stableMode === "stable" ? "ŠTA VREDI DA ZADRŽIŠ" : "ŠTA JOŠ VREDI DA PRATIŠ"),
-      items: arraySchema(1, 2, customerText(COPY_LIMITS.stableOrTracking, "When mode is stable, describe only an actually STABLE deterministic area. When mode is tracking, describe an uncertainty to observe, never an invented strength.")),
+      title: fixedTextSchema("ŠTA JOŠ VREDI DA PRATIŠ"),
+      items: arraySchema(1, 3, customerText(COPY_LIMITS.stableOrTracking, "A concise secondary observation from the selected answers: what to notice over the next seven days, not another primary priority or an invented strength.")),
     }),
     seven_day_plan: arraySchema(7, 7, objectSchema({
       day: { type: "integer", minimum: 1, maximum: 7 },
-      action: customerText(COPY_LIMITS.planAction, `One concrete small action that explicitly names the fixed priority “${priority.title}” or clearly describes that exact topic in natural Serbian. Each of the seven actions must independently state the connection; do not rely on the section heading or surrounding days. Progress naturally: day 1 baseline, day 2 introduce one small step, day 3 repeat, day 4 compare, day 5 slight adjustment within this same priority, day 6 repeat a manageable step, day 7 review. No unrelated sleep tips, treatment, or promised outcome.`),
-      observe: customerText(COPY_LIMITS.planObserve, `One simple observation that explicitly names the same fixed priority “${priority.title}” or clearly describes that exact topic in natural Serbian, and says what to notice about that day's action. Every observation must independently stay on this priority; never observe a different sleep area.`),
+      action: customerText(COPY_LIMITS.planAction, `One small concrete mobile-friendly action, primarily based on “${priority.title}” and the selected answers. Day 1 baseline; day 2 practical change; day 3 repeat/refine; day 4 compare; day 5 a different small experiment; day 6 keep the easiest step; day 7 choose what to continue. Do not merely repeat tracking or the priority label. No treatment or promised outcome.`),
+      observe: customerText(COPY_LIMITS.planObserve, "One very short thing to notice about this day's action, in conversational Serbian. Do not repeat the priority label mechanically."),
     })),
-    alternatives: arraySchema(1, 2, customerText(COPY_LIMITS.alternative, "A practical alternative approach to the same fixed priority, grounded in selected answers, not an unrelated generic tip.")),
+    alternatives: arraySchema(1, 2, customerText(COPY_LIMITS.alternative, "A genuinely different practical approach supported by another part of the selected answers. Use 'Ako ti ovaj pristup ne odgovara...' without promising that the alternative will work.")),
     review_questions: arraySchema(3, 3, customerText(COPY_LIMITS.reviewQuestion, "One simple review question relevant to the fixed priority.")),
     after_seven_days: customerText(COPY_LIMITS.afterSevenDays, "Short personalized interpretation of how to review the experiment. No promised outcome."),
     closing: customerText(COPY_LIMITS.closing, "Short calm informational wellness note, not a diagnosis. If persistent difficulty significantly affects daily life, it is reasonable to suggest speaking with a healthcare professional without alarming language."),
+    supporting_content: objectSchema({
+      answer_evidence: arraySchema(12, 12, objectSchema({
+        questionId: { type: "string", enum: input.answers.map(({ questionId }) => questionId) },
+        question: { type: "string", enum: input.answers.map(({ question }) => question) },
+        answer: { type: "string", enum: input.answers.map(({ answer }) => answer) },
+      })),
+      priority: objectSchema({
+        context: customerText(COPY_LIMITS.supportingContext, "Expand the existing priority explanation only. Do not introduce a new priority, diagnosis, cause or different advice."),
+        evidenceQuestionIds: arraySchema(1, 12, { type: "string", enum: input.answers.map(({ questionId }) => questionId) }),
+      }),
+      connections: arraySchema(2, 4, objectSchema({
+        connectionIndex: { type: "integer", minimum: 0, maximum: 3 },
+        context: customerText(COPY_LIMITS.supportingContext, "Additional context for the connection at this zero-based index. Preserve that connection and its questionIds; no new interpretation or advice."),
+      })),
+      tracking: arraySchema(1, 3, objectSchema({
+        itemIndex: { type: "integer", minimum: 0, maximum: 2 },
+        context: customerText(COPY_LIMITS.supportingContext, "Expand only the existing secondary observation at this index, not a new priority or observation."),
+      })),
+      days: arraySchema(7, 7, objectSchema({
+        day: { type: "integer", minimum: 1, maximum: 7 },
+        rationale: customerText(COPY_LIMITS.actionRationale, "Why this existing day's action is practical to try; no new action, treatment or promised benefit."),
+        reflection: { anyOf: [customerText(COPY_LIMITS.reflectionPrompt, "Optional short reflection on the same day's action and observation."), { type: "null" }] },
+      })),
+      alternatives: arraySchema(1, 2, objectSchema({
+        alternativeIndex: { type: "integer", minimum: 0, maximum: 1 },
+        context: customerText(COPY_LIMITS.supportingContext, "Explain the existing alternative at this index without replacing it, changing its steps or adding another alternative."),
+      })),
+    }),
   });
 };
 
@@ -166,6 +197,14 @@ const collectStrings = (report) => [
   ...report.review_questions.map((value, index) => ({ field: `review_questions[${index}]`, value })),
   { field: "after_seven_days", value: report.after_seven_days },
   { field: "closing", value: report.closing },
+  { field: "supporting_content.priority.context", value: report.supporting_content.priority.context },
+  ...report.supporting_content.connections.map(({ context }, index) => ({ field: `supporting_content.connections[${index}].context`, value: context })),
+  ...report.supporting_content.tracking.map(({ context }, index) => ({ field: `supporting_content.tracking[${index}].context`, value: context })),
+  ...report.supporting_content.days.flatMap(({ rationale, reflection }, index) => [
+    { field: `supporting_content.days[${index}].rationale`, value: rationale },
+    ...(reflection === null ? [] : [{ field: `supporting_content.days[${index}].reflection`, value: reflection }]),
+  ]),
+  ...report.supporting_content.alternatives.map(({ context }, index) => ({ field: `supporting_content.alternatives[${index}].context`, value: context })),
 ];
 const hasText = (value, maxLength) => typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
 const removeAnswerQuotes = (text, input) => text.replace(/[„“]([^”“]+)[”“]/gu, (whole, quoted) =>
@@ -262,10 +301,10 @@ export const validateSleepPremiumReport = (candidate, input) => {
   if (!keysEqual(candidate.stable_or_tracking, ["mode", "title", "items"]) || candidate.stable_or_tracking.mode !== stableMode) {
     return invalid("stable_or_tracking", `object with deterministic mode ${stableMode}, fixed title, and items`, candidate.stable_or_tracking, "Stable/tracking mode does not match deterministic areas.");
   }
-  const expectedStableTitle = stableMode === "stable" ? "ŠTA VREDI DA ZADRŽIŠ" : "ŠTA JOŠ VREDI DA PRATIŠ";
+  const expectedStableTitle = "ŠTA JOŠ VREDI DA PRATIŠ";
   if (candidate.stable_or_tracking.title !== expectedStableTitle) return invalid("stable_or_tracking.title", expectedStableTitle, candidate.stable_or_tracking.title, "Stable/tracking title is invalid.");
-  if (!Array.isArray(candidate.stable_or_tracking.items) || candidate.stable_or_tracking.items.length < 1 || candidate.stable_or_tracking.items.length > 2) {
-    return invalid("stable_or_tracking.items", "array of 1–2 concise items", candidate.stable_or_tracking.items, "Stable/tracking section must contain one or two items.");
+  if (!Array.isArray(candidate.stable_or_tracking.items) || candidate.stable_or_tracking.items.length < 1 || candidate.stable_or_tracking.items.length > 3) {
+    return invalid("stable_or_tracking.items", "array of 1–3 concise items", candidate.stable_or_tracking.items, "Tracking section must contain one to three items.");
   }
   for (let index = 0; index < candidate.stable_or_tracking.items.length; index += 1) {
     const item = candidate.stable_or_tracking.items[index];
@@ -290,6 +329,55 @@ export const validateSleepPremiumReport = (candidate, input) => {
   }
   if (!hasText(candidate.after_seven_days, COPY_LIMITS.afterSevenDays)) return invalid("after_seven_days", "nonblank string, at most 500 characters", candidate.after_seven_days, "Seven-day review is invalid.");
   if (!hasText(candidate.closing, COPY_LIMITS.closing)) return invalid("closing", "nonblank calm informational note, at most 350 characters", candidate.closing, "Closing note is invalid.");
+
+  const support = candidate.supporting_content;
+  if (!keysEqual(support, ["answer_evidence", "priority", "connections", "tracking", "days", "alternatives"])) {
+    return invalid("supporting_content", "supporting context only; no independent profile, priority, plan or alternatives", support, "Supporting content shape is invalid.");
+  }
+  if (!Array.isArray(support.answer_evidence) || support.answer_evidence.length !== 12) {
+    return invalid("supporting_content.answer_evidence", "the twelve original canonical question/answer pairs", support.answer_evidence, "Canonical evidence is missing.");
+  }
+  for (let index = 0; index < 12; index += 1) {
+    const entry = support.answer_evidence[index];
+    const original = input.answers[index];
+    if (!keysEqual(entry, ["questionId", "question", "answer"]) ||
+      ["questionId", "question", "answer"].some((key) => entry[key] !== original[key])) {
+      return invalid(`supporting_content.answer_evidence[${index}]`, "exact original questionId, question and selected answer", entry, "Canonical evidence was changed.");
+    }
+  }
+  if (!keysEqual(support.priority, ["context", "evidenceQuestionIds"]) || !hasText(support.priority.context, COPY_LIMITS.supportingContext)) {
+    return invalid("supporting_content.priority", "context <=500 characters and evidenceQuestionIds only", support.priority, "Priority supporting context is invalid.");
+  }
+  const evidenceIds = support.priority.evidenceQuestionIds;
+  const knownIds = new Set(input.answers.map(({ questionId }) => questionId));
+  if (!Array.isArray(evidenceIds) || evidenceIds.length < 1 || evidenceIds.length > 12 ||
+    evidenceIds.some((id) => typeof id !== "string" || !knownIds.has(id)) || new Set(evidenceIds).size !== evidenceIds.length) {
+    return invalid("supporting_content.priority.evidenceQuestionIds", "one to twelve distinct canonical answer IDs", evidenceIds, "Supporting evidence references are invalid.");
+  }
+  // Anchors reference existing entries exactly once and in order; they cannot define another plan.
+  for (const [key, anchor, count] of [
+    ["connections", "connectionIndex", candidate.connections.length],
+    ["tracking", "itemIndex", candidate.stable_or_tracking.items.length],
+    ["alternatives", "alternativeIndex", candidate.alternatives.length],
+  ]) {
+    const entries = support[key];
+    if (!Array.isArray(entries) || entries.length !== count) {
+      return invalid(`supporting_content.${key}`, `exactly ${count} contexts for the existing entries`, entries, "Supporting contexts must match existing entries.");
+    }
+    for (let index = 0; index < count; index += 1) {
+      if (!keysEqual(entries[index], [anchor, "context"]) || entries[index][anchor] !== index || !hasText(entries[index].context, COPY_LIMITS.supportingContext)) {
+        return invalid(`supporting_content.${key}[${index}]`, `context <=500 characters with ${anchor} ${index} only`, entries[index], "Supporting context has an invalid anchor or shape.");
+      }
+    }
+  }
+  if (!Array.isArray(support.days) || support.days.length !== 7) return invalid("supporting_content.days", "seven contexts for the existing seven days", support.days, "Supporting day count is invalid.");
+  for (let index = 0; index < 7; index += 1) {
+    const entry = support.days[index];
+    if (!keysEqual(entry, ["day", "rationale", "reflection"]) || entry.day !== candidate.seven_day_plan[index].day ||
+      !hasText(entry.rationale, COPY_LIMITS.actionRationale) || (entry.reflection !== null && !hasText(entry.reflection, COPY_LIMITS.reflectionPrompt))) {
+      return invalid(`supporting_content.days[${index}]`, `day ${index + 1}, rationale <=250 and reflection null or nonblank <=200; no action overrides`, entry, "Supporting day context is invalid.");
+    }
+  }
 
   const allStrings = collectStrings(candidate);
   for (let index = 0; index < allStrings.length; index += 1) {
