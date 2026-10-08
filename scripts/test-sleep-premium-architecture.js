@@ -223,6 +223,32 @@ for (const points of personas) {
     reportInput.answers.map(({ questionId, question, answer }) => ({ questionId, question, answer })),
     "all 12 canonical questions and exact selected strings reach the model, without scores");
   assert.doesNotMatch(reportPrompt, /mappedValue|internalScores|OBAVEZNO uključi|VERBATIM|SVAKI dan, i action i observe|U svih 14 tekstova/);
+  // Copy targets guide the writer only; schema limits, safety and fallback stay unchanged.
+  for (const copyGuidance of [
+    /25–35% manje mobilnog teksta.*ne korisne personalizacije/,
+    /JEDNA ČINJENICA — JEDNO OBJAŠNJENJE.*uglavnom objasni jednom/,
+    /Detaljna objašnjenja zadrži u postojećem supporting_content/,
+    /3–5 kratkih rečenica.*odakle početi.*jedan mali prvi pokušaj/,
+    /70–110 reči.*700 znakova ima prednost/,
+    /Svaka connections stavka: 1–2 kratke rečenice.*120–240 znakova/,
+    /ne citat A \+ citat B \+ generički savet/,
+    /Ne objašnjavaj ponovo vezu već obrađenu u prioritetu/,
+    /Svaka tracking stavka.*60–120 znakova.*Nije dodatna preporuka/,
+    /action je jedna kratka rečenica.*70–120 znakova.*35–75 znakova/,
+    /dan 3 olakšava pokušaj prema iskustvu dana 2.*dan 4 samo poredi.*dan 5 uvodi drugačiji pristup istoj temi/,
+    /rationale pripada supporting_content.days/,
+    /Svaku alternatives stavku počni direktno drugim postupkom.*100–200 znakova/,
+    /Ne prepisuj dan 2 ili dan 5 kao novu alternativu/,
+    /Parafraziraj prirodno, citate koristi štedljivo/,
+    /Ne koristi AI prvo lice/,
+    /Ovo ne menja obavezne izvorne odgovore u answer_evidence/,
+    /lakše za sprovesti.*više ti odgovara.*delovalo mirnije.*želiš da zadržiš/,
+  ]) assert.match(reportPrompt, copyGuidance);
+  for (const avoidedWording of [
+    "obrazac", "signal", "faktor", "analiza pokazuje", "podaci pokazuju", "testirati hipotezu",
+    "vizuelna stimulacija", "analiziram", "vidim", "zaključio sam", "pokazujem ti", "fokusiram se",
+    "delovalo je", "bilo je efikasno", "poboljšalo je san", "rešilo je problem",
+  ]) assert.ok(reportPrompt.includes(`„${avoidedWording}“`), `prompt explicitly discourages: ${avoidedWording}`);
   for (const instruction of [
     /prirodnom, direktnom srpskom.*sa ti/,
     /Vrati samo JSON.*version: 2.*Ne dodaj sekcije ili ključeve/,
