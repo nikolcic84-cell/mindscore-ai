@@ -15,36 +15,28 @@ const classifyFailure = (error) => {
   const status = Number(error?.status || error?.statusCode) || null;
   const code = String(error?.code || error?.error?.code || "").toLowerCase();
   const type = String(error?.type || error?.error?.type || "").toLowerCase();
-  let safeDetail = [error?.name, error?.message, code, type]
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/gi, "[REDACTED]")
-    .replace(/\bBearer\s+\S+/gi, "Bearer [REDACTED]")
-    .replace(/OPENAI_API_KEY\s*[:=]\s*[^\s,;]+/gi, "OPENAI_API_KEY=[REDACTED]");
-  if (process.env.OPENAI_API_KEY) safeDetail = safeDetail.replaceAll(process.env.OPENAI_API_KEY, "[REDACTED]");
-
-  if (error?.name === "PremiumAITimeoutError" || /timed out|timeout|aborterror|etimedout/i.test(safeDetail)) {
-    return { category: "timeout", status, detail: safeDetail };
+  if (error?.name === "PremiumAITimeoutError" || code === "etimedout" || code === "aborted") {
+    return { category: "timeout", status };
   }
   if (status === 401 || status === 403 || /authentication|invalid_api_key|permission_denied/i.test(`${code} ${type}`)) {
-    return { category: "authentication error", status, detail: safeDetail };
+    return { category: "authentication error", status };
   }
-  if (/insufficient_quota|quota_exceeded|billing_hard_limit/i.test(`${code} ${type} ${safeDetail}`)) {
-    return { category: "quota error", status, detail: safeDetail };
+  if (/insufficient_quota|quota_exceeded|billing_hard_limit/i.test(`${code} ${type}`)) {
+    return { category: "quota error", status };
   }
   if (status === 429 || /rate_limit|too_many_requests/i.test(`${code} ${type}`)) {
-    return { category: "rate limit error", status, detail: safeDetail };
+    return { category: "rate limit error", status };
   }
-  if (/schema|json|parsed|validation|incomplete/i.test(safeDetail)) {
-    return { category: "schema/JSON validation error", status, detail: safeDetail };
+  if (error instanceof SyntaxError || error instanceof TypeError) {
+    return { category: "schema/JSON validation error", status };
   }
-  if (/model_not_found|invalid_model|model.*not found|unsupported model/i.test(`${code} ${type} ${safeDetail}`)) {
-    return { category: "model/API error", status, detail: safeDetail };
+  if (/model_not_found|invalid_model|unsupported_model/i.test(`${code} ${type}`)) {
+    return { category: "model/API error", status };
   }
-  return { category: "model/API error", status, detail: safeDetail || "No safe diagnostic details available." };
+  return { category: "model/API error", status };
 };
 
-let profileName = "NOT CALCULATED";
+let profileCheck = false;
 let schemaStatus = "NOT RUN";
 let fallbackUsed = false;
 let testSucceeded = false;
@@ -53,46 +45,14 @@ const failUnless = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
-const printCustomerReport = (report) => {
-  console.log("\n=== VALIDATED SERBIAN PREMIUM REPORT ===");
-  console.log("\nA. PROFILE");
-  console.log(report.profile.name);
-  console.log(report.profile.summary);
-
-  console.log("\nB. GDE TVOJ SAN NAJVIŠE TRPI?");
-  console.log(report.mainArea.title);
-  console.log(report.mainArea.explanation);
-
-  console.log("\nC. ŠTA SE KOD TEBE POVEZUJE?");
-  report.connections.items.forEach((item, index) => console.log(`${index + 1}. ${item}`));
-
-  console.log(`\nD. ${report.positiveOrWatch.title.toLocaleUpperCase("sr-Latn")}`);
-  console.log(report.positiveOrWatch.text);
-
-  console.log(`\nE. ${report.startingPoint.title.toLocaleUpperCase("sr-Latn")}`);
-  console.log(report.startingPoint.text);
-
-  console.log(`\nF. ${report.tonight.title.toLocaleUpperCase("sr-Latn")}`);
-  report.tonight.actions.forEach((action, index) => console.log(`${index + 1}. ${action}`));
-
-  console.log("\nG. TVOJ PLAN ZA NAREDNIH 7 DANA");
-  report.sevenDayPlan.forEach((day) => console.log(`${day.title}: ${day.action}`));
-
-  console.log(`\nH. ${report.tracking.title.toLocaleUpperCase("sr-Latn")}`);
-  report.tracking.items.forEach((item, index) => console.log(`${index + 1}. ${item}`));
-
-  console.log("\nI. ZAVRŠNA PORUKA");
-  console.log(report.closing);
-};
-
 try {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is unavailable in this Render service environment.");
   }
 
   const input = buildSleepPremiumInput(ANSWER_POINTS);
-  profileName = input.profile;
-  failUnless(profileName === EXPECTED_PROFILE, `Expected ${EXPECTED_PROFILE}; deterministic input produced ${profileName}.`);
+  failUnless(input.profile === EXPECTED_PROFILE, "Deterministic profile did not match the expected staging fixture.");
+  profileCheck = true;
 
   const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const generation = await generateSleepPremiumReport({
@@ -119,7 +79,6 @@ try {
   failUnless(generation.report.tracking.items.length >= 2 && generation.report.tracking.items.length <= 4, "Expected two to four tracking items.");
 
   schemaStatus = "PASS";
-  printCustomerReport(generation.report);
   testSucceeded = true;
 } catch (error) {
   const diagnostic = classifyFailure(error);
@@ -127,7 +86,7 @@ try {
   console.error("Real Premium AI test diagnostic:", JSON.stringify(diagnostic));
 } finally {
   console.log(`REAL AI TEST: ${testSucceeded ? "SUCCESS" : "FAILED"}`);
-  console.log(`PROFILE: ${profileName}`);
+  console.log(`DETERMINISTIC PROFILE CHECK: ${profileCheck ? "PASS" : "FAIL"}`);
   console.log(`SCHEMA: ${schemaStatus}`);
   console.log(`FALLBACK USED: ${fallbackUsed ? "YES" : "NO"}`);
 }

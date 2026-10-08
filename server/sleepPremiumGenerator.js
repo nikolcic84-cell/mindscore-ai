@@ -13,6 +13,31 @@ const validateGeneratedReport = (candidate, input) => {
   return validation.report;
 };
 
+const getResponseText = (response) => {
+  if (typeof response?.output_text === "string" && response.output_text.trim()) {
+    return response.output_text;
+  }
+
+  const outputText = response?.output
+    ?.filter((item) => item?.type === "message")
+    .flatMap((item) => item.content || [])
+    .filter((content) => content?.type === "output_text" && typeof content.text === "string")
+    .map((content) => content.text)
+    .join("");
+
+  return typeof outputText === "string" && outputText.trim() ? outputText : null;
+};
+
+const getParsedReport = (response) => {
+  if (response?.output_parsed && typeof response.output_parsed === "object") {
+    return response.output_parsed;
+  }
+
+  const responseText = getResponseText(response);
+  if (!responseText) throw new TypeError("AI response did not contain JSON output text.");
+  return JSON.parse(responseText);
+};
+
 const callWithTimeout = async (requestFactory, timeoutMs) => {
   const controller = new AbortController();
   let timer;
@@ -66,10 +91,10 @@ export const generateSleepPremiumReport = async ({
       timeoutMs
     );
 
-    if (response?.status !== "completed" || response.incomplete_details || !response.output_parsed) {
-      throw new TypeError("AI response was incomplete or did not contain valid JSON.");
+    if (response?.status !== "completed" || response.incomplete_details) {
+      throw new TypeError("AI response was incomplete.");
     }
-    const report = validateGeneratedReport(response.output_parsed, input);
+    const report = validateGeneratedReport(getParsedReport(response), input);
     return { report, source: "ai", reason: "ok" };
   } catch (error) {
     if (!fallbackOnError) throw error;

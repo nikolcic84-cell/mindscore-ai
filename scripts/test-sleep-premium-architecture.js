@@ -118,6 +118,11 @@ const validationInput = makeInput(personas["MIRNA NOĆ"]);
 const validReport = makeValidReport(validationInput);
 const validReportValidation = validateSleepPremiumReport(validReport, validationInput);
 assert.equal(validReportValidation.valid, true, validReportValidation.reason);
+const alteredAnswerQuote = structuredClone(validReport);
+alteredAnswerQuote.mainArea.explanation = "Ovaj deo vredi sagledati uz odgovor „izmenjen odgovor“.";
+const alteredQuoteValidation = validateSleepPremiumReport(alteredAnswerQuote, validationInput);
+assert.equal(alteredQuoteValidation.valid, false);
+assert.match(alteredQuoteValidation.reason, /exact supplied answer/i);
 const wrongProfile = structuredClone(validReport);
 wrongProfile.profile.name = "BUDAN UM";
 assert.equal(validateSleepPremiumReport(wrongProfile, validationInput).valid, false);
@@ -193,6 +198,20 @@ const wrongProfileResult = await generateSleepPremiumReport({
 });
 assert.equal(wrongProfileResult.source, "fallback");
 assert.equal(wrongProfileResult.report.profile.name, validationInput.profile);
+
+const responseApiShapeResult = await generateSleepPremiumReport({
+  input: validationInput,
+  openaiClient: mockClient({
+    status: "completed",
+    output: [{
+      type: "message",
+      content: [{ type: "output_text", text: JSON.stringify(validReport) }],
+    }],
+  }),
+  apiKeyAvailable: true,
+});
+assert.equal(responseApiShapeResult.source, "ai");
+assert.deepEqual(responseApiShapeResult.report, validReport);
 
 const incompleteResult = await generateSleepPremiumReport({
   input: validationInput,
