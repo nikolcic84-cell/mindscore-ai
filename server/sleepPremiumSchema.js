@@ -128,8 +128,8 @@ const makeSchema = (input) => {
     }),
     seven_day_plan: arraySchema(7, 7, objectSchema({
       day: { type: "integer", minimum: 1, maximum: 7 },
-      action: customerText(COPY_LIMITS.planAction, "One small step in a progressive seven-day experiment, all steps related to the fixed priority: day 1 baseline, day 2 introduce, day 3 repeat, day 4 compare, day 5 slight adjustment, day 6 repeat simplest useful step, day 7 review. No treatment or promised outcome."),
-      observe: customerText(COPY_LIMITS.planObserve, "One optional simple observation relevant to the same priority. Do not introduce a different sleep intervention."),
+      action: customerText(COPY_LIMITS.planAction, `One concrete small action that explicitly names the fixed priority “${priority.title}” or clearly describes that exact topic in natural Serbian. Each of the seven actions must independently state the connection; do not rely on the section heading or surrounding days. Progress naturally: day 1 baseline, day 2 introduce one small step, day 3 repeat, day 4 compare, day 5 slight adjustment within this same priority, day 6 repeat a manageable step, day 7 review. No unrelated sleep tips, treatment, or promised outcome.`),
+      observe: customerText(COPY_LIMITS.planObserve, `One simple observation that explicitly names the same fixed priority “${priority.title}” or clearly describes that exact topic in natural Serbian, and says what to notice about that day's action. Every observation must independently stay on this priority; never observe a different sleep area.`),
     })),
     alternatives: arraySchema(1, 2, customerText(COPY_LIMITS.alternative, "A practical alternative approach to the same fixed priority, grounded in selected answers, not an unrelated generic tip.")),
     review_questions: arraySchema(3, 3, customerText(COPY_LIMITS.reviewQuestion, "One simple review question relevant to the fixed priority.")),

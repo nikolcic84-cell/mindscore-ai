@@ -113,7 +113,10 @@ const prompt = buildSleepPremiumPrompt(input, {
   profileExplanationMaxLength: schema.schema.properties.profile_explanation.maxLength,
 });
 assert.match(prompt, /review_questions: vrati TAČNO tri/);
-assert.match(prompt, /postepen, koherentan mini-eksperiment/);
+assert.match(prompt, /TAČNO sedam objekata redom sa day vrednostima 1–7/);
+assert.match(prompt, /SVAKI dan, i action i observe/);
+assert.match(schema.schema.properties.seven_day_plan.items.properties.action.description, /explicitly names the fixed priority.*Each of the seven actions must independently state the connection/i);
+assert.match(schema.schema.properties.seven_day_plan.items.properties.observe.description, /explicitly names the same fixed priority.*Never observe a different sleep area/i);
 assert.match(prompt, /ne izvodi ocene/);
 assert.equal(prompt.includes("mappedValue"), false);
 assert.equal(prompt.includes("internalScores"), false);
@@ -131,14 +134,29 @@ assert.match(prompt, /Nemoj parafrazirati citirani odgovor/);
 assert.ok(prompt.includes(`Tvoj odgovor „${input.answers[0].answer}“ daje konkretan lični oslonac`), "profile explanation example uses a complete selected answer from the current input");
 assert.ok(prompt.includes(JSON.stringify({ questionIds: input.answers.slice(0, 2).map(({ questionId }) => questionId), text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })), "prompt includes a valid connection object example with actual available question IDs");
 
+const onsetInput = buildSleepPremiumInput(personas[2]);
+const onsetPriority = getSleepPremiumPriority(onsetInput);
+assert.equal(onsetPriority.title, "Period pre sna");
+const onsetPrompt = buildSleepPremiumPrompt(onsetInput, {
+  profile: onsetInput.profile,
+  priorityArea: onsetPriority.title,
+  mode: getSleepPremiumStrengthMode(onsetInput),
+  stableTitle: schema.schema.properties.stable_or_tracking.properties.title.enum[0],
+  stableAreas: getSleepPremiumAreaOverview(onsetInput).filter(({ status }) => status === "Deluje mirnije").map(({ title }) => title),
+  profileExplanationMaxLength: schema.schema.properties.profile_explanation.maxLength,
+});
+assert.match(onsetPrompt, /SVAKI dan, i action i observe moraju izričito da uključe naziv fiksnog prioriteta/);
+assert.ok(onsetPrompt.includes("„Period pre sna“"), "plan instructions and example are bound to the deterministic sleep-onset priority");
+assert.ok(onsetPrompt.includes('"day":7') && onsetPrompt.includes('"action":"Za prioritet'));
+
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
 const previewHtml = await readFile(new URL("../server/dev/premium-ai-preview.html", import.meta.url), "utf8");
 assert.ok(appSource.includes("report.connections.map((connection, index) => <li key={index}>{connection.text}</li>)"));
 assert.ok(appSource.includes("report.connections.map((connection, index) => <li key={`connection-${index}`}>{connection.text}</li>)"));
 assert.ok(previewHtml.includes("report.connections.map((connection) => connection.text)"));
 
-const expectInvalid = (candidate, field) => {
-  const result = validateSleepPremiumReport(candidate, input);
+const expectInvalid = (candidate, field, validationInput = input) => {
+  const result = validateSleepPremiumReport(candidate, validationInput);
   assert.equal(result.valid, false);
   assert.equal(result.diagnostic.field, field);
   assert.equal(Object.hasOwn(result.diagnostic.received, "value"), false);
@@ -164,6 +182,18 @@ expectInvalid(wrongPlanDay, "seven_day_plan[2]");
 const unrelatedAction = structuredClone(fallback);
 unrelatedAction.seven_day_plan[0].action = "Probaj da napraviš listu za kupovinu.";
 expectInvalid(unrelatedAction, "seven_day_plan[0]");
+const onsetPlanFallback = buildSleepPremiumFallback(onsetInput);
+assert.equal(validateSleepPremiumReport(onsetPlanFallback, onsetInput).valid, true, "complete seven-day plan tied to the fixed sleep-onset priority is accepted");
+assert.deepEqual(onsetPlanFallback.seven_day_plan.map(({ day }) => day), [1, 2, 3, 4, 5, 6, 7]);
+assert.equal(onsetPlanFallback.seven_day_plan.every(({ action, observe }) =>
+  action.toLowerCase().includes("period pre sna") && observe.toLowerCase().includes("period pre sna")
+), true, "every action and observation explicitly stays on the fixed priority");
+const driftingActionPlan = structuredClone(onsetPlanFallback);
+driftingActionPlan.seven_day_plan[1].action = "Prošetaj tokom dana i primeti dnevnu energiju.";
+expectInvalid(driftingActionPlan, "seven_day_plan[1]", onsetInput);
+const driftingObservationPlan = structuredClone(onsetPlanFallback);
+driftingObservationPlan.seven_day_plan[1].observe = "Prati dnevnu energiju i koncentraciju.";
+expectInvalid(driftingObservationPlan, "seven_day_plan[1]", onsetInput);
 const unsafeMedicalCopy = structuredClone(fallback);
 unsafeMedicalCopy.profile_explanation = "Tvoji odgovori potvrđuju da imaš nesanicu.";
 expectInvalid(unsafeMedicalCopy, "profile_explanation");
