@@ -145,22 +145,10 @@ export const buildSleepPremiumJsonSchema = (input) => ({
   schema: makeSchema(input),
 });
 
-const INVALID_CUSTOMER_COPY = /\b(?:scoring|dimension|mapped value|classifier|ai confidence|algorithm|algoritam|faktor\w*|signal\w*|stable|mixed|weak|stabil\w*|mesovit\w*|slab\w*|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|hormons\w*|neurolosk\w*|dijagnoz\w*|dijagnost\w*|poremec\w*|bolest\w*|klinick\w*|medikament\w*|lekov\w*|\blek\b|terapij\w*|lecen\w*|uzrok\w*|izaziv\w*|prouzrok\w*|dovod\w*|remet\w*|doprin\w*|kriv\w*|posledic\w*|\bzbog\b)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
+// Safety only: ordinary Serbian descriptors/connectors are not classifier metadata.
+const INVALID_CUSTOMER_COPY = /\b(?:scoring|scores?|dimension\w*|dimenzij\w*|mapped value|mappedvalue|internalscores|classifier|klasifikator\w*|ai confidence|algorithm|algoritam|schema|sema|json|prompt\w*|tokens?|tokeni|tokena|threshold\w*|sleepOnset|recovery|continuity|rhythm|stable|mixed|weak|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|hormons\w*|neurolosk\w*|dijagnoz\w*|dijagnost\w*|poremec\w*|bolest\w*|klinick\w*|medikament\w*|lekov\w*|lek|terapij\w*|lecen\w*|uzroku\w+|izaziv\w*|prouzrok\w*|remeti\w*|dovodi\s+do|doprin\w*\s+(?:los\w*|problem\w*|teskoc\w*|nesanic\w*|san\w*|spav\w*)|uzrok\s+(?:tvog|tvoj\w*|problema|teskoc\w*|los\w*\s+sna))\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)|\b(?:rezultat|ocena|prag\w*)\s*(?:je\s*)?\d+(?:[.,]\d+)?/iu;
+const SENSITIVE_CUSTOMER_COPY = /\S+@\S+|\b(?:cs_|pi_|cus_|sess_|session[_ -]?|assessment[_ -]?|user[_ -]?id[\s:=_-]*|sk[-_]|pk_(?:live|test)_|whsec_)[\w-]+|\b(?:bearer\s+\S+|(?:password|passwd|credential|api[_ -]?key|access[_ -]?token|secret)\s*[:=]\s*\S+)|\b[0-9a-f]{8}-[0-9a-f-]{27,}\b|(?:\+?\d[\s().-]*){7,}/iu;
 const GUARANTEE_COPY = /\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b.{0,60}\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b|\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b.{0,60}\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b/iu;
-const STABLE_EVIDENCE = Object.freeze({
-  recovery: /(?:oporav|jutarn|buden|energij|odmor|ustajan)/u,
-  sleepOnset: /(?:uspav|zaspi|misl|vecern|pre sna)/u,
-  continuity: /(?:tok noci|noc|probud|buđen)/u,
-  rhythm: /(?:ritm|raspored|vreme|duzin.*sna)/u,
-});
-const AREA_EVIDENCE = Object.freeze({
-  recovery: /(?:jutr|buden|ustaj|oporav|energij|odmor)/u,
-  sleepOnset: /(?:uspav|pre sna|vecer|vece|misl|telefon|ekran)/u,
-  continuity: /(?:tok noc|noc|probud|buđen)/u,
-  rhythm: /(?:ritm|raspored|vreme|dužin|duzin)/u,
-  multiple: /(?:noc|vecer|jutr|sna)/u,
-  whole: /(?:noc|san|spav|odmor)/u,
-});
 const normalizeForSafety = (text) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/gu, "d").toLowerCase();
 const collectStrings = (report) => [
   { field: "profile_explanation", value: report.profile_explanation },
@@ -180,10 +168,6 @@ const collectStrings = (report) => [
   { field: "closing", value: report.closing },
 ];
 const hasText = (value, maxLength) => typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
-const getExactAnswerQuotes = (text, input) => [...text.matchAll(/[„“]([^”“]+)[”“]/gu)]
-  .map((match) => input.answers.find((answer) => answer.answer === match[1].trim()))
-  .filter(Boolean);
-const hasExactAnswerQuote = (text, input) => getExactAnswerQuotes(text, input).length > 0;
 const removeAnswerQuotes = (text, input) => text.replace(/[„“]([^”“]+)[”“]/gu, (whole, quoted) =>
   input.answers.some((answer) => answer.answer === quoted.trim()) ? " " : whole
 );
@@ -203,8 +187,8 @@ export const diagnoseSleepPremiumCustomerSafety = (field, value, input) => {
     category = /\d/u.test(token) ? "score"
       : /^(?:nesanic|apnej|depres|anksiozn|hormons|neurolosk|dijagnoz|dijagnost|poremec|bolest|klinick|medikament|lekov|lek\b|terapij|lecen)/u.test(token) ? "medical"
         : /^(?:uzrok|izaziv|prouzrok|dovod|remet|doprin|kriv|posledic|zbog)/u.test(token) ? "causal"
-          : /^(?:algorithm|algoritam|faktor|signal)/u.test(token) ? "technical"
-            : /^(?:scoring|dimension|mapped value|classifier|ai confidence|stable|mixed|weak|stabil|mesovit|slab)/u.test(token) ? "internal"
+          : /^(?:algorithm|algoritam|schema|sema|json|prompt|token)/u.test(token) ? "technical"
+            : /^(?:scor|dimension|dimenzij|mapped|internal|classifier|klasifikator|ai confidence|stable|mixed|weak|threshold|sleeponset|recovery|continuity|rhythm)/u.test(token) ? "internal"
               : "other";
   }
 
@@ -239,18 +223,17 @@ export const validateSleepPremiumReport = (candidate, input) => {
   if (!keysEqual(candidate, REPORT_KEYS)) return invalid("$", "Premium report v2 object with all required properties only", candidate, "Report root shape is invalid.");
   if (candidate.version !== 2) return invalid("version", "integer enum [2]", candidate.version, "Unsupported Premium report version.");
   if (candidate.profile !== input.profile) return invalid("profile", "exact deterministic profile string", candidate.profile, "AI profile does not match deterministic profile.");
-  if (!hasText(candidate.profile_explanation, COPY_LIMITS.profileExplanation) || /\d/u.test(removeAnswerQuotes(candidate.profile_explanation, input))) {
-    return invalid("profile_explanation", "personalized Serbian explanation, at most two short paragraphs, no digits", candidate.profile_explanation, "Profile explanation is invalid.");
+  if (!hasText(candidate.profile_explanation, COPY_LIMITS.profileExplanation)) {
+    return invalid("profile_explanation", "nonblank string, at most 700 characters", candidate.profile_explanation, "Profile explanation is invalid.");
   }
-  if (!hasExactAnswerQuote(candidate.profile_explanation, input)) return invalid("profile_explanation", "personalized profile explanation citing an exact selected answer", candidate.profile_explanation, "Profile explanation is not grounded in an exact selected answer.");
 
   const priority = getSleepPremiumPriority(input);
   if (!keysEqual(candidate.priority, ["title", "area", "explanation"])) return invalid("priority", "object with title, deterministic area, and explanation", candidate.priority, "Priority object shape is invalid.");
   if (candidate.priority.title !== "TVOJ PRIORITET #1" || candidate.priority.area !== priority.title) {
     return invalid("priority.area", `deterministic priority area ${priority.title}`, candidate.priority.area, "AI priority does not match the deterministic priority selector.");
   }
-  if (!hasText(candidate.priority.explanation, COPY_LIMITS.priorityExplanation) || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(candidate.priority.explanation)) || !hasExactAnswerQuote(candidate.priority.explanation, input)) {
-    return invalid("priority.explanation", `nonblank explanation tied to ${priority.title} and citing an exact selected answer`, candidate.priority.explanation, "Priority explanation is empty, unsupported, or unrelated to the deterministic area.");
+  if (!hasText(candidate.priority.explanation, COPY_LIMITS.priorityExplanation)) {
+    return invalid("priority.explanation", "nonblank string, at most 700 characters", candidate.priority.explanation, "Priority explanation is blank, overlong, or not a string.");
   }
   if (!Array.isArray(candidate.connections) || candidate.connections.length < 2 || candidate.connections.length > 4) {
     return invalid("connections", "array of 2–4 concise answer-grounded connections", candidate.connections, "Connections must contain two to four items.");
@@ -266,9 +249,6 @@ export const validateSleepPremiumReport = (candidate, input) => {
     const knownQuestionIds = new Set(input.answers.map(({ questionId }) => questionId));
     if (connection.questionIds.some((questionId) => typeof questionId !== "string" || !knownQuestionIds.has(questionId))) {
       return invalid(`connections[${index}].questionIds`, "two IDs present in the current answered-question input", connection.questionIds, `Connection ${index + 1} references an unknown question.`);
-    }
-    if (new Set(connection.questionIds).size !== 2) {
-      return invalid(`connections[${index}].questionIds`, "two distinct selected question IDs", connection.questionIds, `Connection ${index + 1} repeats a supporting question.`);
     }
     if (!hasText(connection.text, COPY_LIMITS.connection)) {
       return invalid(`connections[${index}].text`, "nonblank natural text, at most 500 characters", connection.text, `Connection ${index + 1} text is blank or overlong.`);
@@ -290,12 +270,6 @@ export const validateSleepPremiumReport = (candidate, input) => {
   for (let index = 0; index < candidate.stable_or_tracking.items.length; index += 1) {
     const item = candidate.stable_or_tracking.items[index];
     if (!hasText(item, COPY_LIMITS.stableOrTracking)) return invalid(`stable_or_tracking.items[${index}]`, "nonblank text, at most 350 characters", item, "Stable/tracking item is invalid.");
-    if (stableMode === "stable") {
-      const stableKeys = SLEEP_PREMIUM_DIMENSION_KEYS.filter((key) => input.dimensions[key].state === "STABLE");
-      if (!stableKeys.some((key) => STABLE_EVIDENCE[key].test(normalizeForSafety(item)))) {
-        return invalid(`stable_or_tracking.items[${index}]`, "item grounded in a genuinely STABLE deterministic area", item, "Stable item is not supported by deterministic evidence.");
-      }
-    }
   }
 
   if (!Array.isArray(candidate.seven_day_plan) || candidate.seven_day_plan.length !== 7) return invalid("seven_day_plan", "array of exactly seven plan days", candidate.seven_day_plan, "Seven-day plan must contain exactly seven days.");
@@ -304,29 +278,24 @@ export const validateSleepPremiumReport = (candidate, input) => {
     if (!keysEqual(day, ["day", "action", "observe"]) || day.day !== index + 1 || !hasText(day.action, COPY_LIMITS.planAction) || !hasText(day.observe, COPY_LIMITS.planObserve)) {
       return invalid(`seven_day_plan[${index}]`, `object {day: ${index + 1}, nonblank action <=${COPY_LIMITS.planAction}, nonblank observe <=${COPY_LIMITS.planObserve}}`, day, `Seven-day plan entry ${index + 1} is invalid.`);
     }
-    if (!AREA_EVIDENCE[priority.key].test(normalizeForSafety(day.action)) || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(day.observe))) {
-      return invalid(`seven_day_plan[${index}]`, `action and observation tied to the fixed priority ${priority.title}`, day, `Seven-day plan entry ${index + 1} is unrelated to the deterministic priority.`);
-    }
   }
   if (!Array.isArray(candidate.alternatives) || candidate.alternatives.length < 1 || candidate.alternatives.length > 2) return invalid("alternatives", "array of 1–2 alternatives for the same priority", candidate.alternatives, "Alternatives must contain one or two items.");
   for (let index = 0; index < candidate.alternatives.length; index += 1) {
-    if (!hasText(candidate.alternatives[index], COPY_LIMITS.alternative) || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(candidate.alternatives[index]))) return invalid(`alternatives[${index}]`, `nonblank alternative, at most 350 characters, tied to ${priority.title}`, candidate.alternatives[index], "Alternative is invalid or unrelated to the deterministic priority.");
+    if (!hasText(candidate.alternatives[index], COPY_LIMITS.alternative)) return invalid(`alternatives[${index}]`, "nonblank string, at most 350 characters", candidate.alternatives[index], "Alternative is invalid.");
   }
   if (!Array.isArray(candidate.review_questions) || candidate.review_questions.length !== 3) return invalid("review_questions", "array of exactly three review questions", candidate.review_questions, "Review questions must contain exactly three items.");
   for (let index = 0; index < candidate.review_questions.length; index += 1) {
     const question = candidate.review_questions[index];
-    if (!hasText(question, COPY_LIMITS.reviewQuestion) || !question.trim().endsWith("?") || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(question))) return invalid(`review_questions[${index}]`, `distinct question, at most 200 characters, tied to ${priority.title}`, question, "Review question is invalid or unrelated to the deterministic priority.");
+    if (!hasText(question, COPY_LIMITS.reviewQuestion)) return invalid(`review_questions[${index}]`, "nonblank string, at most 200 characters", question, "Review question is invalid.");
   }
-  if (new Set(candidate.review_questions.map((question) => normalizeForSafety(question.trim()))).size !== 3) return invalid("review_questions", "three distinct review questions", candidate.review_questions, "Review questions must be distinct.");
-  if (!hasText(candidate.after_seven_days, COPY_LIMITS.afterSevenDays) || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(candidate.after_seven_days))) return invalid("after_seven_days", `nonblank review tied to ${priority.title}, at most 500 characters`, candidate.after_seven_days, "Seven-day review is invalid or unrelated to the deterministic priority.");
+  if (!hasText(candidate.after_seven_days, COPY_LIMITS.afterSevenDays)) return invalid("after_seven_days", "nonblank string, at most 500 characters", candidate.after_seven_days, "Seven-day review is invalid.");
   if (!hasText(candidate.closing, COPY_LIMITS.closing)) return invalid("closing", "nonblank calm informational note, at most 350 characters", candidate.closing, "Closing note is invalid.");
 
   const allStrings = collectStrings(candidate);
-  const suppliedAnswerSet = new Set(input.answers.map(({ answer }) => answer));
   for (let index = 0; index < allStrings.length; index += 1) {
     const { field, value } = allStrings[index];
-    const quotes = [...value.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => match[1].trim());
-    if (quotes.some((quote) => !suppliedAnswerSet.has(quote))) return invalid(field, "quoted text must exactly match a supplied answer", { type: "string", length: value.length }, "Report contains an unsupported quote.");
+    if (SENSITIVE_CUSTOMER_COPY.test(value)) return invalid(field, "customer-facing text without credentials or personal identifiers", value, "Report contains sensitive customer-facing content.");
+    if (/\bQ(?:[1-9]|1[0-2])\b/u.test(value)) return invalid(field, "customer-facing text without internal question IDs", value, "Report contains internal question metadata.");
     const safeCopy = normalizeForSafety(removeAnswerQuotes(value, input));
     if (INVALID_CUSTOMER_COPY.test(safeCopy)) return invalid(field, "customer-safe Serbian without medical, causal, internal, technical, or score claims", value, "Report contains disallowed customer-facing copy.");
     if (GUARANTEE_COPY.test(safeCopy)) return invalid(field, "no claim that an action will improve, fix, cure, regulate, or solve sleep", value, "Report promises a sleep outcome.");

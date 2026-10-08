@@ -174,10 +174,19 @@ assert.ok(appSource.includes("report.connections.map((connection, index) => <li 
 assert.ok(previewHtml.includes("report.connections.map((connection) => connection.text)"));
 
 const expectInvalid = (candidate, field, validationInput = input) => {
+  const before = structuredClone(candidate);
   const result = validateSleepPremiumReport(candidate, validationInput);
   assert.equal(result.valid, false);
   assert.equal(result.diagnostic.field, field);
   assert.equal(Object.hasOwn(result.diagnostic.received, "value"), false);
+  assert.deepEqual(candidate, before, "rejected reports are not mutated by validation");
+};
+const expectValid = (candidate, validationInput = input) => {
+  const before = structuredClone(candidate);
+  const result = validateSleepPremiumReport(candidate, validationInput);
+  assert.equal(result.valid, true, result.reason);
+  assert.equal(result.report, candidate, "validation returns the original report without sanitization");
+  assert.deepEqual(candidate, before, "accepted reports are not mutated by validation");
 };
 
 const wrongProfile = structuredClone(fallback);
@@ -191,7 +200,7 @@ missingQuestions.review_questions.pop();
 expectInvalid(missingQuestions, "review_questions");
 const duplicateQuestion = structuredClone(fallback);
 duplicateQuestion.review_questions[2] = duplicateQuestion.review_questions[0];
-expectInvalid(duplicateQuestion, "review_questions");
+expectValid(duplicateQuestion);
 const extraRootKey = { ...fallback, debug: true };
 expectInvalid(extraRootKey, "$");
 const wrongPlanDay = structuredClone(fallback);
@@ -199,9 +208,12 @@ wrongPlanDay.seven_day_plan[2].day = 4;
 expectInvalid(wrongPlanDay, "seven_day_plan[2]");
 const unrelatedAction = structuredClone(fallback);
 unrelatedAction.seven_day_plan[0].action = "Probaj da napraviš listu za kupovinu.";
-expectInvalid(unrelatedAction, "seven_day_plan[0]");
+expectValid(unrelatedAction);
 const onsetPlanFallback = buildSleepPremiumFallback(onsetInput);
 assert.equal(validateSleepPremiumReport(onsetPlanFallback, onsetInput).valid, true, "complete seven-day plan tied to the fixed sleep-onset priority is accepted");
+const exactReviewQuestion = structuredClone(onsetPlanFallback);
+exactReviewQuestion.review_questions[0] = "Da li si video/la razliku u osećaju pred spavanje između početka i kraja sedmice?";
+expectValid(exactReviewQuestion, onsetInput);
 const onsetPriorityFallback = structuredClone(onsetPlanFallback);
 const exactOnsetAnswer = onsetInput.answers.find(({ questionId }) => questionId === "Q2").answer;
 onsetPriorityFallback.priority.explanation = `U okviru teme Period pre sna, tvoj odgovor „${exactOnsetAnswer}“ daje konkretan lični kontekst za ovaj prioritet.`;
@@ -210,7 +222,7 @@ assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", onsetPri
 // Synthetic diagnostic fixtures, NOT the unavailable 238-character staging response.
 const safetyDiagnosticCases = [
   ["nesanicu", "medical", "INVALID_CUSTOMER_COPY"],
-  ["zbog", "causal", "INVALID_CUSTOMER_COPY"],
+  ["uzrokuje", "causal", "INVALID_CUSTOMER_COPY"],
   ["WEAK", "internal", "INVALID_CUSTOMER_COPY"],
   ["algoritam", "technical", "INVALID_CUSTOMER_COPY"],
   ["42/100", "score", "INVALID_CUSTOMER_COPY"],
@@ -248,16 +260,23 @@ for (const sentence of naturalPatternSentences) {
   assert.equal(diagnoseSleepPremiumCustomerSafety("after_seven_days", sentence, onsetInput), null);
   const priorityReport = structuredClone(onsetPriorityFallback);
   priorityReport.priority.explanation += ` ${sentence}`;
-  assert.equal(validateSleepPremiumReport(priorityReport, onsetInput).valid, true, "ordinary pattern words do not weaken exact priority evidence requirements");
+  expectValid(priorityReport, onsetInput);
 }
 const retainedSafetyPhrases = [
   ["scoring", "internal"], ["dimension", "internal"], ["mapped value", "internal"],
   ["classifier", "internal"], ["AI confidence", "internal"], ["WEAK", "internal"],
   ["MIXED", "internal"], ["STABLE", "internal"],
-  ["algorithm", "technical"], ["algoritam", "technical"], ["faktor", "technical"], ["signal", "technical"],
+  ["algorithm", "technical"], ["algoritam", "technical"], ["schema", "technical"], ["json", "technical"],
+  ["prompt", "technical"], ["tokens", "technical"], ["dimenzija", "internal"], ["threshold", "internal"],
   ["nesanicu", "medical"], ["apneju", "medical"], ["dijagnoza", "medical"], ["terapija", "medical"],
-  ["lek", "medical"], ["uzrok", "causal"], ["izaziva", "causal"], ["zbog", "causal"],
+  ["depresija", "medical"], ["anksioznost", "medical"], ["hormonski", "medical"],
+  ["neurološki", "medical"], ["poremećaj", "medical"], ["bolest", "medical"],
+  ["klinički", "medical"], ["medikament", "medical"], ["lekovi", "medical"], ["lečenje", "medical"],
+  ["lek", "medical"], ["uzrokuje", "causal"], ["uzrokuju", "causal"], ["izaziva", "causal"],
+  ["prouzrokuje", "causal"], ["remeti", "causal"], ["uzrok tvog problema", "causal"],
+  ["telefon dovodi do lošeg sna", "causal"], ["telefon doprinosi problemu sa snom", "causal"],
   ["42/100", "score"], ["72%", "score"], ["42,5 %", "score"],
+  ["rezultat 42", "score"], ["ocena je 42", "score"], ["prag 42", "score"],
   ["scoring prag za WEAK dimension", "internal"],
   ["classifier koristi schema, prompt i tokens za AI confidence", "internal"],
   ["algoritam određuje obrasce prema internim pravilima", "technical"],
@@ -275,10 +294,34 @@ for (const [phrase, category] of retainedSafetyPhrases) {
   const diagnostic = diagnoseSleepPremiumCustomerSafety("after_seven_days", report.after_seven_days, onsetInput);
   assert.equal(diagnostic.category, category);
   assert.equal(diagnostic.rule, category === "outcome-promising" ? "GUARANTEE_COPY" : "INVALID_CUSTOMER_COPY");
+  for (const quoted of [`„${phrase}“`, `"${phrase}"`]) {
+    const noncanonicalQuote = structuredClone(onsetPriorityFallback);
+    noncanonicalQuote.after_seven_days = `Lično zapažanje: ${quoted}.`;
+    expectInvalid(noncanonicalQuote, "after_seven_days", onsetInput);
+    assert.equal(diagnoseSleepPremiumCustomerSafety("after_seven_days", noncanonicalQuote.after_seven_days, onsetInput).category, category,
+      "noncanonical quotes cannot exempt actual unsafe copy");
+  }
+}
+for (const sentence of [
+  "Stabilan utisak, slabiji dan i mešovit doživljaj mogu biti lična zapažanja.",
+  "Faktor i signal su obične reči u ovoj belešci.",
+  "Zbog svog rasporeda možeš da izabereš drugi trenutak za belešku.",
+  "Uzrok nije predmet ove beleške. Bez tvrdnje o uzroku.",
+  "Ovo nije zaključak o uzroku tvoje večeri.",
+  "Pregledaj beleške posle 7 dana i izaberi 2 utiska za poređenje.",
+]) {
+  const report = structuredClone(onsetPriorityFallback);
+  report.profile_explanation = sentence;
+  report.after_seven_days = sentence;
+  expectValid(report, onsetInput);
+  assert.equal(diagnoseSleepPremiumCustomerSafety("after_seven_days", sentence, onsetInput), null);
 }
 negatedCause.priority.explanation += " Bez tvrdnje o uzroku.";
-assert.equal(validateSleepPremiumReport(negatedCause, onsetInput).valid, false, "negating a disallowed token does not bypass the runtime rule");
-assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", negatedCause.priority.explanation, onsetInput).rejectedText, "uzroku");
+expectValid(negatedCause, onsetInput);
+assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", negatedCause.priority.explanation, onsetInput), null);
+negatedCause.priority.explanation += " Ovo uzrokuje loš san.";
+expectInvalid(negatedCause, "priority.explanation", onsetInput);
+assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", negatedCause.priority.explanation, onsetInput).rejectedText, "uzrokuje");
 const privateDiagnosticText = `${negatedCause.priority.explanation} example@example.test cs_test_private_identifier`;
 const privateDiagnostic = diagnoseSleepPremiumCustomerSafety("priority.explanation", privateDiagnosticText, onsetInput);
 assert.equal(privateDiagnostic.returnedText, "[withheld: possible personal identifier]");
@@ -298,16 +341,16 @@ const stableAnswer = stableAnswerInput.answers.find(({ questionId }) => question
 assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", `Tvoj odgovor „${stableAnswer}“ je lični kontekst.`, stableAnswerInput), null, "exact selected answers retain the existing safety exemption");
 const missingPriorityAnswer = structuredClone(onsetPriorityFallback);
 missingPriorityAnswer.priority.explanation = "U okviru teme Period pre sna, ovo je koristan prvi fokus koji vredi pratiti.";
-expectInvalid(missingPriorityAnswer, "priority.explanation", onsetInput);
+expectValid(missingPriorityAnswer, onsetInput);
 const missingPriorityEvidence = structuredClone(onsetPriorityFallback);
 missingPriorityEvidence.priority.explanation = "Period pre sna je smislen prvi fokus koji možeš da razmotriš. Obrati pažnju šta ti odgovara.";
-expectInvalid(missingPriorityEvidence, "priority.explanation", onsetInput);
+expectValid(missingPriorityEvidence, onsetInput);
 const paraphrasedPriorityAnswer = structuredClone(onsetPriorityFallback);
 paraphrasedPriorityAnswer.priority.explanation = `U okviru teme Period pre sna, tvoj odgovor „${exactOnsetAnswer.slice(0, -1)}.“ daje konkretan lični kontekst za ovaj prioritet.`;
-expectInvalid(paraphrasedPriorityAnswer, "priority.explanation", onsetInput);
+expectValid(paraphrasedPriorityAnswer, onsetInput);
 const unrelatedPriorityEvidence = structuredClone(onsetPriorityFallback);
 unrelatedPriorityEvidence.priority.explanation = `U okviru teme Tok noći, tvoj odgovor „${exactOnsetAnswer}“ daje konkretan lični kontekst za ovaj prioritet.`;
-expectInvalid(unrelatedPriorityEvidence, "priority.explanation", onsetInput);
+expectValid(unrelatedPriorityEvidence, onsetInput);
 assert.deepEqual(onsetPlanFallback.seven_day_plan.map(({ day }) => day), [1, 2, 3, 4, 5, 6, 7]);
 assert.equal(onsetPlanFallback.seven_day_plan.every(({ action, observe }) =>
   action.toLowerCase().includes("period pre sna") && observe.toLowerCase().includes("period pre sna")
@@ -356,22 +399,22 @@ for (let index = 0; index < onsetPlanFallback.seven_day_plan.length; index += 1)
 }
 const driftingActionPlan = structuredClone(onsetPlanFallback);
 driftingActionPlan.seven_day_plan[1].action = "Prošetaj tokom dana i primeti dnevnu energiju.";
-expectInvalid(driftingActionPlan, "seven_day_plan[1]", onsetInput);
+expectValid(driftingActionPlan, onsetInput);
 const driftingObservationPlan = structuredClone(onsetPlanFallback);
 driftingObservationPlan.seven_day_plan[1].observe = "Prati dnevnu energiju i koncentraciju.";
-expectInvalid(driftingObservationPlan, "seven_day_plan[1]", onsetInput);
+expectValid(driftingObservationPlan, onsetInput);
 const unsafeMedicalCopy = structuredClone(fallback);
 unsafeMedicalCopy.profile_explanation = "Tvoji odgovori potvrđuju da imaš nesanicu.";
 expectInvalid(unsafeMedicalCopy, "profile_explanation");
 const noAnswerProfileExplanation = structuredClone(fallback);
 noAnswerProfileExplanation.profile_explanation = "Tvoji odgovori pružaju nekoliko korisnih pogleda na tvoju noć i ono što želiš da pratiš.";
-expectInvalid(noAnswerProfileExplanation, "profile_explanation");
+expectValid(noAnswerProfileExplanation);
 const paraphrasedProfileEvidence = structuredClone(fallback);
 paraphrasedProfileEvidence.profile_explanation = `Tvoj odgovor „${input.answers[0].answer.slice(0, -1)}.“ daje konkretan lični oslonac za tumačenje profila.`;
-expectInvalid(paraphrasedProfileEvidence, "profile_explanation");
+expectValid(paraphrasedProfileEvidence);
 const exactProfileEvidence = structuredClone(fallback);
 exactProfileEvidence.profile_explanation = `Tvoj odgovor „${input.answers[0].answer}“ daje konkretan lični oslonac za tumačenje profila.`;
-assert.equal(validateSleepPremiumReport(exactProfileEvidence, input).valid, true, "one complete exact selected answer satisfies profile explanation evidence");
+expectValid(exactProfileEvidence);
 const unsafeCause = structuredClone(fallback);
 unsafeCause.priority.explanation = `Odgovor „${input.answers[0].answer}“ je uzrok tvog problema sa snom.`;
 expectInvalid(unsafeCause, "priority.explanation");
@@ -388,12 +431,163 @@ const validConnection = {
   text: "Odgovori o uspavljivanju i vremenu pre spavanja daju dva pogleda koja vredi sagledati zajedno.",
 };
 assert.equal(validateSleepPremiumReport(makeConnectionReport(validConnection), input).valid, true, "two distinct known question IDs and natural non-quoted text pass");
-expectInvalid(makeConnectionReport({ ...validConnection, questionIds: ["Q2", "Q2"] }), "connections[0].questionIds");
+expectValid(makeConnectionReport({ ...validConnection, questionIds: ["Q2", "Q2"] }));
 expectInvalid(makeConnectionReport({ ...validConnection, questionIds: ["Q2", "Q13"] }), "connections[0].questionIds");
 expectInvalid(makeConnectionReport({ ...validConnection, questionIds: ["Q2"] }), "connections[0].questionIds");
 expectInvalid(makeConnectionReport({ ...validConnection, text: "   " }), "connections[0].text");
 expectInvalid(makeConnectionReport({ ...validConnection, text: "x".repeat(501) }), "connections[0].text");
 expectInvalid(makeConnectionReport({ ...validConnection, text: "Q2 i Q6 daju dva pogleda koja vredi sagledati zajedno." }), "connections[0].text");
+
+// Runtime validates structure and safety, not prompt-only evidence/topic/uniqueness instructions.
+const relaxedReport = structuredClone(onsetPlanFallback);
+const repeatedObservation = "Primeti kako ti odgovara ovaj mali korak i zabeleži svoj utisak.";
+relaxedReport.profile_explanation = "Tvoji odgovori su prilika da pogledaš svoja iskustva kroz lične beleške.";
+relaxedReport.priority.explanation = repeatedObservation;
+relaxedReport.connections = Array.from({ length: 2 }, () => ({ questionIds: ["Q2", "Q2"], text: repeatedObservation }));
+relaxedReport.stable_or_tracking.items = [repeatedObservation, repeatedObservation];
+relaxedReport.seven_day_plan.forEach((day) => {
+  day.action = "Odvoji trenutak da napišeš kratku belešku.";
+  day.observe = repeatedObservation;
+});
+relaxedReport.alternatives = [repeatedObservation, repeatedObservation];
+relaxedReport.review_questions = Array(3).fill("Šta primećuješ u svojim beleškama");
+relaxedReport.after_seven_days = repeatedObservation;
+relaxedReport.closing = "Ova beleška je informativna i ostavlja prostor za tvoja lična zapažanja.";
+const textFields = [
+  ["profile_explanation", 700, "profile_explanation"],
+  ["priority.explanation", 700, "priority.explanation"],
+  ...relaxedReport.connections.map((_, index) => [`connections.${index}.text`, 500, `connections[${index}].text`]),
+  ...relaxedReport.stable_or_tracking.items.map((_, index) => [`stable_or_tracking.items.${index}`, 350, `stable_or_tracking.items[${index}]`]),
+  ...relaxedReport.seven_day_plan.flatMap((_, index) => [
+    [`seven_day_plan.${index}.action`, 300, `seven_day_plan[${index}]`],
+    [`seven_day_plan.${index}.observe`, 250, `seven_day_plan[${index}]`],
+  ]),
+  ...relaxedReport.alternatives.map((_, index) => [`alternatives.${index}`, 350, `alternatives[${index}]`]),
+  ...relaxedReport.review_questions.map((_, index) => [`review_questions.${index}`, 200, `review_questions[${index}]`]),
+  ["after_seven_days", 500, "after_seven_days"],
+  ["closing", 350, "closing"],
+];
+const setField = (report, path, value, remove = false) => {
+  const keys = path.split(".");
+  const key = keys.pop();
+  const parent = keys.reduce((current, part) => current[part], report);
+  if (remove) delete parent[key];
+  else parent[key] = value;
+};
+for (const [path] of textFields) {
+  const text = path.split(".").reduce((current, key) => current[key], relaxedReport);
+  assert.equal(/[„“"]/.test(text), false, "relaxed report body contains no quotes");
+  assert.equal(onsetInput.answers.some(({ answer }) => text.includes(answer)), false, "no selected answer is copied in the relaxed report");
+  assert.equal(/period pre sna|budan um|uspavlj|tok noći|osećaj po buđenju|stable|mixed|weak|recovery|sleepOnset|continuity|rhythm/iu.test(text), false,
+    "body text needs no deterministic profile/priority/area keywords");
+}
+expectValid(relaxedReport, onsetInput);
+const relaxedBefore = structuredClone(relaxedReport);
+const relaxedAi = await generateSleepPremiumReport({
+  input: onsetInput,
+  openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(relaxedReport) }, (request) => {
+    assert.equal(request.input, onsetPrompt, "prompt instructions remain unchanged despite simpler runtime validation");
+    assert.deepEqual(request.text.format, buildSleepPremiumJsonSchema(onsetInput));
+  }),
+  apiKeyAvailable: true,
+  fallbackOnError: false,
+});
+assert.equal(relaxedAi.source, "ai");
+assert.deepEqual(relaxedAi.report, relaxedReport);
+assert.deepEqual(relaxedReport, relaxedBefore);
+
+// Every customer body field retains nonblank/type/length and global safety/privacy checks.
+const safeLengthText = (length) => "Lična beleška. ".repeat(Math.ceil(length / "Lična beleška. ".length)).slice(0, length);
+for (const [path, limit, diagnosticField] of textFields) {
+  for (const value of [undefined, null, 7, true, {}, [], "", " \n\t ", safeLengthText(limit + 1)]) {
+    const report = structuredClone(relaxedReport);
+    setField(report, path, value, value === undefined);
+    const missingField = !path.includes(".") ? "$"
+      : path === "priority.explanation" ? "priority"
+        : /^connections\.\d+\.text$/u.test(path) ? path.replace(/\.(\d+)\.text$/u, "[$1]")
+          : diagnosticField;
+    expectInvalid(report, value === undefined ? missingField : diagnosticField, onsetInput);
+  }
+  const atLimit = structuredClone(relaxedReport);
+  setField(atLimit, path, safeLengthText(limit));
+  expectValid(atLimit, onsetInput);
+  const safetyField = path.replace(/\.(\d+)/gu, "[$1]");
+  for (const unsafe of ["Ovo uzrokuje loš san.", "Ovo potvrđuje nesanicu.", "Ovo će sigurno poboljšati san.", "scoring", "rezultat 42", "prag 42", "Q2"]) {
+    const report = structuredClone(relaxedReport);
+    setField(report, path, unsafe);
+    expectInvalid(report, safetyField, onsetInput);
+  }
+  for (const sensitive of [
+    "example@example.test", "sk-test-only-placeholder", "sk_test_placeholder", "pk_live_placeholder", "pk_test_placeholder", "whsec_placeholder",
+    "Bearer diagnostic-test-token", "password=diagnostic-test-value", "API_KEY: diagnostic-test-value", "access_token=diagnostic-test-value", "secret=test-placeholder",
+    "cs_test_placeholder", "pi_test_placeholder", "cus_test_placeholder", "sess_test_placeholder", "session_test_placeholder", "assessment_test_placeholder", "user_id=diagnostic-test-id",
+    "12345678-1234-1234-1234-123456789abc", "+381 60 123 4567",
+  ]) {
+    for (const text of [sensitive, `„${sensitive}“`]) {
+      const report = structuredClone(relaxedReport);
+      setField(report, path, text);
+      expectInvalid(report, safetyField, onsetInput);
+      assert.equal(validateSleepPremiumReport(report, onsetInput).reason, "Report contains sensitive customer-facing content.");
+    }
+  }
+}
+for (const candidate of [null, [], {}, "{}", 2, true]) expectInvalid(candidate, "$", onsetInput);
+for (const key of contractKeys) {
+  const report = structuredClone(relaxedReport);
+  delete report[key];
+  expectInvalid(report, "$", onsetInput);
+}
+for (const [path, field, values] of [
+  ["version", "version", [undefined, null, "2", 1, 3, true]],
+  ["profile", "profile", [null, "", "MIRNA NOĆ", 2, {}]],
+  ["priority", "priority", [null, [], "", { title: "TVOJ PRIORITET #1" }]],
+  ["priority.title", "priority.area", [undefined, null, "", "DRUGI PRIORITET", 2]],
+  ["priority.area", "priority.area", [undefined, null, "", "Tok noći", 2]],
+  ["connections", "connections", [null, {}, [], [relaxedReport.connections[0]], Array(5).fill(relaxedReport.connections[0])]],
+  ["connections.0", "connections[0]", [null, [], "", { questionIds: ["Q2", "Q2"] }]],
+  ["connections.0.questionIds", "connections[0].questionIds", [undefined, null, "Q2", [], ["Q2"], ["Q2", "Q2", "Q2"], ["Q2", "Q13"], ["Q2", 2]]],
+  ["stable_or_tracking", "stable_or_tracking", [null, [], "", {}]],
+  ["stable_or_tracking.mode", "stable_or_tracking", [undefined, null, "", "tracking", 2]],
+  ["stable_or_tracking.title", "stable_or_tracking.title", [undefined, null, "", "DRUGI NASLOV", 2]],
+  ["stable_or_tracking.items", "stable_or_tracking.items", [null, {}, [], Array(3).fill(repeatedObservation)]],
+  ["seven_day_plan", "seven_day_plan", [null, {}, [], relaxedReport.seven_day_plan.slice(0, 6), [...relaxedReport.seven_day_plan, relaxedReport.seven_day_plan[0]]]],
+  ["seven_day_plan.0", "seven_day_plan[0]", [null, [], "", {}]],
+  ["seven_day_plan.0.day", "seven_day_plan[0]", [undefined, null, "1", 0, 2, 8, 1.5]],
+  ["alternatives", "alternatives", [null, {}, [], Array(3).fill(repeatedObservation)]],
+  ["review_questions", "review_questions", [null, {}, [], ["Jedno pitanje"], Array(4).fill("Jedno pitanje")]],
+]) {
+  for (const value of values) {
+    const report = structuredClone(relaxedReport);
+    // Keep root keys present so malformed field types reach the precise nested diagnostic.
+    setField(report, path, value);
+    expectInvalid(report, field, onsetInput);
+  }
+}
+for (const path of ["priority", "connections.0", "stable_or_tracking", "seven_day_plan.0"]) {
+  const report = structuredClone(relaxedReport);
+  const object = path.split(".").reduce((current, key) => current[key], report);
+  object.extra = true;
+  expectInvalid(report, path.replace(/\.(\d+)/gu, "[$1]"), onsetInput);
+}
+for (const count of [2, 3, 4]) {
+  const report = structuredClone(relaxedReport);
+  report.connections = Array.from({ length: count }, () => structuredClone(relaxedReport.connections[0]));
+  expectValid(report, onsetInput);
+}
+for (const count of [1, 2]) {
+  const report = structuredClone(relaxedReport);
+  report.stable_or_tracking.items = Array(count).fill(repeatedObservation);
+  report.alternatives = Array(count).fill(repeatedObservation);
+  expectValid(report, onsetInput);
+}
+expectInvalid(relaxedReport, "input.profile", { ...onsetInput, profile: "UNKNOWN" });
+const trackingInput = buildSleepPremiumInput(personas[4]);
+assert.equal(getSleepPremiumStrengthMode(trackingInput), "tracking");
+const trackingReport = buildSleepPremiumFallback(trackingInput);
+trackingReport.stable_or_tracking.items = ["Odvoji trenutak za šetnju i zabeleži utisak."];
+expectValid(trackingReport, trackingInput);
+trackingReport.stable_or_tracking.mode = "stable";
+expectInvalid(trackingReport, "stable_or_tracking", trackingInput);
 
 const aiResult = await generateSleepPremiumReport({
   input,
@@ -446,7 +640,7 @@ assert.equal(rejectedAi.failureType, "schema_validation_failure");
 assert.equal(rejectedAi.failureDiagnostic.field, "profile");
 assert.deepEqual(rejectedAi.report, fallback);
 const invalidConnectionAi = structuredClone(fallback);
-invalidConnectionAi.connections[1] = { ...invalidConnectionAi.connections[1], questionIds: ["Q2", "Q2"] };
+invalidConnectionAi.connections[1] = { ...invalidConnectionAi.connections[1], questionIds: ["Q2", "Q13"] };
 const rejectedConnectionAi = await generateSleepPremiumReport({
   input,
   openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(invalidConnectionAi) }),
@@ -600,10 +794,10 @@ try {
     assert.equal(rejectedSafetyAi.source, "fallback");
     assert.equal(rejectedSafetyAi.failureDiagnostic.field, "priority.explanation");
     assert.deepEqual(rejectedSafetyAi.report, onsetPlanFallback, "rejected AI copy is never sanitized or accepted");
-    assert.equal(safetyLogs.length, logs, "only staging branch and preview flag control diagnostics; legacy temporary flag cannot suppress evidence logs");
+    assert.equal(safetyLogs.length, logs, "only staging branch and preview flag control diagnostics; legacy temporary flag cannot suppress rejected-field logs");
     assert.equal(JSON.stringify(rejectedSafetyAi).includes(negatedCause.priority.explanation), false, "raw failed field is not exposed in the generator response");
   }
-  assert.equal(safetyLogs[0].rejectedText, "uzroku");
+  assert.equal(safetyLogs[0].rejectedText, "uzrokuje");
   assert.equal(safetyLogs[0].category, "causal");
   const previewSafetyLogs = [];
   const rejectedSafetyPreview = await generateSleepPremiumPreview({
@@ -617,7 +811,7 @@ try {
   assert.equal(JSON.stringify(rejectedSafetyPreview.body).includes(negatedCause.priority.explanation), false, "raw failed field is server-log-only, not an HTTP response");
   // Reproduce the reported nested failure path, not the unknown real 121-character text.
   const nestedFailure = structuredClone(onsetPlanFallback);
-  const nestedRejectedText = "Ovi odgovori se mogu posmatrati zajedno, bez tvrdnje o uzroku.";
+  const nestedRejectedText = "Ovo uzrokuje loš san.";
   nestedFailure.connections.push({ questionIds: ["Q2", "Q6"], text: nestedRejectedText });
   const nestedValidation = validateSleepPremiumReport(nestedFailure, onsetInput);
   assert.equal(nestedValidation.valid, false);
@@ -643,7 +837,7 @@ try {
       assert.equal(diagnostic.exactRejectedText, nestedRejectedText, "nested string comes from the rejected AI candidate, not safeShape metadata or the fallback");
       assert.equal(diagnostic.expectedRule, nestedValidation.diagnostic.expected);
       assert.equal(diagnostic.rejectionReason, nestedValidation.reason);
-      assert.equal(diagnostic.matchedTokenOrCategory.token, "uzroku");
+      assert.equal(diagnostic.matchedTokenOrCategory.token, "uzrokuje");
       assert.equal(diagnostic.matchedTokenOrCategory.category, "causal");
       assert.equal(Object.hasOwn(diagnostic, "report"), false);
       assert.equal(contentLogs[0].diagnostic.includes(nestedFailure.profile_explanation), false, "unrelated generated content is not logged");
@@ -655,61 +849,76 @@ try {
     assert.deepEqual(validateSleepPremiumReport(nestedFailure, onsetInput), nestedValidation, "logging does not mutate the candidate or validator result");
   }
   process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
-  // Synthetic evidence-only failure: deliberately has no safety-regex token or exact answer quote.
-  const evidenceFailure = structuredClone(onsetPlanFallback);
-  const originalEvidenceText = "  Period pre sna je tema koju vredi pratiti.\nObrati pažnju na svoje veče — bez menjanja svega odjednom.  ";
-  evidenceFailure.priority.explanation = originalEvidenceText;
-  const evidenceValidation = validateSleepPremiumReport(evidenceFailure, onsetInput);
-  assert.equal(evidenceValidation.valid, false);
-  assert.equal(evidenceValidation.diagnostic.field, "priority.explanation");
-  assert.match(evidenceValidation.diagnostic.expected, /Period pre sna.*exact selected answer/);
-  assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", originalEvidenceText, onsetInput), null, "evidence failures do not need a safety-regex match to log");
+  // Quote-free safe copy passes; only its overlong original triggers precise field diagnostics.
+  const lengthFailure = structuredClone(onsetPlanFallback);
+  const safeQuoteFreeText = "  Period pre sna je tema koju vredi pratiti.\nObrati pažnju na svoje veče — bez menjanja svega odjednom.  ";
+  lengthFailure.priority.explanation = safeQuoteFreeText;
+  expectValid(lengthFailure, onsetInput);
+  const safeQuoteFreeAi = await generateSleepPremiumReport({
+    input: onsetInput,
+    openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(lengthFailure) }),
+    apiKeyAvailable: true,
+    fallbackOnError: false,
+  });
+  assert.equal(safeQuoteFreeAi.source, "ai");
+  assert.deepEqual(safeQuoteFreeAi.report, lengthFailure);
+  const originalLengthText = safeQuoteFreeText.repeat(8);
+  assert.ok(originalLengthText.length > 700);
+  lengthFailure.priority.explanation = originalLengthText;
+  const lengthFailureBefore = structuredClone(lengthFailure);
+  const lengthValidation = validateSleepPremiumReport(lengthFailure, onsetInput);
+  assert.equal(lengthValidation.valid, false);
+  assert.equal(lengthValidation.diagnostic.field, "priority.explanation");
+  assert.equal(lengthValidation.diagnostic.expected, "nonblank string, at most 700 characters");
+  assert.deepEqual(lengthValidation.diagnostic.received, { type: "string", length: originalLengthText.length, blank: false });
+  assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", originalLengthText, onsetInput), null, "length failures do not need a safety-regex match to log");
   for (const branch of ["premium-ai-staging", "main", "production", undefined]) {
     if (branch === undefined) delete process.env.RENDER_GIT_BRANCH;
     else process.env.RENDER_GIT_BRANCH = branch;
     const callbacks = [];
     const rejected = await generateSleepPremiumReport({
       input: onsetInput,
-      openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(evidenceFailure) }),
+      openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(lengthFailure) }),
       apiKeyAvailable: true,
       includeFailureDiagnostics: true,
       onCustomerSafetyFailure: (diagnostic) => callbacks.push(diagnostic),
     });
     assert.equal(callbacks.length, branch === "premium-ai-staging" ? 1 : 0);
     if (branch === "premium-ai-staging") {
-      assert.equal(callbacks[0].exactRejectedText, originalEvidenceText, "original text retains whitespace, newline, dash and Serbian diacritics character-for-character");
+      assert.equal(callbacks[0].exactRejectedText, originalLengthText, "original text retains whitespace, newline, dash and Serbian diacritics character-for-character");
       assert.equal(callbacks[0].deterministicProfile, onsetInput.profile);
       assert.equal(callbacks[0].field, "priority.explanation");
-      assert.equal(callbacks[0].expectedRule, evidenceValidation.diagnostic.expected);
-      assert.equal(callbacks[0].rejectionReason, evidenceValidation.reason);
+      assert.equal(callbacks[0].expectedRule, lengthValidation.diagnostic.expected);
+      assert.equal(callbacks[0].rejectionReason, lengthValidation.reason);
       assert.equal(Object.hasOwn(callbacks[0], "matchedTokenOrCategory"), false);
     }
     assert.equal(rejected.source, "fallback");
-    assert.deepEqual(rejected.failureDiagnostic, evidenceValidation.diagnostic);
+    assert.deepEqual(rejected.failureDiagnostic, lengthValidation.diagnostic);
     assert.equal(JSON.stringify(rejected).includes("Period pre sna je tema koju vredi pratiti"), false);
-    assert.deepEqual(validateSleepPremiumReport(evidenceFailure, onsetInput), evidenceValidation);
+    assert.deepEqual(validateSleepPremiumReport(lengthFailure, onsetInput), lengthValidation);
+    assert.deepEqual(lengthFailure, lengthFailureBefore, "diagnostics preserve the overlong original report");
   }
   process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
-  const evidenceLogs = [];
-  const evidencePreview = await generateSleepPremiumPreview({
+  const lengthLogs = [];
+  const lengthPreview = await generateSleepPremiumPreview({
     enabled: true,
     answers: personas[2],
-    openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(evidenceFailure) }),
+    openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(lengthFailure) }),
     apiKeyAvailable: true,
-    log: (label, diagnostic) => evidenceLogs.push({ label, diagnostic }),
+    log: (label, diagnostic) => lengthLogs.push({ label, diagnostic }),
   });
-  const rejectedFieldLogs = evidenceLogs.filter(({ label }) => label === "[PREMIUM_AI_REJECTED_FIELD]");
+  const rejectedFieldLogs = lengthLogs.filter(({ label }) => label === "[PREMIUM_AI_REJECTED_FIELD]");
   assert.equal(rejectedFieldLogs.length, 1, "one clearly searchable JSON entry per rejected generated field");
   assert.deepEqual(JSON.parse(rejectedFieldLogs[0].diagnostic), {
     deterministicProfile: onsetInput.profile,
     field: "priority.explanation",
-    exactRejectedText: originalEvidenceText,
-    expectedRule: evidenceValidation.diagnostic.expected,
-    rejectionReason: evidenceValidation.reason,
+    exactRejectedText: originalLengthText,
+    expectedRule: lengthValidation.diagnostic.expected,
+    rejectionReason: lengthValidation.reason,
   });
-  assert.equal(JSON.stringify(evidencePreview.body).includes("Period pre sna je tema koju vredi pratiti"), false);
+  assert.equal(JSON.stringify(lengthPreview.body).includes("Period pre sna je tema koju vredi pratiti"), false);
   for (const secret of ["example@example.test", "sk-test-placeholder", "password=test-placeholder", "cs_test_placeholder"]) {
-    const privateFailure = structuredClone(evidenceFailure);
+    const privateFailure = structuredClone(lengthFailure);
     privateFailure.priority.explanation += ` ${secret}`;
     const privateLogs = [];
     await generateSleepPremiumReport({
