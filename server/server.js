@@ -13,6 +13,9 @@ import { buildPremiumPdf } from "../src/premiumPdfGenerator.js";
 import { calculateDimensions } from "../src/psychology/dimensions.js";
 import { calculateSleepScore, calculateSleepResult } from "../src/psychology/sleepScoring.js";
 import { generateSleepPremiumPreview } from "./sleepPremiumPreview.js";
+import { buildSleepPremiumInput } from "./sleepPremiumInput.js";
+import { generateSleepPremiumReport } from "./sleepPremiumGenerator.js";
+import { getSleepPremiumAreaOverview, validateSleepPremiumReport } from "./sleepPremiumSchema.js";
 
 dotenv.config();
 
@@ -450,6 +453,7 @@ const sendPdfEmail = async ({ toEmail, assessmentType, purchase, sessionId, usag
 const fulfillmentLocks = new Map();
 const resendLocks = new Map();
 const initialEmailLocks = new Map();
+const sleepPremiumReportLocks = new Map();
 
 // Statuses persisted per purchase in the JSON store (our "database" record
 // for this app). Once REPORT_READY or COMPLETED is reached, the PDF is
@@ -907,7 +911,7 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
                 ? "Personalized sleep analysis and practical PDF report"
                 : "Personalized premium PDF psychological assessment",
             },
-            unit_amount: 499,
+            unit_amount: 999,
           },
           quantity: 1,
         },
@@ -1041,6 +1045,89 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
   } catch (error) {
     console.error("[payment] session verify error", error.message);
     return res.status(500).json({ status: "PAYMENT_FAILED", error: "Unable to verify payment session." });
+  }
+});
+
+app.get("/api/premium-report/analysis", rateLimit(60_000, 12), async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  let payload;
+  try {
+    payload = verifyDownloadToken(toSafeText(req.query.token));
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired report token." });
+  }
+
+  const sessionId = payload.sid;
+  const existingLock = sleepPremiumReportLocks.get(sessionId);
+  if (existingLock) {
+    try {
+      return res.json(await existingLock);
+    } catch {
+      return res.status(503).json({ error: "Unable to prepare the sleep analysis right now." });
+    }
+  }
+
+  const task = (async () => {
+    const store = await readStore();
+    const purchase = store.purchases[sessionId];
+    if (!purchase || purchase.paymentStatus !== "paid" ||
+      ![REPORT_STATUS.REPORT_READY, REPORT_STATUS.COMPLETED].includes(purchase.reportStatus) ||
+      !hasCurrentPremiumPdf(purchase)) {
+      const error = new Error("Premium sleep report is not ready.");
+      error.status = 409;
+      throw error;
+    }
+    if (toSafeText(purchase.customerEmail).toLowerCase() !== toSafeText(payload.email).toLowerCase()) {
+      const error = new Error("Report token does not match purchase.");
+      error.status = 403;
+      throw error;
+    }
+    if (purchase.assessmentType !== "sleep") {
+      const error = new Error("Analysis is unavailable for this report type.");
+      error.status = 404;
+      throw error;
+    }
+
+    const assessment = store.assessments[purchase.assessmentId];
+    if (!assessment || !isValidAnswersPayload(assessment.answers)) throw new Error("Saved sleep answers are unavailable.");
+    const input = buildSleepPremiumInput(assessment.answers);
+    let report = purchase.sleepPremiumReport;
+    const cachedValidation = report ? validateSleepPremiumReport(report, input) : null;
+    let source = "stored";
+    if (!cachedValidation?.valid) {
+      const generation = await generateSleepPremiumReport({
+        input,
+        openaiClient: _openaiClient,
+        apiKeyAvailable: Boolean(process.env.OPENAI_API_KEY),
+        fallbackOnError: true,
+      });
+      const validation = validateSleepPremiumReport(generation.report, input);
+      if (!validation.valid) throw new Error("Generated sleep report did not pass validation.");
+      report = validation.report;
+      source = generation.source;
+      await withStoreMutation(async (nextStore) => {
+        const nextPurchase = nextStore.purchases[sessionId];
+        if (!nextPurchase || nextPurchase.paymentStatus !== "paid") throw new Error("Paid purchase is no longer available.");
+        nextPurchase.sleepPremiumReport = report;
+        nextPurchase.sleepPremiumReportVersion = 2;
+        nextPurchase.sleepPremiumReportGeneratedAt = new Date().toISOString();
+        nextPurchase.sleepPremiumReportSource = source;
+      });
+    } else {
+      report = cachedValidation.report;
+    }
+
+    const areas = getSleepPremiumAreaOverview(input);
+    return { report, areas };
+  })();
+
+  sleepPremiumReportLocks.set(sessionId, task);
+  try {
+    return res.json(await task);
+  } catch (error) {
+    return res.status(error.status || 503).json({ error: error.status ? error.message : "Unable to prepare the sleep analysis right now." });
+  } finally {
+    sleepPremiumReportLocks.delete(sessionId);
   }
 });
 

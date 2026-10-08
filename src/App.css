@@ -6436,9 +6436,26 @@ input:focus-visible {
   line-height: 1.55;
 }
 
+.sleep-result-profile-name {
+  margin-top: 7px;
+  color: #fffaff;
+  font-size: clamp(1.42rem, 6.1vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+  text-shadow: 0 3px 22px rgba(197, 159, 239, 0.24);
+}
+
 .sleep-result-personalized {
   margin-top: 19px;
   text-align: left;
+}
+
+.sleep-result-tonight {
+  padding: 12px;
+  border: 1px solid rgba(214, 190, 245, 0.16);
+  border-radius: 15px;
+  background: rgba(214, 190, 245, 0.055);
 }
 
 .sleep-result-personalized h3,
@@ -6487,6 +6504,39 @@ input:focus-visible {
   color: rgba(250, 245, 255, 0.88);
   font-size: 0.8rem;
   line-height: 1.45;
+}
+
+.sleep-premium-boundary {
+  margin-top: 20px;
+}
+
+.sleep-premium-boundary-items {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sleep-premium-boundary-items li {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid rgba(214, 190, 245, 0.13);
+  border-radius: 10px;
+  background: rgba(18, 15, 27, 0.2);
+}
+
+.sleep-premium-boundary-items strong {
+  color: #fffaff;
+  font-size: 0.7rem;
+  letter-spacing: 0.025em;
+}
+
+.sleep-premium-boundary-items span {
+  color: rgba(250, 245, 255, 0.8);
+  font-size: 0.76rem;
+  line-height: 1.4;
 }
 
 .sleep-discovery-cta {
@@ -7363,6 +7413,137 @@ input:focus-visible {
   justify-content: center;
   margin-top: 10px;
 }
+
+.sleep-payment-card-report {
+  width: min(100%, 850px);
+  margin-top: 20px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.sleep-payment-card-report > .sleep-experience-brand,
+.sleep-payment-card-report > .sleep-payment-kicker,
+.sleep-payment-card-report > h1,
+.sleep-payment-card-report > .sleep-payment-subtitle,
+.sleep-payment-card-report > .sleep-payment-spam-note,
+.sleep-payment-card-report > .sleep-payment-delivery-warning,
+.sleep-payment-card-report > .sleep-payment-actions,
+.sleep-payment-card-report > .sleep-payment-note,
+.sleep-payment-card-report > .sleep-payment-error {
+  text-align: center;
+}
+
+.sleep-premium-report-status {
+  margin-top: 22px;
+  color: rgba(250, 245, 255, 0.84);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.sleep-premium-report-status p { margin-bottom: 12px; }
+
+.sleep-premium-paid-report {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  text-align: left;
+}
+
+.sleep-premium-paid-heading,
+.sleep-premium-paid-section,
+.sleep-premium-paid-closing {
+  padding: 17px 18px;
+  border: 1px solid rgba(245, 235, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.sleep-premium-paid-heading { text-align: center; }
+.sleep-premium-paid-heading > p,
+.sleep-premium-priority-label {
+  margin: 0 0 6px;
+  color: #e2cfff;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+.sleep-premium-paid-heading h2 {
+  margin: 0;
+  color: #fffaff;
+  font-size: 1.25rem;
+  letter-spacing: -0.025em;
+}
+.sleep-premium-paid-section h3 {
+  margin: 0 0 9px;
+  color: #f2e8ff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  line-height: 1.35;
+}
+.sleep-premium-paid-section p,
+.sleep-premium-paid-section li,
+.sleep-premium-paid-closing {
+  color: rgba(250, 245, 255, 0.8);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.sleep-premium-paid-section > p:last-child,
+.sleep-premium-paid-closing { margin-bottom: 0; }
+.sleep-premium-paid-section ul,
+.sleep-premium-paid-section ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+}
+.sleep-premium-area-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.sleep-premium-area {
+  display: grid;
+  gap: 4px;
+  padding: 10px 11px;
+  border: 1px solid rgba(245, 235, 255, 0.11);
+  border-radius: 12px;
+  background: rgba(13, 12, 20, 0.25);
+}
+.sleep-premium-area strong {
+  color: #f2e8ff;
+  font-size: 0.67rem;
+  letter-spacing: 0.04em;
+}
+.sleep-premium-area span {
+  color: rgba(250, 245, 255, 0.7);
+  font-size: 0.72rem;
+}
+.sleep-premium-priority {
+  border-color: rgba(220, 193, 255, 0.27);
+  background: rgba(197, 164, 238, 0.09);
+}
+.sleep-premium-priority .sleep-premium-priority-label { margin-bottom: 7px; }
+.sleep-premium-priority h3 { font-size: 0.95rem; }
+.sleep-premium-plan { list-style: none; padding: 0 !important; }
+.sleep-premium-plan li {
+  padding: 11px 12px;
+  border: 1px solid rgba(245, 235, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(13, 12, 20, 0.22);
+}
+.sleep-premium-plan li > strong {
+  color: #f2e8ff;
+  font-size: 0.76rem;
+}
+.sleep-premium-plan li > p { margin: 4px 0; }
+.sleep-premium-plan li > span {
+  color: rgba(250, 245, 255, 0.63);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+.sleep-premium-paid-closing { font-size: 0.75rem; }
 
 @media (min-width: 560px) {
   .sleep-discoveries {

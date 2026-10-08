@@ -75,44 +75,42 @@
       const renderReport = (report) => {
         reportRoot.replaceChildren();
         const profile = section("1. Tvoj profil sna");
-        paragraph(profile, report.profile.name);
+        paragraph(profile, report.profile);
         const summary = section("2. Sažetak profila");
-        paragraph(summary, report.profile.summary);
+        paragraph(summary, report.profile_explanation);
 
-        const mainArea = section("3. Glavna oblast sna");
-        mainArea.append(element("h3", report.mainArea.title));
-        paragraph(mainArea, report.mainArea.explanation);
+        const mainArea = section("3. Tvoj prioritet");
+        mainArea.append(element("h3", report.priority.area));
+        paragraph(mainArea, report.priority.explanation);
 
         const connections = section("4. Kako se tvoji odgovori povezuju");
-        paragraph(connections, report.connections.title);
-        list(connections, report.connections.items);
+        list(connections, report.connections);
 
-        const positive = section("5. Šta već ide dobro — ili šta vredi pratiti");
-        positive.append(element("h3", report.positiveOrWatch.title));
-        paragraph(positive, report.positiveOrWatch.text);
-
-        const starting = section("6. Gde ima najviše smisla da počneš");
-        paragraph(starting, report.startingPoint.text);
-
-        const tonight = section("7. Koraci za večeras");
-        paragraph(tonight, report.tonight.title);
-        list(tonight, report.tonight.actions, true);
+        const positive = section("5. Šta vredi zadržati ili pratiti");
+        positive.append(element("h3", report.stable_or_tracking.title));
+        list(positive, report.stable_or_tracking.items);
 
         const plan = section("8. Plan za narednih sedam dana");
         const days = document.createElement("ol");
-        for (const day of report.sevenDayPlan) {
+        for (const day of report.seven_day_plan) {
           const item = element("li", undefined, "day");
-          item.append(element("strong", `${day.day}. dan · ${day.title}`));
+          item.append(element("strong", `${day.day}. dan`));
           item.append(element("span", day.action));
+          item.append(element("span", day.observe));
           days.append(item);
         }
         plan.append(days);
 
-        const tracking = section("9. Šta da pratiš");
-        paragraph(tracking, report.tracking.title);
-        list(tracking, report.tracking.items);
+        const alternatives = section("9. Alternativni pristupi");
+        list(alternatives, report.alternatives);
 
-        const closing = section("10. Završna napomena");
+        const questions = section("10. Pitanja za osvrt");
+        list(questions, report.review_questions, true);
+
+        const review = section("11. Posle sedam dana");
+        paragraph(review, report.after_seven_days);
+
+        const closing = section("12. Završna napomena");
         paragraph(closing, report.closing);
       };
 
@@ -138,7 +136,7 @@
             }
             return;
           }
-          if (data.source !== "REAL_OPENAI" || !data.report) {
+          if (data.source !== "ai" || !data.report) {
             throw new Error("Odgovor nije označen kao stvarni OpenAI izlaz.");
           }
           renderReport(data.report);

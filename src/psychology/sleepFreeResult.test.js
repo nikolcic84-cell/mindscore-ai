@@ -1,157 +1,150 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { SLEEP_ANSWER_OPTIONS } from "./sleepAssessmentContent.js";
+import { calculateSleepSignature } from "./sleepSignature.js";
 import {
   getSleepFreeResultPresentation,
   SLEEP_FREE_PROFILE_DESCRIPTIONS,
 } from "./sleepFreeResult.js";
 
-const makeResult = (signatureKey, internalScores, answerValues = {}) => {
-  const questionValues = Array(12).fill(null);
-  if (answerValues.q6 !== undefined) questionValues[5] = answerValues.q6;
-  if (answerValues.q12 !== undefined) questionValues[11] = answerValues.q12;
-  return { signatureKey, internalScores, questionValues, strongestArea: "Oporavak" };
+const pointsForPositions = (positions) => positions.map((position) => 6 - position);
+const signatureFor = (points) => calculateSleepSignature(points.map((value) => 5 - value));
+const setAnswer = (points, questionNumber, selectedPoints) => {
+  const next = [...points];
+  next[questionNumber - 1] = selectedPoints;
+  return next;
 };
+const answerText = (points, questionNumber) =>
+  SLEEP_ANSWER_OPTIONS[questionNumber - 1].find(({ points: optionPoints }) => optionPoints === points[questionNumber - 1])?.text;
 
-const stableCore = { recovery: 0.8, sleepOnset: 0.8, continuity: 0.8, rhythm: 0.8 };
+const profileCases = [
+  ["calm_night", pointsForPositions(Array(12).fill(1)), "MIRNA NOĆ"],
+  ["tired_waking", pointsForPositions([5, 1, 1, 5, 1, 1, 1, 5, 1, 1, 5, 1]), "UMORAN SAN"],
+  ["awake_mind", pointsForPositions([1, 5, 1, 1, 1, 5, 5, 1, 1, 1, 1, 1]), "BUDAN UM"],
+  ["fragmented_night", pointsForPositions([1, 1, 5, 1, 1, 1, 1, 1, 1, 1, 1, 5]), "ISPREKIDAN SAN"],
+  ["sleep_under_pressure", pointsForPositions([5, 5, 1, 5, 1, 5, 5, 5, 1, 1, 5, 1]), "SAN POD PRITISKOM"],
+];
 
-test("all five profiles use the exact requested Free Result descriptions", () => {
+test("all five deterministic profiles retain their approved profile names and descriptions", () => {
   assert.deepEqual(Object.keys(SLEEP_FREE_PROFILE_DESCRIPTIONS).sort(), [
-    "awake_mind",
-    "calm_night",
-    "fragmented_night",
-    "sleep_under_pressure",
-    "tired_waking",
+    "awake_mind", "calm_night", "fragmented_night", "sleep_under_pressure", "tired_waking",
   ]);
-  assert.equal(
-    SLEEP_FREE_PROFILE_DESCRIPTIONS.calm_night,
-    "Tvoj san pokazuje prilično skladan obrazac. Većina signala ide u dobrom smeru — ali detalji u tvojim odgovorima otkrivaju šta najviše doprinosi toj stabilnosti i gde ipak postoje male promene."
-  );
-  assert.equal(
-    SLEEP_FREE_PROFILE_DESCRIPTIONS.tired_waking,
-    "Spavanje ti ne donosi uvek onaj osećaj odmora koji bi očekivao. Tvoji odgovori otkrivaju nekoliko tragova koji mogu pomoći da razumemo gde se taj osećaj oporavka gubi."
-  );
-  assert.equal(
-    SLEEP_FREE_PROFILE_DESCRIPTIONS.awake_mind,
-    "Telo je možda spremno za odmor, ali um ne prati uvek isti ritam. Tvoji odgovori otkrivaju obrasce koji mogu objasniti šta ti otežava da mirno pređeš iz budnosti u san."
-  );
-  assert.equal(
-    SLEEP_FREE_PROFILE_DESCRIPTIONS.fragmented_night,
-    "Tvoj san ne teče uvek bez prekida. Tvoji odgovori pokazuju da nije važna samo dužina sna — već i ono što se događa tokom noći i kako se to odražava na tvoj odmor."
-  );
-  assert.equal(
-    SLEEP_FREE_PROFILE_DESCRIPTIONS.sleep_under_pressure,
-    "Tvoj san šalje više različitih signala. Nijedan ne govori celu priču sam za sebe — ali kada ih povežemo, počinje da se otkriva šta zaista oblikuje tvoj san i osećaj odmora."
-  );
-});
-
-test("MIRNA NOĆ with all stable dimensions gets the stable fallback", () => {
-  const result = getSleepFreeResultPresentation(makeResult("calm_night", stableCore));
-  assert.equal(result.insight, "Tvoji odgovori ne otkrivaju jednu izraženu slabu tačku — stabilnost se provlači kroz više delova tvog sna.");
-});
-
-test("MIRNA NOĆ can surface a secondary mixed rhythm without calling it good", () => {
-  const result = getSleepFreeResultPresentation(makeResult("calm_night", { ...stableCore, rhythm: 0.6 }));
-  assert.equal(result.insight, "Tvoj san možda nema jednu veliku prepreku, ali vreme i ritam spavanja nisu uvek potpuno predvidljivi.");
-  assert.doesNotMatch(result.insight, /dobro|dobra|stabilno|stabilna/i);
-});
-
-test("UMORAN SAN recovery weakness uses the specific onset-stable contrast", () => {
-  const result = getSleepFreeResultPresentation(makeResult("tired_waking", { recovery: 0.4, sleepOnset: 0.8, continuity: 0.6, rhythm: 0.8 }));
-  assert.equal(result.insight, "Čini se da kod tebe veći izazov nije zaspati — već kako se osećaš nakon sna.");
-});
-
-test("BUDAN UM onset weakness uses the specific recovery-stable contrast", () => {
-  const result = getSleepFreeResultPresentation(makeResult("awake_mind", { recovery: 0.8, sleepOnset: 0.4, continuity: 0.6, rhythm: 0.8 }));
-  assert.equal(result.insight, "Kada san konačno dođe, slika izgleda bolje — najveća prepreka pojavljuje se pre toga.");
-});
-
-test("ISPREKIDAN SAN continuity weakness is contrasted with stable onset", () => {
-  const result = getSleepFreeResultPresentation(makeResult("fragmented_night", { recovery: 0.6, sleepOnset: 0.8, continuity: 0.4, rhythm: 0.8 }));
-  assert.equal(result.insight, "Zaspati ti možda nije najveći problem — veći izazov je zadržati miran san tokom noći.");
-});
-
-test("SAN POD PRITISKOM with two weak core dimensions gets the pair insight", () => {
-  const cases = [
-    {
-      scores: { recovery: 0.4, sleepOnset: 0.8, continuity: 0.4, rhythm: 0.8 },
-      insight: "Ono što se događa tokom noći prati i slabiji osećaj odmora kada se probudiš.",
-    },
-    {
-      scores: { recovery: 0.8, sleepOnset: 0.4, continuity: 0.4, rhythm: 0.8 },
-      insight: "Kod tebe se priča ne završava uspavljivanjem — signali se pojavljuju i tokom same noći.",
-    },
-    {
-      scores: { recovery: 0.4, sleepOnset: 0.4, continuity: 0.8, rhythm: 0.8 },
-      insight: "Teži ulazak u san prati i slabiji osećaj odmora nakon buđenja.",
-    },
-  ];
-  for (const { scores, insight } of cases) {
-    const result = getSleepFreeResultPresentation(makeResult("sleep_under_pressure", scores, { q6: 0, q12: 0 }));
-    assert.equal(result.insight, insight);
+  for (const [signatureKey, points, profileName] of profileCases) {
+    const signature = signatureFor(points);
+    const result = getSleepFreeResultPresentation(signature, points);
+    assert.equal(signature.signature, profileName);
+    assert.equal(result.profileName, profileName);
+    assert.equal(result.profileDescription, SLEEP_FREE_PROFILE_DESCRIPTIONS[signatureKey]);
   }
 });
 
-test("SAN POD PRITISKOM with three weak core dimensions gets neutral combined copy", () => {
-  const result = getSleepFreeResultPresentation(makeResult("sleep_under_pressure", { recovery: 0.4, sleepOnset: 0.4, continuity: 0.4, rhythm: 0.8 }, { q6: 0, q12: 0 }));
-  assert.equal(result.insight, "Ne izdvaja se samo jedan trenutak sna — nekoliko delova tvog obrasca zajedno utiče na to kako doživljavaš odmor.");
+test("primary free insight is deterministic and quotes the user's relevant selected answers", () => {
+  let points = Array(12).fill(5);
+  points = setAnswer(points, 2, 1);
+  points = setAnswer(points, 6, 2);
+  points = setAnswer(points, 7, 2);
+  const signature = signatureFor(points);
+  const result = getSleepFreeResultPresentation(signature, points);
+  assert.equal(signature.signature, "BUDAN UM");
+  assert.match(result.primaryInsight, new RegExp(answerText(points, 2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(result.primaryInsight, new RegExp(answerText(points, 7).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(result.primaryInsight, /pojavljuju se.*vredi ih posmatrati zajedno/i);
+  assert.doesNotMatch(result.primaryInsight, /uzrok|izaziva|remeti/i);
 });
 
-test("mapped strong-negative Q6 is selected after checking for multiple weak core areas", () => {
-  const result = getSleepFreeResultPresentation(makeResult(
-    "sleep_under_pressure",
-    { recovery: 0.75, sleepOnset: 0.6667, continuity: 0.75, rhythm: 0.8 },
-    { q6: 1 }
-  ));
-  assert.equal(result.insight, "Jedan deo tvoje priče o snu počinje još pre nego što zaspiš — tvojim mislima nije uvek lako da se utišaju.");
+test("a genuinely different supported secondary answer appears; absent evidence omits the detail", () => {
+  let points = Array(12).fill(5);
+  points = setAnswer(points, 2, 1);
+  points = setAnswer(points, 7, 1);
+  points = setAnswer(points, 5, 1);
+  points = setAnswer(points, 9, 1);
+  points = setAnswer(points, 10, 1);
+  const withSecondary = getSleepFreeResultPresentation(signatureFor(points), points);
+  assert.equal(withSecondary.profileName, "BUDAN UM");
+  assert.match(withSecondary.secondaryDetail, new RegExp(answerText(points, 10).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.notEqual(withSecondary.secondaryDetail, withSecondary.primaryInsight);
+
+  let withoutSecondaryPoints = Array(12).fill(5);
+  withoutSecondaryPoints = setAnswer(withoutSecondaryPoints, 2, 1);
+  withoutSecondaryPoints = setAnswer(withoutSecondaryPoints, 7, 1);
+  const withoutSecondary = getSleepFreeResultPresentation(signatureFor(withoutSecondaryPoints), withoutSecondaryPoints);
+  assert.equal(withoutSecondary.secondaryDetail, null);
 });
 
-test("mapped strong-negative Q12 can be read from its existing supporting signal", () => {
-  const result = makeResult("sleep_under_pressure", { recovery: 0.8, sleepOnset: 0.8, continuity: 0.625, rhythm: 0.8 });
-  delete result.questionValues[11];
-  result.supportingSignals = [{ question: 12, internalScore: 1 }];
-  assert.equal(
-    getSleepFreeResultPresentation(result).insight,
-    "Iako neki delovi tvog sna mogu delovati mirno, jedan signal pokazuje da sama noć nije uvek tako stabilna."
-  );
+test("Q6 and Q12 distinctive answers personalize the relevant free insight", () => {
+  let q6Points = Array(12).fill(5);
+  q6Points = setAnswer(q6Points, 6, 1);
+  const q6Result = getSleepFreeResultPresentation(signatureFor(q6Points), q6Points);
+  assert.match(q6Result.primaryInsight, new RegExp(answerText(q6Points, 6).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(q6Result.tonightAction, /telefon/i);
+
+  let q12Points = Array(12).fill(5);
+  q12Points = setAnswer(q12Points, 12, 1);
+  const q12Result = getSleepFreeResultPresentation(signatureFor(q12Points), q12Points);
+  assert.match(q12Result.primaryInsight, new RegExp(answerText(q12Points, 12).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(q12Result.tonightAction, /zabeleži/i);
 });
 
-test("mixed rhythm is secondary when every core dimension is strictly higher", () => {
-  const result = getSleepFreeResultPresentation(makeResult("calm_night", { recovery: 0.8, sleepOnset: 0.75, continuity: 0.8, rhythm: 0.6 }));
-  assert.equal(result.insight, "Tvoj san možda nema jednu veliku prepreku, ali vreme i ritam spavanja nisu uvek potpuno predvidljivi.");
+test("rhythm remains a secondary detail when the core sleep areas are stronger", () => {
+  let points = Array(12).fill(5);
+  points = setAnswer(points, 5, 1);
+  points = setAnswer(points, 9, 1);
+  points = setAnswer(points, 10, 1);
+  const signature = signatureFor(points);
+  const result = getSleepFreeResultPresentation(signature, points);
+  assert.equal(signature.signature, "MIRNA NOĆ");
+  assert.match(result.primaryInsight, /različitih pogleda na noć/i);
+  assert.match(result.secondaryDetail, new RegExp(answerText(points, 10).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(result.primaryInsight, /ritam|spavanja i buđenja/i);
 });
 
-test("weak rhythm remains secondary when all core dimensions are better", () => {
-  const result = getSleepFreeResultPresentation(makeResult("calm_night", { recovery: 0.8, sleepOnset: 0.75, continuity: 0.8, rhythm: 0.4 }));
-  assert.equal(result.insight, "Tvoj san možda nema jednu veliku prepreku, ali vreme i ritam spavanja nisu uvek potpuno predvidljivi.");
+test("tied scores use neutral copy without arbitrary area claims", () => {
+  const points = Array(12).fill(3);
+  const signature = signatureFor(points);
+  const result = getSleepFreeResultPresentation(signature, points);
+  assert.equal(new Set(Object.values(signature.internalScores)).size, 1);
+  assert.match(result.primaryInsight, /različitih pogleda na noć/i);
+  assert.equal(result.secondaryDetail, null);
+  assert.doesNotMatch(`${result.primaryInsight} ${result.secondaryDetail || ""}`, /oporavak|uspavljivanje|kontinuitet|ritam/i);
 });
 
-test("single weak core dimensions use their dedicated insight when no contrast applies", () => {
-  const cases = [
-    ["tired_waking", { recovery: 0.4, sleepOnset: 0.6, continuity: 0.6, rhythm: 0.8 }, "Najjasniji signal pojavljuje se nakon sna — tvoje telo ne doživljava svako jutro kao pravi novi početak."],
-    ["awake_mind", { recovery: 0.6, sleepOnset: 0.4, continuity: 0.6, rhythm: 0.8 }, "Najviše se izdvaja trenutak pre sna — prelazak iz budnosti u odmor kod tebe nije uvek jednostavan."],
-    ["fragmented_night", { recovery: 0.6, sleepOnset: 0.6, continuity: 0.4, rhythm: 0.8 }, "Kod tebe se najviše izdvaja ono što se događa nakon što zaspiš — san ne ostaje uvek jednako miran."],
-  ];
-  for (const [profile, scores, insight] of cases) {
-    assert.equal(getSleepFreeResultPresentation(makeResult(profile, scores)).insight, insight);
+test("free contains exactly one low-risk tonight experiment and no internal terminology", () => {
+  for (const [, points] of profileCases) {
+    const result = getSleepFreeResultPresentation(signatureFor(points), points);
+    assert.equal(typeof result.tonightAction, "string");
+    assert.ok(result.tonightAction.trim().length > 0);
+    assert.equal(Array.isArray(result.tonightAction), false);
+    assert.doesNotMatch(JSON.stringify(result), /\b(?:STABLE|MIXED|WEAK|classifier|scoring|dimension|AI confidence|algoritam)\b/i);
+    assert.doesNotMatch(JSON.stringify(result), /dijagnoz|lečenje|lekove/i);
+    assert.doesNotMatch(result.tonightAction, /sigurno.*poboljš|reši.*problem|izleči/i);
   }
 });
 
-test("tied mixed dimensions use neutral fallback rather than choosing a winner", () => {
-  const result = getSleepFreeResultPresentation(makeResult("sleep_under_pressure", { recovery: 0.6, sleepOnset: 0.6, continuity: 0.6, rhythm: 0.6 }));
-  assert.equal(result.insight, "Veći deo slike deluje prilično stabilno, ali nekoliko detalja pokazuje da tvoj obrazac nije potpuno isti iz noći u noć.");
-  assert.doesNotMatch(result.insight, /oporavak|uspavljivanje|kontinuitet|ritam/i);
+test("Premium teaser preserves the requested boundary, five locked benefits, and CTA", () => {
+  const points = setAnswer(Array(12).fill(5), 2, 1);
+  const teaser = getSleepFreeResultPresentation(signatureFor(points), points).premiumTeaser;
+  assert.equal(teaser.heading, "ŽELIŠ DA ZNAŠ ŠTA DALJE?");
+  assert.equal(teaser.text, "Jedna promena nije plan. Detaljni rezultat povezuje svih 12 odgovora i pokazuje gde ima najviše smisla da počneš i šta da radiš dalje.");
+  assert.deepEqual(teaser.items.map(({ title }) => title), [
+    "TVOJ PRIORITET #1",
+    "TVOJ LIČNI PLAN ZA 7 DANA",
+    "ŠTA ZA SADA NE MORAŠ DA MENJAŠ",
+    "AKO PRVI KORAK NE POMOGNE",
+    "TVOJ PDF PLAN",
+  ]);
+  assert.equal(teaser.cta, "OTKRIJ ŠTA DALJE →");
 });
 
-test("personalized copy does not use the numerical strongest area as positive evidence", () => {
-  const result = makeResult("sleep_under_pressure", { recovery: 0.6, sleepOnset: 0.6, continuity: 0.6, rhythm: 0.6 });
-  const baseline = getSleepFreeResultPresentation(result);
-  result.strongestArea = "Ritam sna";
-  result.strongestAreas = ["Ritam sna"];
-  assert.deepEqual(getSleepFreeResultPresentation(result), baseline);
-  assert.doesNotMatch(baseline.insight, /dobra strana|najjača|dobro ti ide/i);
+test("Free presentation has no AI, network, or backend dependency", () => {
+  const source = readFileSync(new URL("./sleepFreeResult.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /from ["']openai|fetch\s*\(|responses\.parse|OPENAI_API_KEY/i);
 });
 
-test("missing or invalid dimension scores do not invent an insight", () => {
-  assert.equal(getSleepFreeResultPresentation(null), null);
-  assert.equal(getSleepFreeResultPresentation({ signatureKey: "calm_night", internalScores: { recovery: 0.8 } }), null);
+test("presentation rejects missing or invalid classifier input without inventing content", () => {
+  assert.equal(getSleepFreeResultPresentation(null, Array(12).fill(5)), null);
+  assert.equal(getSleepFreeResultPresentation({ signatureKey: "calm_night", internalScores: { recovery: 0.8 } }, Array(12).fill(5)), null);
+  const invalidAnswerResult = getSleepFreeResultPresentation(signatureFor(Array(12).fill(5)), [1, 2]);
+  assert.equal(invalidAnswerResult.primaryInsight, "Tvoji odgovori donose nekoliko različitih pogleda na noć.");
+  assert.equal(invalidAnswerResult.secondaryDetail, null);
 });

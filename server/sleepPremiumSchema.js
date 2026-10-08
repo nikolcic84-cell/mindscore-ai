@@ -1,37 +1,36 @@
 import { SLEEP_PREMIUM_DIMENSION_KEYS, SLEEP_PREMIUM_PROFILE_NAMES } from "./sleepPremiumInput.js";
 
 const CORE_DIMENSIONS = ["recovery", "sleepOnset", "continuity"];
-const AREA_TITLES = Object.freeze({
-  recovery: "Oporavak nakon sna",
-  sleepOnset: "Uspavljivanje",
+const DIMENSION_TITLES = Object.freeze({
+  recovery: "Osećaj po buđenju",
+  sleepOnset: "Period pre sna",
   continuity: "Tok noći",
+  rhythm: "Vreme spavanja i buđenja",
+  multiple: "Više delova tvoje noći",
+  whole: "Tvoj san u celini",
 });
+const COPY_LIMITS = Object.freeze({
+  profileExplanation: 700,
+  priorityExplanation: 700,
+  connection: 500,
+  stableOrTracking: 350,
+  planAction: 300,
+  planObserve: 250,
+  alternative: 350,
+  reviewQuestion: 200,
+  afterSevenDays: 500,
+  closing: 350,
+});
+const REPORT_KEYS = [
+  "version", "profile", "profile_explanation", "priority", "connections", "stable_or_tracking",
+  "seven_day_plan", "alternatives", "review_questions", "after_seven_days", "closing",
+];
 
 const keysEqual = (value, expected) =>
   Boolean(value && typeof value === "object" && !Array.isArray(value)) &&
   Object.keys(value).length === expected.length &&
   expected.every((key) => Object.prototype.hasOwnProperty.call(value, key));
 
-const textSchema = (maxLength = 1200) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
-const MAIN_AREA_EXPLANATION_MAX_LENGTH = 500;
-const profileSummarySchema = {
-  ...textSchema(),
-  pattern: "^[^0-9]*\\S[^0-9]*$",
-  description: "Customer-facing Serbian summary. Use 1–2 concise sentences grounded only in the supplied deterministic profile. Do not include digits, scores, percentages, thresholds, internal labels or terminology, medical or diagnostic claims, or causal claims.",
-};
-const mainAreaExplanationSchema = () => ({
-  ...textSchema(MAIN_AREA_EXPLANATION_MAX_LENGTH),
-  description: "Short, natural Serbian prose addressed directly to the customer. Explain the deterministic main sleep area using only the supplied answers and result. Include at least one complete answer copied exactly inside Serbian quotation marks. Do not include scores/results, points, percentages, thresholds, internal labels, scoring/dimension/AI/technical terminology, medical diagnoses, unsupported causal claims, or claims that the true cause is known.",
-});
-const wellnessActionSchema = (maxLength) => ({
-  ...textSchema(maxLength),
-  description: "One concise, practical suggestion in natural everyday Serbian, phrased as something the customer may try. Avoid assumptions presented as facts, diagnosis or medical conclusions, causal claims, scores/percentages/thresholds, internal labels such as WEAK/MIXED/STABLE, technical/system/AI terminology, and medication or treatment instructions.",
-});
-const sevenDayActionSchema = (maxLength) => ({
-  ...textSchema(maxLength),
-  description: "One brief, simple, everyday Serbian wellness suggestion for this plan day. Use neutral experimental wording such as try, notice, write down, or compare. Do not claim or imply the action will definitely improve, fix, cure, regulate, or solve sleep. No diagnoses, medical claims, causal claims, scores, thresholds, dimensions, internal labels, technical terms, medication, or treatment instructions.",
-});
-const fixedStringSchema = (value) => ({ type: "string", enum: [value] });
 const safeShape = (value) => {
   if (value === null) return { type: "null" };
   if (Array.isArray(value)) return { type: "array", length: value.length };
@@ -45,316 +44,229 @@ const invalid = (field, expected, received, reason) => ({
   reason,
   diagnostic: { field, expected, received: safeShape(received) },
 });
-const objectSchema = (properties, required = Object.keys(properties)) => ({
+const textSchema = (maxLength) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
+const arraySchema = (minItems, maxItems, items) => ({ type: "array", minItems, maxItems, items });
+const objectSchema = (properties) => ({
   type: "object",
   additionalProperties: false,
   properties,
-  required,
+  required: Object.keys(properties),
 });
-
-const stringArraySchema = (minItems, maxItems, itemMaxLength = 1200) => ({
-  type: "array",
-  minItems,
-  maxItems,
-  items: textSchema(itemMaxLength),
-});
+const fixedTextSchema = (value) => ({ type: "string", enum: [value] });
 
 export const getSleepPremiumStrengthMode = (input) =>
   SLEEP_PREMIUM_DIMENSION_KEYS.some((key) => input?.dimensions?.[key]?.state === "STABLE")
-    ? "strength"
-    : "watch";
+    ? "stable"
+    : "tracking";
 
-export const getSleepPremiumPositiveOrWatchTitle = (mode) =>
-  mode === "strength" ? "Šta ti već ide dobro?" : "Šta još vredi da pratiš?";
-
-export const getSleepPremiumMainAreaTitle = (input) => {
+export const getSleepPremiumPriority = (input) => {
   const weakCore = CORE_DIMENSIONS.filter((key) => input?.dimensions?.[key]?.state === "WEAK");
-  if (weakCore.length >= 2) return "Više delova sna";
-  if (weakCore.length === 1) return AREA_TITLES[weakCore[0]];
+  if (weakCore.length === 1) return { key: weakCore[0], title: DIMENSION_TITLES[weakCore[0]] };
+  if (weakCore.length > 1) {
+    const minScore = Math.min(...weakCore.map((key) => input.dimensions[key].score));
+    const lowest = weakCore.filter((key) => input.dimensions[key].score === minScore);
+    if (lowest.length === 1) return { key: lowest[0], title: DIMENSION_TITLES[lowest[0]] };
+    return { key: "multiple", title: DIMENSION_TITLES.multiple };
+  }
 
   const q6 = input?.answers?.find((answer) => answer.questionId === "Q6")?.mappedValue;
   const q12 = input?.answers?.find((answer) => answer.questionId === "Q12")?.mappedValue;
-  if (q6 <= 1 && q12 <= 1) return "Večernje smirivanje i tok noći";
-  if (q6 <= 1) return "Večernje smirivanje";
-  if (q12 <= 1) return "Tok noći";
+  if (q6 <= 1) return { key: "sleepOnset", title: DIMENSION_TITLES.sleepOnset };
+  if (q12 <= 1) return { key: "continuity", title: DIMENSION_TITLES.continuity };
 
   const rhythm = input?.dimensions?.rhythm;
   if (
     rhythm && rhythm.state !== "STABLE" &&
     CORE_DIMENSIONS.every((key) => input.dimensions[key].score > rhythm.score)
-  ) return "Ritam spavanja kao dodatna tema";
+  ) return { key: "rhythm", title: DIMENSION_TITLES.rhythm };
 
-  return "Tvoja ukupna slika sna";
+  return { key: "whole", title: DIMENSION_TITLES.whole };
 };
 
-const makeProperties = (input) => {
-  const strengthMode = getSleepPremiumStrengthMode(input);
+export const getSleepPremiumAreaOverview = (input) => {
+  const priorityKey = getSleepPremiumPriority(input).key;
+  const labels = Object.freeze({
+    sleepOnset: "USPAVLJIVANJE",
+    continuity: "TOK NOĆI",
+    recovery: "OSEĆAJ UJUTRU",
+    rhythm: "RITAM",
+  });
+  return SLEEP_PREMIUM_DIMENSION_KEYS.map((key) => {
+    const state = input.dimensions[key].state;
+    return {
+      key,
+      title: labels[key],
+      status: state === "STABLE" ? "Deluje mirnije"
+        : key === priorityKey || (priorityKey === "multiple" && state === "WEAK") ? "Ovde se najviše izdvaja"
+          : "Vredi pratiti",
+    };
+  });
+};
+
+const customerText = (maxLength, description) => ({ ...textSchema(maxLength), description });
+
+const makeSchema = (input) => {
+  const stableMode = getSleepPremiumStrengthMode(input);
+  const priority = getSleepPremiumPriority(input);
   return objectSchema({
-    version: { type: "integer", enum: [1] },
-    profile: objectSchema({
-      name: { type: "string", enum: [input.profile] },
-      summary: profileSummarySchema,
+    version: { type: "integer", enum: [2] },
+    profile: { type: "string", enum: [input.profile] },
+    profile_explanation: customerText(COPY_LIMITS.profileExplanation, "At most two short personalized Serbian paragraphs about what this deterministic profile means for this person. Cite at least one complete exact selected answer in Serbian quotation marks. Do not repeat generic Free-result profile text."),
+    priority: objectSchema({
+      title: fixedTextSchema("TVOJ PRIORITET #1"),
+      area: { type: "string", enum: [priority.title] },
+      explanation: customerText(COPY_LIMITS.priorityExplanation, "Briefly explain why the fixed deterministic priority is the sensible first focus using supplied answers and at least one complete exact answer quote. Do not diagnose or claim a cause."),
     }),
-    mainArea: objectSchema({
-      title: { type: "string", enum: [getSleepPremiumMainAreaTitle(input)] },
-      explanation: mainAreaExplanationSchema(),
+    connections: arraySchema(2, 4, customerText(COPY_LIMITS.connection, "A short non-causal relationship or contrast grounded in at least two exact selected answers. Quote the complete answers verbatim in Serbian quotation marks.")),
+    stable_or_tracking: objectSchema({
+      mode: { type: "string", enum: [stableMode] },
+      title: fixedTextSchema(stableMode === "stable" ? "ŠTA VREDI DA ZADRŽIŠ" : "ŠTA JOŠ VREDI DA PRATIŠ"),
+      items: arraySchema(1, 2, customerText(COPY_LIMITS.stableOrTracking, "When mode is stable, describe only an actually STABLE deterministic area. When mode is tracking, describe an uncertainty to observe, never an invented strength.")),
     }),
-    connections: objectSchema({
-      title: fixedStringSchema("Šta se kod tebe povezuje?"),
-      items: stringArraySchema(2, 2),
-    }),
-    positiveOrWatch: objectSchema({
-      mode: { type: "string", enum: [strengthMode] },
-      title: fixedStringSchema(getSleepPremiumPositiveOrWatchTitle(strengthMode)),
-      text: textSchema(),
-    }),
-    startingPoint: objectSchema({
-      title: fixedStringSchema("Gde ima najviše smisla da počneš?"),
-      text: textSchema(),
-    }),
-    tonight: objectSchema({
-      title: fixedStringSchema("Šta možeš da uradiš već večeras?"),
-      actions: {
-        type: "array",
-        minItems: 3,
-        maxItems: 3,
-        items: wellnessActionSchema(400),
-      },
-    }),
-    sevenDayPlan: {
-      type: "array",
-      minItems: 7,
-      maxItems: 7,
-      items: objectSchema({
-        day: { type: "integer", minimum: 1, maximum: 7 },
-        title: textSchema(100),
-        action: sevenDayActionSchema(400),
-      }),
-    },
-    tracking: objectSchema({
-      title: fixedStringSchema("Šta vredi da pratiš?"),
-      items: stringArraySchema(2, 4, 200),
-    }),
-    closing: textSchema(800),
+    seven_day_plan: arraySchema(7, 7, objectSchema({
+      day: { type: "integer", minimum: 1, maximum: 7 },
+      action: customerText(COPY_LIMITS.planAction, "One small step in a progressive seven-day experiment, all steps related to the fixed priority: day 1 baseline, day 2 introduce, day 3 repeat, day 4 compare, day 5 slight adjustment, day 6 repeat simplest useful step, day 7 review. No treatment or promised outcome."),
+      observe: customerText(COPY_LIMITS.planObserve, "One optional simple observation relevant to the same priority. Do not introduce a different sleep intervention."),
+    })),
+    alternatives: arraySchema(1, 2, customerText(COPY_LIMITS.alternative, "A practical alternative approach to the same fixed priority, grounded in selected answers, not an unrelated generic tip.")),
+    review_questions: arraySchema(3, 3, customerText(COPY_LIMITS.reviewQuestion, "One simple review question relevant to the fixed priority.")),
+    after_seven_days: customerText(COPY_LIMITS.afterSevenDays, "Short personalized interpretation of how to review the experiment. No promised outcome."),
+    closing: customerText(COPY_LIMITS.closing, "Short calm informational wellness note, not a diagnosis. If persistent difficulty significantly affects daily life, it is reasonable to suggest speaking with a healthcare professional without alarming language."),
   });
 };
 
 export const buildSleepPremiumJsonSchema = (input) => ({
   type: "json_schema",
-  name: "mindscore_sleep_premium_report_v1",
+  name: "mindscore_sleep_premium_report_v2",
   strict: true,
-  schema: makeProperties(input),
+  schema: makeSchema(input),
 });
 
-const INVALID_CUSTOMER_COPY = /\b(?:scoring|dimension|mapped value|classifier|ai confidence|faktor\w*|signal\w*|obrazac\w*|obrasc\w*|stable|mixed|weak|stabil\w*|mesovit\w*|slab\w*|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|hormons\w*|neurolosk\w*|dijagnoz\w*|dijagnost\w*|poremec\w*|bolest\w*|klinick\w*|medikament\w*|lekov\w*|\blek\b|terapij\w*|lecen\w*|uzrok\w*|izaziv\w*|prouzrok\w*|dovod\w*|remet\w*|doprin\w*|kriv\w*|posledic\w*|\bzbog\b)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
-const MAIN_AREA_SCORE_OR_THRESHOLD_COPY = /\b(?:score|scor\w*|rezultat\w*|ocen\w*|poen\w*|bod\w*|prag\w*|threshold\w*|granica\w*)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
-const ACTION_PROMISE_COPY = /\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b.{0,60}\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b|\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b.{0,60}\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b/iu;
-const normalizeForSafety = (text) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/gu, "d").toLowerCase();
-const UNSUPPORTED_STRENGTH_COPY = /\b(?:dobr\w*|odlicn\w*|funkcionis\w*|snag\w*|jak\w*|uspesn\w*|zadrz\w*|oslonc\w*|prednost\w*|pomaz\w*|podrz\w*)\b/u;
-const OBSERVATION_COPY = /\b(?:prat\w*|obrati\w*|posmatr\w*|bele[zž]\w*|primet\w*|naredn\w*)\b/u;
+const INVALID_CUSTOMER_COPY = /\b(?:scoring|dimension|mapped value|classifier|ai confidence|algorithm|algoritam|faktor\w*|signal\w*|obrazac\w*|obrasc\w*|stable|mixed|weak|stabil\w*|mesovit\w*|slab\w*|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|hormons\w*|neurolosk\w*|dijagnoz\w*|dijagnost\w*|poremec\w*|bolest\w*|klinick\w*|medikament\w*|lekov\w*|\blek\b|terapij\w*|lecen\w*|uzrok\w*|izaziv\w*|prouzrok\w*|dovod\w*|remet\w*|doprin\w*|kriv\w*|posledic\w*|\bzbog\b)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
+const GUARANTEE_COPY = /\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b.{0,60}\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b|\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b.{0,60}\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b/iu;
 const STABLE_EVIDENCE = Object.freeze({
-  recovery: /\b(?:oporav\w*|jutarn\w*|buden\w*|energij\w*|odmor\w*|ustajan\w*)\b/u,
-  sleepOnset: /\b(?:uspav\w*|zaspi\w*|misl\w*|vecern\w*|pre sna)\b/u,
-  continuity: /\b(?:tok noci|noc\w*|probud\w*|buđen\w*)\b/u,
-  rhythm: /\b(?:ritm\w*|raspored\w*|vreme\w*|duzin\w* sna)\b/u,
+  recovery: /(?:oporav|jutarn|buden|energij|odmor|ustajan)/u,
+  sleepOnset: /(?:uspav|zaspi|misl|vecern|pre sna)/u,
+  continuity: /(?:tok noci|noc|probud|buđen)/u,
+  rhythm: /(?:ritm|raspored|vreme|duzin.*sna)/u,
 });
-const WEAK_CORE_EVIDENCE = Object.freeze({
-  recovery: /\b(?:oporav\w*|jutarn\w*|buden\w*|energij\w*|odmor\w*|umor\w*|ustajan\w*)\b/u,
-  sleepOnset: /\b(?:uspav\w*|zaspi\w*|misl\w*|vecern\w*|pre sna)\b/u,
-  continuity: /\b(?:tok noci|noc\w*|probud\w*|buđen\w*)\b/u,
+const AREA_EVIDENCE = Object.freeze({
+  recovery: /(?:jutr|buden|ustaj|oporav|energij|odmor)/u,
+  sleepOnset: /(?:uspav|pre sna|vecer|vece|misl|telefon|ekran)/u,
+  continuity: /(?:tok noc|noc|probud|buđen)/u,
+  rhythm: /(?:ritm|raspored|vreme|dužin|duzin)/u,
+  multiple: /(?:noc|vecer|jutr|sna)/u,
+  whole: /(?:noc|san|spav|odmor)/u,
 });
-
-const collectReportStrings = (report) => [
-  { field: "profile.summary", value: report.profile.summary },
-  { field: "mainArea.title", value: report.mainArea.title },
-  { field: "mainArea.explanation", value: report.mainArea.explanation },
-  { field: "connections.title", value: report.connections.title },
-  ...report.connections.items.map((value, index) => ({ field: `connections.items[${index}]`, value })),
-  { field: "positiveOrWatch.title", value: report.positiveOrWatch.title },
-  { field: "positiveOrWatch.text", value: report.positiveOrWatch.text },
-  { field: "startingPoint.title", value: report.startingPoint.title },
-  { field: "startingPoint.text", value: report.startingPoint.text },
-  { field: "tonight.title", value: report.tonight.title },
-  ...report.tonight.actions.map((value, index) => ({ field: `tonight.actions[${index}]`, value })),
-  ...report.sevenDayPlan.flatMap(({ title, action }, index) => [
-    { field: `sevenDayPlan[${index}].title`, value: title },
-    { field: `sevenDayPlan[${index}].action`, value: action },
+const normalizeForSafety = (text) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/gu, "d").toLowerCase();
+const collectStrings = (report) => [
+  { field: "profile_explanation", value: report.profile_explanation },
+  { field: "priority.title", value: report.priority.title },
+  { field: "priority.area", value: report.priority.area },
+  { field: "priority.explanation", value: report.priority.explanation },
+  ...report.connections.map((value, index) => ({ field: `connections[${index}]`, value })),
+  { field: "stable_or_tracking.title", value: report.stable_or_tracking.title },
+  ...report.stable_or_tracking.items.map((value, index) => ({ field: `stable_or_tracking.items[${index}]`, value })),
+  ...report.seven_day_plan.flatMap((day, index) => [
+    { field: `seven_day_plan[${index}].action`, value: day.action },
+    { field: `seven_day_plan[${index}].observe`, value: day.observe },
   ]),
-  { field: "tracking.title", value: report.tracking.title },
-  ...report.tracking.items.map((value, index) => ({ field: `tracking.items[${index}]`, value })),
+  ...report.alternatives.map((value, index) => ({ field: `alternatives[${index}]`, value })),
+  ...report.review_questions.map((value, index) => ({ field: `review_questions[${index}]`, value })),
+  { field: "after_seven_days", value: report.after_seven_days },
   { field: "closing", value: report.closing },
 ];
-
-const hasSuppliedAnswerQuote = (text, input) => {
-  const quotes = [...text.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => match[1].trim());
-  return quotes.some((quoted) => input.answers.some((item) => item.answer === quoted));
-};
-const removeSuppliedAnswerQuotes = (text, input) => text.replace(/[„“]([^”“]+)[”“]/gu, (whole, quoted) =>
-  input.answers.some((item) => item.answer === quoted.trim()) ? " " : whole
+const hasText = (value, maxLength) => typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
+const getExactAnswerQuotes = (text, input) => [...text.matchAll(/[„“]([^”“]+)[”“]/gu)]
+  .map((match) => input.answers.find((answer) => answer.answer === match[1].trim()))
+  .filter(Boolean);
+const hasExactAnswerQuote = (text, input) => getExactAnswerQuotes(text, input).length > 0;
+const removeAnswerQuotes = (text, input) => text.replace(/[„“]([^”“]+)[”“]/gu, (whole, quoted) =>
+  input.answers.some((answer) => answer.answer === quoted.trim()) ? " " : whole
 );
-
-const hasTextOnly = (value, maxLength = 1200) =>
-  typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
 
 export const validateSleepPremiumReport = (candidate, input) => {
   if (!input || !SLEEP_PREMIUM_PROFILE_NAMES.includes(input.profile)) {
-    return invalid("input.profile", "one of the configured deterministic profiles", input?.profile, "Invalid deterministic Premium input.");
+    return invalid("input.profile", "configured deterministic profile", input?.profile, "Invalid deterministic Premium input.");
   }
-  const rootFields = ["version", "profile", "mainArea", "connections", "positiveOrWatch", "startingPoint", "tonight", "sevenDayPlan", "tracking", "closing"];
-  if (!keysEqual(candidate, rootFields)) {
-    const missingFields = rootFields.filter((key) => !Object.prototype.hasOwnProperty.call(candidate || {}, key));
-    const unexpectedFieldCount = candidate && typeof candidate === "object" && !Array.isArray(candidate)
-      ? Object.keys(candidate).filter((key) => !rootFields.includes(key)).length
-      : 0;
-    const field = missingFields[0] || (unexpectedFieldCount ? "$additionalProperties" : "$");
-    return {
-      ...invalid(field, missingFields.length ? "required report field must be present" : "no additional properties", candidate, "Report root has missing or unknown fields."),
-      diagnostic: {
-        field,
-        expected: missingFields.length ? "all 10 required report fields; no additional properties" : "no additional properties",
-        received: { ...safeShape(candidate), missingFields, unexpectedFieldCount },
-      },
-    };
+  if (!keysEqual(candidate, REPORT_KEYS)) return invalid("$", "Premium report v2 object with all required properties only", candidate, "Report root shape is invalid.");
+  if (candidate.version !== 2) return invalid("version", "integer enum [2]", candidate.version, "Unsupported Premium report version.");
+  if (candidate.profile !== input.profile) return invalid("profile", "exact deterministic profile string", candidate.profile, "AI profile does not match deterministic profile.");
+  if (!hasText(candidate.profile_explanation, COPY_LIMITS.profileExplanation) || /\d/u.test(removeAnswerQuotes(candidate.profile_explanation, input))) {
+    return invalid("profile_explanation", "personalized Serbian explanation, at most two short paragraphs, no digits", candidate.profile_explanation, "Profile explanation is invalid.");
   }
-  if (candidate.version !== 1) return invalid("version", "integer enum [1]", candidate.version, "Unsupported report version.");
-  if (!keysEqual(candidate.profile, ["name", "summary"])) {
-    return invalid("profile", "object with exactly name and summary", candidate.profile, "Profile object shape is invalid.");
+  if (!hasExactAnswerQuote(candidate.profile_explanation, input)) return invalid("profile_explanation", "personalized profile explanation citing an exact selected answer", candidate.profile_explanation, "Profile explanation is not grounded in an exact selected answer.");
+
+  const priority = getSleepPremiumPriority(input);
+  if (!keysEqual(candidate.priority, ["title", "area", "explanation"])) return invalid("priority", "object with title, deterministic area, and explanation", candidate.priority, "Priority object shape is invalid.");
+  if (candidate.priority.title !== "TVOJ PRIORITET #1" || candidate.priority.area !== priority.title) {
+    return invalid("priority.area", `deterministic priority area ${priority.title}`, candidate.priority.area, "AI priority does not match the deterministic priority selector.");
   }
-  if (candidate.profile.name !== input.profile) {
-    return invalid("profile.name", "exact deterministic profile string", candidate.profile.name, "Profile name does not match deterministic input.");
+  if (!hasText(candidate.priority.explanation, COPY_LIMITS.priorityExplanation) || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(candidate.priority.explanation)) || !hasExactAnswerQuote(candidate.priority.explanation, input)) {
+    return invalid("priority.explanation", `nonblank explanation tied to ${priority.title} and citing an exact selected answer`, candidate.priority.explanation, "Priority explanation is empty, unsupported, or unrelated to the deterministic area.");
   }
-  if (!hasTextOnly(candidate.profile.summary)) {
-    return invalid("profile.summary", "nonblank string, 1–1200 characters", candidate.profile.summary, "Profile summary is invalid.");
+  if (!Array.isArray(candidate.connections) || candidate.connections.length < 2 || candidate.connections.length > 4) {
+    return invalid("connections", "array of 2–4 concise answer-grounded connections", candidate.connections, "Connections must contain two to four items.");
   }
-  if (/\d/u.test(candidate.profile.summary)) {
-    return invalid("profile.summary", "nonblank customer-facing prose, 1–1200 characters, with no digits, numeric scores, or thresholds", candidate.profile.summary, "Profile summary must not contain numeric scores or thresholds.");
-  }
-  if (!keysEqual(candidate.mainArea, ["title", "explanation"])) {
-    return invalid("mainArea", "object with exactly title and explanation", candidate.mainArea, "Main-area object shape is invalid.");
-  }
-  if (candidate.mainArea.title !== getSleepPremiumMainAreaTitle(input)) {
-    return invalid("mainArea.title", "exact title selected by deterministic input", candidate.mainArea.title, "Main-area title does not match deterministic results.");
-  }
-  if (!hasTextOnly(candidate.mainArea.explanation, MAIN_AREA_EXPLANATION_MAX_LENGTH)) {
-    return invalid("mainArea.explanation", `nonblank string, 1–${MAIN_AREA_EXPLANATION_MAX_LENGTH} characters`, candidate.mainArea.explanation, "Main-area explanation is invalid.");
-  }
-  if (!hasSuppliedAnswerQuote(candidate.mainArea.explanation, input)) {
-    return invalid("mainArea.explanation", "include at least one exact supplied answer in Serbian quotation marks", candidate.mainArea.explanation, "Main-area explanation must cite an exact supplied answer.");
-  }
-  if (MAIN_AREA_SCORE_OR_THRESHOLD_COPY.test(removeSuppliedAnswerQuotes(candidate.mainArea.explanation, input))) {
-    return invalid("mainArea.explanation", "short Serbian prose without score/result/point/threshold claims outside exact supplied-answer quotes", candidate.mainArea.explanation, "Main-area explanation contains scoring or threshold copy.");
-  }
-  if (!keysEqual(candidate.connections, ["title", "items"])) {
-    return invalid("connections", "object with exactly title and items", candidate.connections, "Connections object shape is invalid.");
-  }
-  if (candidate.connections.title !== "Šta se kod tebe povezuje?") {
-    return invalid("connections.title", "fixed section title", candidate.connections.title, "Connections title is invalid.");
-  }
-  if (!Array.isArray(candidate.connections.items) || candidate.connections.items.length !== 2) {
-    return invalid("connections.items", "array of exactly 2 nonblank strings (1–1200 characters each)", candidate.connections.items, "Connections must contain exactly two items.");
-  }
-  if (candidate.connections.items.some((item) => !hasTextOnly(item))) {
-    const index = candidate.connections.items.findIndex((item) => !hasTextOnly(item));
-    return invalid(`connections.items[${index}]`, "nonblank string, 1–1200 characters", candidate.connections.items[index], "Connection item is invalid.");
-  }
-  const unsupportedConnectionIndex = candidate.connections.items.findIndex((item) => !hasSuppliedAnswerQuote(item, input));
-  if (unsupportedConnectionIndex >= 0) {
-    return invalid(`connections.items[${unsupportedConnectionIndex}]`, "include at least one exact supplied answer in Serbian quotation marks", candidate.connections.items[unsupportedConnectionIndex], "Each connection must cite an exact supplied answer.");
+  for (let index = 0; index < candidate.connections.length; index += 1) {
+    const answerQuotes = getExactAnswerQuotes(candidate.connections[index], input);
+    if (!hasText(candidate.connections[index], COPY_LIMITS.connection) || new Set(answerQuotes.map(({ questionId }) => questionId)).size < 2) {
+      return invalid(`connections[${index}]`, "nonblank connection, at most 500 characters, citing two distinct exact selected answers", candidate.connections[index], `Connection ${index + 1} is invalid or not grounded in two exact answers.`);
+    }
   }
 
-  const mode = getSleepPremiumStrengthMode(input);
-  if (
-    !keysEqual(candidate.positiveOrWatch, ["mode", "title", "text"]) ||
-    candidate.positiveOrWatch.mode !== mode ||
-    candidate.positiveOrWatch.title !== getSleepPremiumPositiveOrWatchTitle(mode) ||
-    !hasTextOnly(candidate.positiveOrWatch.text)
-  ) return invalid("positiveOrWatch", `object with mode ${mode}, its fixed title, and nonblank text (1–1200 characters)`, candidate.positiveOrWatch, "Strength/watch section violates deterministic state.");
+  const stableMode = getSleepPremiumStrengthMode(input);
+  if (!keysEqual(candidate.stable_or_tracking, ["mode", "title", "items"]) || candidate.stable_or_tracking.mode !== stableMode) {
+    return invalid("stable_or_tracking", `object with deterministic mode ${stableMode}, fixed title, and items`, candidate.stable_or_tracking, "Stable/tracking mode does not match deterministic areas.");
+  }
+  const expectedStableTitle = stableMode === "stable" ? "ŠTA VREDI DA ZADRŽIŠ" : "ŠTA JOŠ VREDI DA PRATIŠ";
+  if (candidate.stable_or_tracking.title !== expectedStableTitle) return invalid("stable_or_tracking.title", expectedStableTitle, candidate.stable_or_tracking.title, "Stable/tracking title is invalid.");
+  if (!Array.isArray(candidate.stable_or_tracking.items) || candidate.stable_or_tracking.items.length < 1 || candidate.stable_or_tracking.items.length > 2) {
+    return invalid("stable_or_tracking.items", "array of 1–2 concise items", candidate.stable_or_tracking.items, "Stable/tracking section must contain one or two items.");
+  }
+  for (let index = 0; index < candidate.stable_or_tracking.items.length; index += 1) {
+    const item = candidate.stable_or_tracking.items[index];
+    if (!hasText(item, COPY_LIMITS.stableOrTracking)) return invalid(`stable_or_tracking.items[${index}]`, "nonblank text, at most 350 characters", item, "Stable/tracking item is invalid.");
+    if (stableMode === "stable") {
+      const stableKeys = SLEEP_PREMIUM_DIMENSION_KEYS.filter((key) => input.dimensions[key].state === "STABLE");
+      if (!stableKeys.some((key) => STABLE_EVIDENCE[key].test(normalizeForSafety(item)))) {
+        return invalid(`stable_or_tracking.items[${index}]`, "item grounded in a genuinely STABLE deterministic area", item, "Stable item is not supported by deterministic evidence.");
+      }
+    }
+  }
 
-  if (!keysEqual(candidate.startingPoint, ["title", "text"])) {
-    return invalid("startingPoint", "object with exactly title and text", candidate.startingPoint, "Starting-point object shape is invalid.");
-  }
-  if (candidate.startingPoint.title !== "Gde ima najviše smisla da počneš?") {
-    return invalid("startingPoint.title", "fixed section title", candidate.startingPoint.title, "Starting-point title is invalid.");
-  }
-  if (!hasTextOnly(candidate.startingPoint.text)) {
-    return invalid("startingPoint.text", "nonblank string, 1–1200 characters", candidate.startingPoint.text, "Starting-point text is invalid.");
-  }
-  if (!keysEqual(candidate.tonight, ["title", "actions"])) {
-    return invalid("tonight", "object with exactly title and actions", candidate.tonight, "Tonight object shape is invalid.");
-  }
-  if (candidate.tonight.title !== "Šta možeš da uradiš već večeras?") {
-    return invalid("tonight.title", "fixed section title", candidate.tonight.title, "Tonight title is invalid.");
-  }
-  if (!Array.isArray(candidate.tonight.actions) || candidate.tonight.actions.length !== 3) {
-    return invalid("tonight.actions", "array of exactly 3 nonblank strings, each 1–400 characters", candidate.tonight.actions, "Tonight section must contain exactly three actions.");
-  }
-  const invalidActionIndex = candidate.tonight.actions.findIndex((item) => !hasTextOnly(item, 400));
-  if (invalidActionIndex >= 0) {
-    return invalid(`tonight.actions[${invalidActionIndex}]`, "nonblank string, 1–400 characters", candidate.tonight.actions[invalidActionIndex], "Tonight action is invalid.");
-  }
-  if (!Array.isArray(candidate.sevenDayPlan) || candidate.sevenDayPlan.length !== 7) {
-    return invalid("sevenDayPlan", "array of exactly 7 day objects", candidate.sevenDayPlan, "Seven-day plan must contain exactly seven days.");
-  }
+  if (!Array.isArray(candidate.seven_day_plan) || candidate.seven_day_plan.length !== 7) return invalid("seven_day_plan", "array of exactly seven plan days", candidate.seven_day_plan, "Seven-day plan must contain exactly seven days.");
   for (let index = 0; index < 7; index += 1) {
-    const day = candidate.sevenDayPlan[index];
-    if (!keysEqual(day, ["day", "title", "action"]) || day.day !== index + 1 || !hasTextOnly(day.title, 100) || !hasTextOnly(day.action, 400)) {
-      return invalid(`sevenDayPlan[${index}]`, `object {day: ${index + 1}, title: nonblank string 1–100 chars, action: nonblank string 1–400 chars}`, day, `Seven-day plan entry ${index + 1} is invalid.`);
+    const day = candidate.seven_day_plan[index];
+    if (!keysEqual(day, ["day", "action", "observe"]) || day.day !== index + 1 || !hasText(day.action, COPY_LIMITS.planAction) || !hasText(day.observe, COPY_LIMITS.planObserve)) {
+      return invalid(`seven_day_plan[${index}]`, `object {day: ${index + 1}, nonblank action <=${COPY_LIMITS.planAction}, nonblank observe <=${COPY_LIMITS.planObserve}}`, day, `Seven-day plan entry ${index + 1} is invalid.`);
     }
-    if (ACTION_PROMISE_COPY.test(normalizeForSafety(day.action))) {
-      return invalid(`sevenDayPlan[${index}].action`, "neutral experimental suggestion; do not promise to improve, fix, cure, regulate, or solve sleep", day.action, `Seven-day plan entry ${index + 1} promises a sleep outcome.`);
-    }
-  }
-  if (!keysEqual(candidate.tracking, ["title", "items"])) {
-    return invalid("tracking", "object with exactly title and items", candidate.tracking, "Tracking object shape is invalid.");
-  }
-  if (candidate.tracking.title !== "Šta vredi da pratiš?") {
-    return invalid("tracking.title", "fixed section title", candidate.tracking.title, "Tracking title is invalid.");
-  }
-  if (!Array.isArray(candidate.tracking.items) || candidate.tracking.items.length < 2 || candidate.tracking.items.length > 4) {
-    return invalid("tracking.items", "array of 2–4 nonblank strings, each 1–200 characters", candidate.tracking.items, "Tracking section must contain two to four items.");
-  }
-  const invalidTrackingIndex = candidate.tracking.items.findIndex((item) => !hasTextOnly(item, 200));
-  if (invalidTrackingIndex >= 0) {
-    return invalid(`tracking.items[${invalidTrackingIndex}]`, "nonblank string, 1–200 characters", candidate.tracking.items[invalidTrackingIndex], "Tracking item is invalid.");
-  }
-  if (!hasTextOnly(candidate.closing, 800)) {
-    return invalid("closing", "nonblank string, 1–800 characters", candidate.closing, "Closing text is empty or too long.");
-  }
-
-  const customerStrings = collectReportStrings(candidate);
-  const suppliedAnswers = new Set(input.answers.map((item) => item.answer));
-  const quotedAnswers = customerStrings.flatMap(({ value, field }) =>
-    [...value.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => ({ quoted: match[1].trim(), field }))
-  );
-  const unsupportedQuote = quotedAnswers.find(({ quoted }) => !suppliedAnswers.has(quoted));
-  if (unsupportedQuote) {
-    return invalid(unsupportedQuote.field, "any quoted text must exactly match a supplied answer; do not expose quoted text in logs", { type: "string", length: unsupportedQuote.quoted.length }, "Report contains quoted answer text not present in the supplied answers.");
-  }
-  const withoutEvidenceQuotes = (text) => removeSuppliedAnswerQuotes(text, input);
-  const normalizedStrings = customerStrings.map(({ value }) => normalizeForSafety(withoutEvidenceQuotes(value)));
-  const unsafeCopyIndex = normalizedStrings.findIndex((text) => INVALID_CUSTOMER_COPY.test(text));
-  if (unsafeCopyIndex >= 0) {
-    return invalid(customerStrings[unsafeCopyIndex].field, "customer-safe prose without technical, diagnostic, causal, or score claims", customerStrings[unsafeCopyIndex].value, "Report text contains disallowed technical, diagnostic, causal, or score copy.");
-  }
-
-  const strengthText = normalizeForSafety(withoutEvidenceQuotes(candidate.positiveOrWatch.text));
-  if (mode === "watch" && UNSUPPORTED_STRENGTH_COPY.test(strengthText)) {
-    return invalid("positiveOrWatch.text", "observation-focused wording without unsupported positive-strength claims", candidate.positiveOrWatch.text, "Watch mode must not claim an unsupported positive strength.");
-  }
-  if (mode === "watch" && !OBSERVATION_COPY.test(strengthText)) {
-    return invalid("positiveOrWatch.text", "include a permitted observation cue", candidate.positiveOrWatch.text, "Watch mode must describe something to observe.");
-  }
-  if (mode === "strength") {
-    const supportedStableAreas = SLEEP_PREMIUM_DIMENSION_KEYS.filter((key) => input.dimensions[key].state === "STABLE");
-    if (!supportedStableAreas.some((key) => STABLE_EVIDENCE[key].test(strengthText))) {
-      return invalid("positiveOrWatch.text", "strength wording must refer to a deterministic STABLE area", candidate.positiveOrWatch.text, "Strength copy is not tied to any STABLE area.");
+    if (!AREA_EVIDENCE[priority.key].test(normalizeForSafety(day.action)) || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(day.observe))) {
+      return invalid(`seven_day_plan[${index}]`, `action and observation tied to the fixed priority ${priority.title}`, day, `Seven-day plan entry ${index + 1} is unrelated to the deterministic priority.`);
     }
   }
+  if (!Array.isArray(candidate.alternatives) || candidate.alternatives.length < 1 || candidate.alternatives.length > 2) return invalid("alternatives", "array of 1–2 alternatives for the same priority", candidate.alternatives, "Alternatives must contain one or two items.");
+  for (let index = 0; index < candidate.alternatives.length; index += 1) {
+    if (!hasText(candidate.alternatives[index], COPY_LIMITS.alternative) || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(candidate.alternatives[index]))) return invalid(`alternatives[${index}]`, `nonblank alternative, at most 350 characters, tied to ${priority.title}`, candidate.alternatives[index], "Alternative is invalid or unrelated to the deterministic priority.");
+  }
+  if (!Array.isArray(candidate.review_questions) || candidate.review_questions.length !== 3) return invalid("review_questions", "array of exactly three review questions", candidate.review_questions, "Review questions must contain exactly three items.");
+  for (let index = 0; index < candidate.review_questions.length; index += 1) {
+    const question = candidate.review_questions[index];
+    if (!hasText(question, COPY_LIMITS.reviewQuestion) || !question.trim().endsWith("?") || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(question))) return invalid(`review_questions[${index}]`, `distinct question, at most 200 characters, tied to ${priority.title}`, question, "Review question is invalid or unrelated to the deterministic priority.");
+  }
+  if (new Set(candidate.review_questions.map((question) => normalizeForSafety(question.trim()))).size !== 3) return invalid("review_questions", "three distinct review questions", candidate.review_questions, "Review questions must be distinct.");
+  if (!hasText(candidate.after_seven_days, COPY_LIMITS.afterSevenDays) || !AREA_EVIDENCE[priority.key].test(normalizeForSafety(candidate.after_seven_days))) return invalid("after_seven_days", `nonblank review tied to ${priority.title}, at most 500 characters`, candidate.after_seven_days, "Seven-day review is invalid or unrelated to the deterministic priority.");
+  if (!hasText(candidate.closing, COPY_LIMITS.closing)) return invalid("closing", "nonblank calm informational note, at most 350 characters", candidate.closing, "Closing note is invalid.");
 
-  const mainExplanation = normalizeForSafety(candidate.mainArea.explanation);
-  const weakCoreAreas = CORE_DIMENSIONS.filter((key) => input.dimensions[key].state === "WEAK");
-  if (weakCoreAreas.some((key) => !WEAK_CORE_EVIDENCE[key].test(mainExplanation))) {
-    return invalid("mainArea.explanation", "mention each deterministic weak core area", candidate.mainArea.explanation, "Main-area explanation omits a weak core area.");
+  const allStrings = collectStrings(candidate);
+  const suppliedAnswerSet = new Set(input.answers.map(({ answer }) => answer));
+  for (let index = 0; index < allStrings.length; index += 1) {
+    const { field, value } = allStrings[index];
+    const quotes = [...value.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => match[1].trim());
+    if (quotes.some((quote) => !suppliedAnswerSet.has(quote))) return invalid(field, "quoted text must exactly match a supplied answer", { type: "string", length: value.length }, "Report contains an unsupported quote.");
+    const safeCopy = normalizeForSafety(removeAnswerQuotes(value, input));
+    if (INVALID_CUSTOMER_COPY.test(safeCopy)) return invalid(field, "customer-safe Serbian without medical, causal, internal, technical, or score claims", value, "Report contains disallowed customer-facing copy.");
+    if (GUARANTEE_COPY.test(safeCopy)) return invalid(field, "no claim that an action will improve, fix, cure, regulate, or solve sleep", value, "Report promises a sleep outcome.");
   }
 
   return { valid: true, report: candidate, reason: "ok" };

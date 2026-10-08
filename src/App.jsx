@@ -11,7 +11,8 @@ import "./App.css";
 const BACKEND_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const API_BASE = "/api";
 const LEGAL_LAST_UPDATED = "July 24, 2026";
-const PREMIUM_PRICE_EUR = "4.99";
+const PREMIUM_PRICE_EUR = "9.99";
+const SLEEP_PREMIUM_DISPLAY_PRICE_EUR = "9.99";
 const DRAFT_KEY = "mindscore_assessment_draft_v2";
 const COMPLETED_ASSESSMENT_KEY = "mindscore_completed_assessment_v1";
 
@@ -347,6 +348,90 @@ function SupportPage() {
   );
 }
 
+function SleepPremiumPaidReport({ report, areas, loading, error, onRetry }) {
+  if (loading && !report) return <p className="sleep-premium-report-status" role="status">Pripremamo tvoju personalizovanu analizu…</p>;
+  if (error && !report) {
+    return (
+      <div className="sleep-premium-report-status" role="status">
+        <p>{error}</p>
+        <button className="sleep-payment-secondary" onClick={onRetry}>Pokušaj ponovo</button>
+      </div>
+    );
+  }
+  if (!report) return null;
+
+  return (
+    <article className="sleep-premium-paid-report" aria-label="Tvoja personalizovana analiza sna">
+      <header className="sleep-premium-paid-heading">
+        <p>PERSONALIZOVANA ANALIZA</p>
+        <h2>Tvoja priča o snu</h2>
+      </header>
+
+      <section className="sleep-premium-paid-section">
+        <h3>ČETIRI DELA TVOG SNA</h3>
+        <div className="sleep-premium-area-grid">
+          {areas.map((area) => (
+            <div className="sleep-premium-area" key={area.key}>
+              <strong>{area.title}</strong>
+              <span>{area.status}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="sleep-premium-paid-section">
+        <h3>{report.profile}</h3>
+        <p>{report.profile_explanation}</p>
+      </section>
+
+      <section className="sleep-premium-paid-section sleep-premium-priority">
+        <p className="sleep-premium-priority-label">{report.priority.title}</p>
+        <h3>{report.priority.area}</h3>
+        <p>{report.priority.explanation}</p>
+      </section>
+
+      <section className="sleep-premium-paid-section">
+        <h3>ŠTA SE POVEZUJE U TVOJIM ODGOVORIMA</h3>
+        <ul>{report.connections.map((item, index) => <li key={index}>{item}</li>)}</ul>
+      </section>
+
+      <section className="sleep-premium-paid-section">
+        <h3>{report.stable_or_tracking.title}</h3>
+        <ul>{report.stable_or_tracking.items.map((item, index) => <li key={index}>{item}</li>)}</ul>
+      </section>
+
+      <section className="sleep-premium-paid-section">
+        <h3>PLAN ZA NAREDNIH SEDAM DANA</h3>
+        <ol className="sleep-premium-plan">
+          {report.seven_day_plan.map((day) => (
+            <li key={day.day}>
+              <strong>{`Dan ${day.day}`}</strong>
+              <p>{day.action}</p>
+              <span>{day.observe}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="sleep-premium-paid-section">
+        <h3>DRUGI NAČINI DA PRISTUPIŠ PRIORITETU</h3>
+        <ul>{report.alternatives.map((item, index) => <li key={index}>{item}</li>)}</ul>
+      </section>
+
+      <section className="sleep-premium-paid-section">
+        <h3>PITANJA ZA LIČNI OSVRT</h3>
+        <ol>{report.review_questions.map((item, index) => <li key={index}>{item}</li>)}</ol>
+      </section>
+
+      <section className="sleep-premium-paid-section">
+        <h3>POSLE SEDAM DANA</h3>
+        <p>{report.after_seven_days}</p>
+      </section>
+      <p className="sleep-premium-paid-closing">{report.closing}</p>
+    </article>
+  );
+}
+
 function PaymentSuccessPage() {
   const [state, setState] = useState({
     loading: true,
@@ -362,6 +447,10 @@ function PaymentSuccessPage() {
     resendMessage: "",
     emailSent: false,
     emailError: "",
+    premiumReport: null,
+    premiumAreas: [],
+    premiumLoading: false,
+    premiumError: "",
     attempts: 0,
     error: "",
   });
@@ -433,6 +522,37 @@ function PaymentSuccessPage() {
       if (timerId) window.clearTimeout(timerId);
     };
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!state.ready || state.assessmentType !== "sleep" || !state.downloadUrl || state.premiumReport || state.premiumError) return undefined;
+    const token = new URLSearchParams(state.downloadUrl.split("?")[1] || "").get("token");
+    if (!token) {
+      setState((previous) => ({ ...previous, premiumError: "Nismo uspeli da učitamo analizu. Pokušaj ponovo." }));
+      return undefined;
+    }
+
+    let cancelled = false;
+    setState((previous) => ({ ...previous, premiumLoading: true }));
+    fetch(apiUrl(`${API_BASE}/premium-report/analysis?token=${encodeURIComponent(token)}`))
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Nismo uspeli da učitamo analizu.");
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setState((previous) => ({ ...previous, premiumReport: data.report, premiumAreas: data.areas || [], premiumError: "" }));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setState((previous) => ({ ...previous, premiumError: "Analiza se trenutno ne prikazuje. Pokušaj ponovo." }));
+      })
+      .finally(() => {
+        if (!cancelled) setState((previous) => ({ ...previous, premiumLoading: false }));
+      });
+
+    return () => { cancelled = true; };
+  }, [state.ready, state.assessmentType, state.downloadUrl, state.premiumReport, state.premiumError]);
 
   const handleDownloadPdf = async () => {
     if (!state.downloadUrl) {
@@ -547,7 +667,7 @@ function PaymentSuccessPage() {
       />
       <main className={isSleepPurchase ? "sleep-payment-page" : "page payment-page"}>
         {isSleepPurchase ? (
-          <section className="sleep-payment-card" aria-live="polite">
+          <section className={`sleep-payment-card${state.premiumReport ? " sleep-payment-card-report" : ""}`} aria-live="polite">
             <header className="sleep-experience-brand" aria-label="MindScore AI">
               <span className="sleep-brand-mark" aria-hidden="true">M</span>
               <span>MindScore AI</span>
@@ -618,6 +738,16 @@ function PaymentSuccessPage() {
                   </button>
                 )}
               </div>
+            )}
+
+            {state.ready && state.assessmentType === "sleep" && (
+              <SleepPremiumPaidReport
+                report={state.premiumReport}
+                areas={state.premiumAreas}
+                loading={state.premiumLoading}
+                error={state.premiumError}
+                onRetry={() => setState((previous) => ({ ...previous, premiumError: "" }))}
+              />
             )}
 
             {state.resendMessage && !state.emailSent && <p className="sleep-payment-note">{state.resendMessage}</p>}
@@ -986,8 +1116,8 @@ function Homepage({ onStartAssessment }) {
   );
 }
 
-function SleepSignatureResultPage({ signatureResult }) {
-  const presentation = getSleepFreeResultPresentation(signatureResult);
+function SleepSignatureResultPage({ signatureResult, answerPoints }) {
+  const presentation = getSleepFreeResultPresentation(signatureResult, answerPoints);
 
   return (
     <>
@@ -1022,27 +1152,52 @@ function SleepSignatureResultPage({ signatureResult }) {
           {signatureResult ? (
             <article className="sleep-signature-card">
               <div className="sleep-signature-copy">
-                <h2>{signatureResult.signature}</h2>
+                <h2>TVOJ PROFIL SNA</h2>
+                <p className="sleep-result-profile-name">{signatureResult.signature}</p>
                 <p className="sleep-signature-description">{presentation?.profileDescription}</p>
               </div>
 
               {presentation && (
                 <section className="sleep-result-personalized" aria-labelledby="sleep-personalized-title">
                   <h3 id="sleep-personalized-title">ŠTA SE IZDVAJA U TVOJIM ODGOVORIMA</h3>
-                  <p>{presentation.insight}</p>
+                  <p>{presentation.primaryInsight}</p>
                 </section>
               )}
 
-              <section className="sleep-locked-teaser" aria-labelledby="sleep-locked-teaser-title">
-                <span className="sleep-lock-icon" aria-hidden="true">🔒</span>
-                <div className="sleep-locked-teaser-copy">
-                  <h3 id="sleep-locked-teaser-title">OVO JE SAMO DEO TVOJE SLIKE</h3>
-                  <p>Detaljnija analiza povezuje tvoje odgovore i pokazuje šta podržava tvoj san, šta ga remeti i gde se krije najveći prostor za promenu.</p>
-                </div>
-              </section>
+              {presentation?.secondaryDetail && (
+                <section className="sleep-result-personalized sleep-result-secondary" aria-labelledby="sleep-secondary-detail-title">
+                  <h3 id="sleep-secondary-detail-title">JOŠ JEDAN DETALJ</h3>
+                  <p>{presentation.secondaryDetail}</p>
+                </section>
+              )}
+
+              {presentation && (
+                <section className="sleep-result-personalized sleep-result-tonight" aria-labelledby="sleep-tonight-title">
+                  <h3 id="sleep-tonight-title">PROBAJ VEČERAS</h3>
+                  <p>{presentation.tonightAction}</p>
+                </section>
+              )}
+
+              {presentation && (
+                <section className="sleep-locked-teaser sleep-premium-boundary" aria-labelledby="sleep-locked-teaser-title">
+                  <span className="sleep-lock-icon" aria-hidden="true">🔒</span>
+                  <div className="sleep-locked-teaser-copy">
+                    <h3 id="sleep-locked-teaser-title">{presentation.premiumTeaser.heading}</h3>
+                    <p>{presentation.premiumTeaser.text}</p>
+                    <ul className="sleep-premium-boundary-items">
+                      {presentation.premiumTeaser.items.map((item) => (
+                        <li key={item.title}>
+                          <strong>🔒 {item.title}</strong>
+                          <span>{item.description}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </section>
+              )}
 
               <a className="sleep-discovery-cta" href="/sleep-premium">
-                <span>OTKRIJ CELU PRIČU O SVOM SNU <span aria-hidden="true">→</span></span>
+                <span>{presentation?.premiumTeaser.cta || "OTKRIJ ŠTA DALJE →"}</span>
               </a>
             </article>
           ) : (
@@ -1098,43 +1253,44 @@ function PremiumAiPreviewReport({ report, source, deterministicProfile, fallback
       )}
       <section>
         <h3>Tvoj profil sna</h3>
-        <p className="premium-preview-profile">{deterministicProfile}</p>
-        <p>{report.profile.summary}</p>
+        <p className="premium-preview-profile">{deterministicProfile || report.profile}</p>
+        <p>{report.profile_explanation}</p>
       </section>
       <section>
-        <h3>{report.mainArea.title}</h3>
-        <p>{report.mainArea.explanation}</p>
+        <h3>{report.priority.area}</h3>
+        <p>{report.priority.explanation}</p>
       </section>
       <section>
-        <h3>{report.connections.title}</h3>
-        <ul>{report.connections.items.map((item, index) => <li key={`connection-${index}`}>{item}</li>)}</ul>
+        <h3>Tvoja povezana zapažanja</h3>
+        <ul>{report.connections.map((item, index) => <li key={`connection-${index}`}>{item}</li>)}</ul>
       </section>
       <section>
-        <h3>{report.positiveOrWatch.title}</h3>
-        <p>{report.positiveOrWatch.text}</p>
-      </section>
-      <section>
-        <h3>{report.startingPoint.title}</h3>
-        <p>{report.startingPoint.text}</p>
-      </section>
-      <section>
-        <h3>{report.tonight.title}</h3>
-        <ol>{report.tonight.actions.map((action, index) => <li key={`tonight-${index}`}>{action}</li>)}</ol>
+        <h3>{report.stable_or_tracking.title}</h3>
+        <ul>{report.stable_or_tracking.items.map((item, index) => <li key={`mode-${index}`}>{item}</li>)}</ul>
       </section>
       <section>
         <h3>Plan za narednih 7 dana</h3>
         <ol className="premium-preview-plan">
-          {report.sevenDayPlan.map((day) => (
+          {report.seven_day_plan.map((day) => (
             <li key={day.day}>
-              <strong>{day.title}</strong>
+              <strong>Dan {day.day}</strong>
               <span>{day.action}</span>
+              <span>{day.observe}</span>
             </li>
           ))}
         </ol>
       </section>
       <section>
-        <h3>{report.tracking.title}</h3>
-        <ul>{report.tracking.items.map((item, index) => <li key={`tracking-${index}`}>{item}</li>)}</ul>
+        <h3>Alternativni pristupi</h3>
+        <ul>{report.alternatives.map((item, index) => <li key={`alternative-${index}`}>{item}</li>)}</ul>
+      </section>
+      <section>
+        <h3>Pitanja za osvrt</h3>
+        <ol>{report.review_questions.map((item, index) => <li key={`question-${index}`}>{item}</li>)}</ol>
+      </section>
+      <section>
+        <h3>Posle sedam dana</h3>
+        <p>{report.after_seven_days}</p>
       </section>
       <section>
         <h3>Završna poruka</h3>
@@ -1275,9 +1431,9 @@ function SleepPremiumDiscoveryPage() {
           </section>
 
           <section className="sleep-premium-purchase" aria-label="Kupovina kompletnog izveštaja">
-            <p className="sleep-discovery-hook">Ne moraš da menjaš sve. Važno je da znaš odakle da počneš.</p>
+            <p className="sleep-discovery-hook">Ne moraš da menjaš sve.<br />Važno je da znaš šta prvo ima smisla da probaš.</p>
             <section className="sleep-discovery-price" aria-label="Cena">
-              <strong>{formatConfiguredEurPrice(PREMIUM_PRICE_EUR)}</strong>
+              <strong>{formatConfiguredEurPrice(SLEEP_PREMIUM_DISPLAY_PRICE_EUR)}</strong>
               <span>Jednokratno · Bez pretplate</span>
             </section>
 
@@ -1301,7 +1457,7 @@ function SleepPremiumDiscoveryPage() {
               <button className="sleep-discovery-cta" type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Otvaramo sigurno plaćanje..." : "OTKLJUČAJ MOJ DETALJNI REZULTAT →"}
               </button>
-              <p className="sleep-premium-includes">Lično objašnjenje · konkretni koraci · plan za 7 dana · PDF za čuvanje</p>
+              <p className="sleep-premium-includes">Lično objašnjenje · prioritet #1 · plan za 7 dana · PDF za čuvanje</p>
               {premiumPreviewEnabled && (
                 <div className="premium-staging-preview-control">
                   <span>Developer alat · nije kupovina</span>
@@ -1594,7 +1750,7 @@ function AssessmentApp() {
   }
 
   if (currentQuestion === test.questions.length && selectedTest === "sleep") {
-    return <SleepSignatureResultPage signatureResult={sleepSignatureResult} />;
+    return <SleepSignatureResultPage signatureResult={sleepSignatureResult} answerPoints={userAnswers} />;
   }
 
   if (currentQuestion === test.questions.length) {

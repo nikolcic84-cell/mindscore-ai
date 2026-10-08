@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { buildSleepPremiumInput } from "../sleepPremiumInput.js";
 import {
-  getSleepPremiumPositiveOrWatchTitle,
+  getSleepPremiumPriority,
   getSleepPremiumStrengthMode,
   validateSleepPremiumReport,
 } from "../sleepPremiumSchema.js";
@@ -80,12 +80,11 @@ try {
     throw new Error(`Strict Premium schema validation failed: ${validation.reason}`);
   }
 
-  failUnless(generation.report.profile.name === EXPECTED_PROFILE, "AI profile does not match the deterministic profile.");
-  failUnless(generation.report.positiveOrWatch.mode === getSleepPremiumStrengthMode(input), "Positive/watch mode does not match deterministic dimensions.");
-  failUnless(generation.report.positiveOrWatch.title === getSleepPremiumPositiveOrWatchTitle(getSleepPremiumStrengthMode(input)), "Positive/watch title does not match deterministic mode.");
-  failUnless(generation.report.tonight.actions.length === 3, "Expected exactly three tonight actions.");
-  failUnless(generation.report.sevenDayPlan.length === 7, "Expected exactly seven plan days.");
-  failUnless(generation.report.tracking.items.length >= 2 && generation.report.tracking.items.length <= 4, "Expected two to four tracking items.");
+  failUnless(generation.report.profile === EXPECTED_PROFILE, "AI profile does not match the deterministic profile.");
+  failUnless(generation.report.priority.area === getSleepPremiumPriority(input).title, "Priority does not match the deterministic selector.");
+  failUnless(generation.report.stable_or_tracking.mode === getSleepPremiumStrengthMode(input), "Stable/tracking mode does not match deterministic dimensions.");
+  failUnless(generation.report.review_questions.length === 3, "Expected exactly three review questions.");
+  failUnless(generation.report.seven_day_plan.length === 7, "Expected exactly seven plan days.");
 
   schemaStatus = "PASS";
   testSucceeded = true;

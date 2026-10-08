@@ -1,7 +1,13 @@
 import { makeParseableTextFormat } from "openai/lib/parser.js";
 import { buildSleepPremiumFallback } from "./sleepPremiumFallback.js";
 import { buildSleepPremiumPrompt } from "./sleepPremiumPrompt.js";
-import { buildSleepPremiumJsonSchema, validateSleepPremiumReport } from "./sleepPremiumSchema.js";
+import {
+  buildSleepPremiumJsonSchema,
+  getSleepPremiumAreaOverview,
+  getSleepPremiumPriority,
+  getSleepPremiumStrengthMode,
+  validateSleepPremiumReport,
+} from "./sleepPremiumSchema.js";
 
 const MODEL = "gpt-5-mini";
 const TIMEOUT_MS = 60_000;
@@ -98,6 +104,8 @@ export const generateSleepPremiumReport = async ({
   }
 
   const schema = buildSleepPremiumJsonSchema(input);
+  const properties = schema.schema.properties;
+  const mode = getSleepPremiumStrengthMode(input);
   try {
     const response = await callWithTimeout((signal) =>
       openaiClient.responses.parse(
@@ -107,13 +115,13 @@ export const generateSleepPremiumReport = async ({
           text: { format: makeParseableTextFormat(schema, JSON.parse) },
           input: buildSleepPremiumPrompt(input, {
             profile: input.profile,
-            profileSummaryMaxLength: schema.schema.properties.profile.properties.summary.maxLength,
-            mainAreaTitle: schema.schema.properties.mainArea.properties.title.enum[0],
-            mainAreaExplanationMaxLength: schema.schema.properties.mainArea.properties.explanation.maxLength,
-            tonightActionMaxLength: schema.schema.properties.tonight.properties.actions.items.maxLength,
-            sevenDayActionMaxLength: schema.schema.properties.sevenDayPlan.items.properties.action.maxLength,
-            positiveOrWatchMode: schema.schema.properties.positiveOrWatch.properties.mode.enum[0],
-            positiveOrWatchTitle: schema.schema.properties.positiveOrWatch.properties.title.const,
+            priorityArea: getSleepPremiumPriority(input).title,
+            mode,
+            stableTitle: properties.stable_or_tracking.properties.title.enum[0],
+            stableAreas: getSleepPremiumAreaOverview(input)
+              .filter(({ status }) => status === "Deluje mirnije")
+              .map(({ title }) => title),
+            profileExplanationMaxLength: properties.profile_explanation.maxLength,
           }),
         },
         { signal }

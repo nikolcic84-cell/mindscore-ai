@@ -2,26 +2,30 @@ import { getSleepDimensionSeverity } from "./sleepSignature.js";
 
 const PREMIUM_BENEFITS = Object.freeze([
   {
-    title: "GDE TVOJ SAN NAJVIŠE TRPI?",
-    description: "Videćeš koji deo tvog sna se najviše izdvaja i kako se to odražava na ostatak tvoje noći.",
+    title: "TVOJ PRIORITET #1",
+    description: "Na osnovu svih 12 odgovora pokazaćemo ti gde kod tebe ima najviše smisla da počneš.",
   },
   {
-    title: "ŠTA SE KOD TEBE POVEZUJE?",
+    title: "KAKO SE TVOJIH 12 ODGOVORA POVEZUJE",
     description: "Videćeš kako se uspavljivanje, tok noći, ritam i osećaj nakon buđenja uklapaju u tvoju ukupnu sliku.",
   },
   {
-    stableTitle: "ŠTA TI VEĆ IDE DOBRO?",
-    stableDescription: "Pokazaćemo ti šta u tvom snu već funkcioniše i šta vredi da zadržiš.",
-    watchTitle: "ŠTA JOŠ VREDI DA PRATIŠ?",
-    watchDescription: "Pokazaćemo ti koji deo tvog sna još nije sasvim jasan i na šta vredi da obratiš pažnju narednih dana.",
+    stableTitle: "ŠTA VREDI DA ZADRŽIŠ",
+    stableDescription: "Pokazaćemo ti šta u tvom snu već funkcioniše i šta nema potrebe da menjaš.",
+    watchTitle: "ŠTA JOŠ VREDI DA PRATIŠ",
+    watchDescription: "Pokazaćemo ti šta još nije sasvim jasno i na šta vredi da obratiš pažnju narednih dana.",
   },
   {
-    title: "GDE IMA NAJVIŠE SMISLA DA POČNEŠ?",
-    description: "Umesto gomile opštih saveta, izdvojićemo ono što najviše odgovara tvojim rezultatima.",
+    title: "TVOJ LIČNI PLAN ZA 7 DANA",
+    description: "Dobićeš konkretan i jednostavan korak za svaki dan, prilagođen tvojim odgovorima.",
   },
   {
-    title: "ŠTA MOŽEŠ DA URADIŠ VEĆ VEČERAS?",
-    description: "Dobićeš konkretne korake koje možeš odmah da primeniš i jednostavan plan za narednih 7 dana.",
+    title: "AKO PRVI KORAK NE POMOGNE",
+    description: "Dobićeš sledeći korak koji ima smisla da probaš, bez menjanja svega odjednom.",
+  },
+  {
+    title: "TVOJ PDF PLAN",
+    description: "Sačuvaj svoj rezultat, objašnjenje i plan za narednih 7 dana.",
   },
 ]);
 

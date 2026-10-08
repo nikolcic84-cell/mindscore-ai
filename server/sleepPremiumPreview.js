@@ -29,21 +29,6 @@ const getFallbackDiagnostic = (generation) => {
       return { code: "OTHER_GENERATOR_ERROR", reason: "Other Premium generator error." };
   }
 };
-const getCustomerFacingReport = (report) => ({
-  profile: report.profile,
-  mainArea: report.mainArea,
-  connections: report.connections,
-  positiveOrWatch: {
-    title: report.positiveOrWatch.title,
-    text: report.positiveOrWatch.text,
-  },
-  startingPoint: report.startingPoint,
-  tonight: report.tonight,
-  sevenDayPlan: report.sevenDayPlan,
-  tracking: report.tracking,
-  closing: report.closing,
-});
-
 export const generateSleepPremiumPreview = async ({
   enabled = isPremiumAiPreviewEnabled(),
   answers,
@@ -87,9 +72,9 @@ export const generateSleepPremiumPreview = async ({
   }
 
   const validation = validateSleepPremiumReport(generation.report, input);
-  if (!validation.valid || validation.report.profile.name !== input.profile) {
+  if (!validation.valid || validation.report.profile !== input.profile) {
     const diagnostic = validation.diagnostic || {
-      field: "profile.name",
+      field: "profile",
       expected: "exact deterministic profile",
       received: { type: "mismatch" },
     };
@@ -126,7 +111,7 @@ export const generateSleepPremiumPreview = async ({
       source: fallbackUsed ? "fallback" : "ai",
       ...(fallbackDiagnostic ? { fallbackDiagnostic } : {}),
       deterministicProfile: input.profile,
-      report: getCustomerFacingReport(validation.report),
+      report: validation.report,
     },
   };
 };
