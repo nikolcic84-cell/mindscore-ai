@@ -3,6 +3,16 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
     profile: input.profile,
     answers: input.answers.map(({ questionId, question, answer }) => ({ questionId, question, answer })),
   };
+  const priorityEvidenceQuestionIds = {
+    "Osećaj po buđenju": ["Q1", "Q8"],
+    "Period pre sna": ["Q2", "Q6"],
+    "Tok noći": ["Q3", "Q12"],
+    "Vreme spavanja i buđenja": ["Q5", "Q10"],
+    "Više delova tvoje noći": ["Q1", "Q3"],
+    "Tvoj san u celini": ["Q1", "Q12"],
+  }[enforced.priorityArea] || [];
+  const priorityEvidenceAnswer = input.answers.find(({ questionId }) => priorityEvidenceQuestionIds.includes(questionId))?.answer || input.answers[0].answer;
+  const priorityExplanationExample = `Primer za priority.explanation uz isti prioritet „${enforced.priorityArea}“: U okviru teme ${enforced.priorityArea}, tvoj odgovor „${priorityEvidenceAnswer}“ daje konkretan lični kontekst. Ovaj prvi fokus ostaje ${enforced.priorityArea}.`;
   const profileExampleAnswer = input.answers[0].answer;
   const profileExplanationExample = `Primer obaveznog citata u profile_explanation: Tvoj odgovor „${profileExampleAnswer}“ daje konkretan lični oslonac za tumačenje profila.`;
   const connectionExampleIds = input.answers.slice(0, 2).map(({ questionId }) => questionId);
@@ -25,7 +35,8 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
       `stable_or_tracking.mode je konačan: ${enforced.mode}. Zadrži i unapred propisan naslov sekcije: „${enforced.stableTitle}“. Dozvoljene stvarno mirnije oblasti su: ${enforced.stableAreas.length ? enforced.stableAreas.join(", ") : "nema"}. Kod stable navedi isključivo jednu od navedenih oblasti; kod tracking opiši samo šta je korisno da se posmatra. Nikada ne prikazuj interne nazive stanja.`,
     `profile_explanation: 1–2 lične, kratke rečenice o tome kako profil pruža okvir za odgovore ove osobe, najviše ${enforced.profileExplanationMaxLength} znakova. OBAVEZNO uključi najmanje jedan ceo answer iz trenutnih 12 odgovora, kopiran VERBATIM, potpuno identično znak po znak, unutar srpskih navodnika „…“. Nemoj parafrazirati citirani odgovor; pre slanja proveri da se tekst između navodnika tačno poklapa sa nekim ulaznim answer poljem. Nemoj prepisivati generički opis profila ili predstavljati profil kao dijagnozu.`,
     profileExplanationExample,
-      `priority: naslov mora biti „TVOJ PRIORITET #1“, oblast mora biti tačno „${enforced.priorityArea}“. Explanation kratko obrazlaže zašto je to dobar prvi fokus uz direktne odgovore i citira bar jedan ceo odgovor doslovno; bez uzroka i bez tvrdnji koje nisu potkrepljene.`,
+    `priority: title mora biti tačno „TVOJ PRIORITET #1“, area tačno „${enforced.priorityArea}“. Explanation mora jasno ostati o ovom fiksnom prioritetu i citirati najmanje jedan relevantan selected answer. KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO. Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj citirani odgovor. Prepiši ga karakter-po-karakter iz jednog od ulaznih answer polja, uključujući interpunkciju i dijakritike, unutar srpskih navodnika „…“. Explanation ostaje jednostavan i prirodan, bez medicinske tvrdnje, dijagnoze ili uzročnog objašnjenja. Ne menjaj ni profil ni prioritet.`,
+    priorityExplanationExample,
     `connections: vrati 2–4 objekta, svaki tačno oblika {"questionIds": ["Qx", "Qy"], "text": "..."}. Svaki questionIds niz mora imati tačno dva različita ID-ja iz questionId polja ulaznih odgovora i oni predstavljaju dokaze za tu stavku. Polje text sadrži samo prirodan, kratak srpski opis veze između tema tih odgovora; ne mora da ponavlja ili citira tekst odgovora. U text nemoj prikazivati Q-ID oznake. Ne tvrdi uzročnost.`,
     connectionExample,
     `Za svaku connections stavku proveri da su oba ID-ja preuzeta iz ulaznih odgovora, da su međusobno različita, i da je text čitljiv korisniku bez izlaganja ID-ja. Odgovor u textu personalizuj prema izabranim stavkama, ali nema potrebe za doslovnim citatima.`,
@@ -36,7 +47,7 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
     "review_questions: vrati TAČNO tri kratka pitanja za lični osvrt posle plana. Pitanja su različita i vezana za isti prioritet.",
       "after_seven_days: kratak, personalizovan predlog kako uporediti zapažanja sa početnim utiskom, bez zaključka da je nešto uzrokovalo promenu.",
     "closing: kratka, smirena wellness napomena, ne dijagnoza. Možeš reći da razgovor sa zdravstvenim stručnjakom može biti koristan ako teškoće dugo traju i znatno utiču na svakodnevicu. Bez alarmiranja.",
-    "Ako koristiš navodnike za answer u drugim sekcijama, citiraj samo ceo tekst kopiran iz ulaza. U connections se oslanjaj na questionIds i prirodan opis; ne stavljaj ID-jeve u tekst namenjen korisniku. Ne izmišljaj životne okolnosti, navike, osećanja ili činjenice.",
+    "Kada bilo koje polje zahteva answer kao dokaz, KOPIRAJ selected answer TAČNO. Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj ga. Profil i priority explanation moraju sadržati ceo verbatim answer u srpskim navodnicima. U connections se oslanjaj na questionIds i prirodan opis; ne stavljaj ID-jeve u tekst namenjen korisniku. Ne izmišljaj životne okolnosti, navike, osećanja ili činjenice.",
     "Zabranjeno u svim customer-facing tekstovima: dijagnoze i medicinske tvrdnje; pripisivanje uzroka; tvrdnje da nešto sigurno poboljšava, popravlja, leči, reguliše ili rešava san; lekovi ili terapija; ocene, brojevi, procenti i pragovi; interni/tehnički/AI izrazi; obećanja i zastrašivanje.",
     "Piši jasno, toplo i sažeto na srpskom. Obraćaj se direktno osobi, predlaži bez naređivanja, ne ponavljaj iste savete u svakoj sekciji. Personalizacija mora proizaći iz dostavljenih odgovora.",
     `Fiksni podaci: ${JSON.stringify({ profile: enforced.profile, priorityArea: enforced.priorityArea, mode: enforced.mode, stableTitle: enforced.stableTitle })}`,

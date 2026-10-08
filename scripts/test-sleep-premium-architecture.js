@@ -132,6 +132,8 @@ assert.match(prompt, /ne mora da ponavlja ili citira tekst odgovora/);
 assert.match(prompt, /OBAVEZNO uključi najmanje jedan ceo answer.*kopiran VERBATIM/s);
 assert.match(prompt, /Nemoj parafrazirati citirani odgovor/);
 assert.ok(prompt.includes(`Tvoj odgovor „${input.answers[0].answer}“ daje konkretan lični oslonac`), "profile explanation example uses a complete selected answer from the current input");
+assert.match(prompt, /KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO/);
+assert.match(prompt, /Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj/);
 assert.ok(prompt.includes(JSON.stringify({ questionIds: input.answers.slice(0, 2).map(({ questionId }) => questionId), text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })), "prompt includes a valid connection object example with actual available question IDs");
 
 const onsetInput = buildSleepPremiumInput(personas[2]);
@@ -187,6 +189,19 @@ unrelatedAction.seven_day_plan[0].action = "Probaj da napraviš listu za kupovin
 expectInvalid(unrelatedAction, "seven_day_plan[0]");
 const onsetPlanFallback = buildSleepPremiumFallback(onsetInput);
 assert.equal(validateSleepPremiumReport(onsetPlanFallback, onsetInput).valid, true, "complete seven-day plan tied to the fixed sleep-onset priority is accepted");
+const onsetPriorityFallback = structuredClone(onsetPlanFallback);
+const exactOnsetAnswer = onsetInput.answers.find(({ questionId }) => questionId === "Q2").answer;
+onsetPriorityFallback.priority.explanation = `U okviru teme Period pre sna, tvoj odgovor „${exactOnsetAnswer}“ daje konkretan lični kontekst za ovaj prioritet.`;
+assert.equal(validateSleepPremiumReport(onsetPriorityFallback, onsetInput).valid, true, "priority explanation with exact selected answer and fixed priority passes");
+const missingPriorityAnswer = structuredClone(onsetPriorityFallback);
+missingPriorityAnswer.priority.explanation = "U okviru teme Period pre sna, ovo je koristan prvi fokus koji vredi pratiti.";
+expectInvalid(missingPriorityAnswer, "priority.explanation", onsetInput);
+const paraphrasedPriorityAnswer = structuredClone(onsetPriorityFallback);
+paraphrasedPriorityAnswer.priority.explanation = `U okviru teme Period pre sna, tvoj odgovor „${exactOnsetAnswer.slice(0, -1)}.“ daje konkretan lični kontekst za ovaj prioritet.`;
+expectInvalid(paraphrasedPriorityAnswer, "priority.explanation", onsetInput);
+const unrelatedPriorityEvidence = structuredClone(onsetPriorityFallback);
+unrelatedPriorityEvidence.priority.explanation = `U okviru teme Tok noći, tvoj odgovor „${exactOnsetAnswer}“ daje konkretan lični kontekst za ovaj prioritet.`;
+expectInvalid(unrelatedPriorityEvidence, "priority.explanation", onsetInput);
 assert.deepEqual(onsetPlanFallback.seven_day_plan.map(({ day }) => day), [1, 2, 3, 4, 5, 6, 7]);
 assert.equal(onsetPlanFallback.seven_day_plan.every(({ action, observe }) =>
   action.toLowerCase().includes("period pre sna") && observe.toLowerCase().includes("period pre sna")
