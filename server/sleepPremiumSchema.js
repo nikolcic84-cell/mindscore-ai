@@ -12,7 +12,21 @@ const keysEqual = (value, expected) =>
   Object.keys(value).length === expected.length &&
   expected.every((key) => Object.prototype.hasOwnProperty.call(value, key));
 
-const textSchema = { type: "string", minLength: 1, maxLength: 1200 };
+const textSchema = (maxLength = 1200) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
+const fixedStringSchema = (value) => ({ type: "string", enum: [value] });
+const safeShape = (value) => {
+  if (value === null) return { type: "null" };
+  if (Array.isArray(value)) return { type: "array", length: value.length };
+  if (typeof value === "string") return { type: "string", length: value.length, blank: value.trim().length === 0 };
+  if (typeof value === "number") return { type: Number.isInteger(value) ? "integer" : "number" };
+  if (typeof value === "object") return { type: "object", keyCount: Object.keys(value).length };
+  return { type: typeof value };
+};
+const invalid = (field, expected, received, reason) => ({
+  valid: false,
+  reason,
+  diagnostic: { field, expected, received: safeShape(received) },
+});
 const objectSchema = (properties, required = Object.keys(properties)) => ({
   type: "object",
   additionalProperties: false,
@@ -20,11 +34,11 @@ const objectSchema = (properties, required = Object.keys(properties)) => ({
   required,
 });
 
-const stringArraySchema = (minItems, maxItems) => ({
+const stringArraySchema = (minItems, maxItems, itemMaxLength = 1200) => ({
   type: "array",
   minItems,
   maxItems,
-  items: textSchema,
+  items: textSchema(itemMaxLength),
 });
 
 export const getSleepPremiumStrengthMode = (input) =>
@@ -58,31 +72,31 @@ export const getSleepPremiumMainAreaTitle = (input) => {
 const makeProperties = (input) => {
   const strengthMode = getSleepPremiumStrengthMode(input);
   return objectSchema({
-    version: { type: "integer", const: 1 },
+    version: { type: "integer", enum: [1] },
     profile: objectSchema({
       name: { type: "string", enum: [input.profile] },
-      summary: textSchema,
+      summary: textSchema(),
     }),
     mainArea: objectSchema({
       title: { type: "string", enum: [getSleepPremiumMainAreaTitle(input)] },
-      explanation: textSchema,
+      explanation: textSchema(),
     }),
     connections: objectSchema({
-      title: { type: "string", const: "Šta se kod tebe povezuje?" },
+      title: fixedStringSchema("Šta se kod tebe povezuje?"),
       items: stringArraySchema(2, 2),
     }),
     positiveOrWatch: objectSchema({
       mode: { type: "string", enum: [strengthMode] },
-      title: { type: "string", const: getSleepPremiumPositiveOrWatchTitle(strengthMode) },
-      text: textSchema,
+      title: fixedStringSchema(getSleepPremiumPositiveOrWatchTitle(strengthMode)),
+      text: textSchema(),
     }),
     startingPoint: objectSchema({
-      title: { type: "string", const: "Gde ima najviše smisla da počneš?" },
-      text: textSchema,
+      title: fixedStringSchema("Gde ima najviše smisla da počneš?"),
+      text: textSchema(),
     }),
     tonight: objectSchema({
-      title: { type: "string", const: "Šta možeš da uradiš već večeras?" },
-      actions: stringArraySchema(3, 3),
+      title: fixedStringSchema("Šta možeš da uradiš već večeras?"),
+      actions: stringArraySchema(3, 3, 400),
     }),
     sevenDayPlan: {
       type: "array",
@@ -90,15 +104,15 @@ const makeProperties = (input) => {
       maxItems: 7,
       items: objectSchema({
         day: { type: "integer", minimum: 1, maximum: 7 },
-        title: textSchema,
-        action: textSchema,
+        title: textSchema(100),
+        action: textSchema(400),
       }),
     },
     tracking: objectSchema({
-      title: { type: "string", const: "Šta vredi da pratiš?" },
-      items: stringArraySchema(2, 4),
+      title: fixedStringSchema("Šta vredi da pratiš?"),
+      items: stringArraySchema(2, 4, 200),
     }),
-    closing: textSchema,
+    closing: textSchema(800),
   });
 };
 
@@ -125,21 +139,24 @@ const WEAK_CORE_EVIDENCE = Object.freeze({
 });
 
 const collectReportStrings = (report) => [
-  report.profile.summary,
-  report.mainArea.title,
-  report.mainArea.explanation,
-  report.connections.title,
-  ...report.connections.items,
-  report.positiveOrWatch.title,
-  report.positiveOrWatch.text,
-  report.startingPoint.title,
-  report.startingPoint.text,
-  report.tonight.title,
-  ...report.tonight.actions,
-  ...report.sevenDayPlan.flatMap(({ title, action }) => [title, action]),
-  report.tracking.title,
-  ...report.tracking.items,
-  report.closing,
+  { field: "profile.summary", value: report.profile.summary },
+  { field: "mainArea.title", value: report.mainArea.title },
+  { field: "mainArea.explanation", value: report.mainArea.explanation },
+  { field: "connections.title", value: report.connections.title },
+  ...report.connections.items.map((value, index) => ({ field: `connections.items[${index}]`, value })),
+  { field: "positiveOrWatch.title", value: report.positiveOrWatch.title },
+  { field: "positiveOrWatch.text", value: report.positiveOrWatch.text },
+  { field: "startingPoint.title", value: report.startingPoint.title },
+  { field: "startingPoint.text", value: report.startingPoint.text },
+  { field: "tonight.title", value: report.tonight.title },
+  ...report.tonight.actions.map((value, index) => ({ field: `tonight.actions[${index}]`, value })),
+  ...report.sevenDayPlan.flatMap(({ title, action }, index) => [
+    { field: `sevenDayPlan[${index}].title`, value: title },
+    { field: `sevenDayPlan[${index}].action`, value: action },
+  ]),
+  { field: "tracking.title", value: report.tracking.title },
+  ...report.tracking.items.map((value, index) => ({ field: `tracking.items[${index}]`, value })),
+  { field: "closing", value: report.closing },
 ];
 
 const hasSuppliedAnswerQuote = (text, input) => {
@@ -152,26 +169,62 @@ const hasTextOnly = (value, maxLength = 1200) =>
 
 export const validateSleepPremiumReport = (candidate, input) => {
   if (!input || !SLEEP_PREMIUM_PROFILE_NAMES.includes(input.profile)) {
-    return { valid: false, reason: "Invalid deterministic Premium input." };
+    return invalid("input.profile", "one of the configured deterministic profiles", input?.profile, "Invalid deterministic Premium input.");
   }
-  if (!keysEqual(candidate, ["version", "profile", "mainArea", "connections", "positiveOrWatch", "startingPoint", "tonight", "sevenDayPlan", "tracking", "closing"])) {
-    return { valid: false, reason: "Report root has missing or unknown fields." };
+  const rootFields = ["version", "profile", "mainArea", "connections", "positiveOrWatch", "startingPoint", "tonight", "sevenDayPlan", "tracking", "closing"];
+  if (!keysEqual(candidate, rootFields)) {
+    const missingFields = rootFields.filter((key) => !Object.prototype.hasOwnProperty.call(candidate || {}, key));
+    const unexpectedFieldCount = candidate && typeof candidate === "object" && !Array.isArray(candidate)
+      ? Object.keys(candidate).filter((key) => !rootFields.includes(key)).length
+      : 0;
+    const field = missingFields[0] || (unexpectedFieldCount ? "$additionalProperties" : "$");
+    return {
+      ...invalid(field, missingFields.length ? "required report field must be present" : "no additional properties", candidate, "Report root has missing or unknown fields."),
+      diagnostic: {
+        field,
+        expected: missingFields.length ? "all 10 required report fields; no additional properties" : "no additional properties",
+        received: { ...safeShape(candidate), missingFields, unexpectedFieldCount },
+      },
+    };
   }
-  if (candidate.version !== 1) return { valid: false, reason: "Unsupported report version." };
-  if (!keysEqual(candidate.profile, ["name", "summary"]) || candidate.profile.name !== input.profile || !hasTextOnly(candidate.profile.summary)) {
-    return { valid: false, reason: "Profile name or summary is invalid." };
+  if (candidate.version !== 1) return invalid("version", "integer enum [1]", candidate.version, "Unsupported report version.");
+  if (!keysEqual(candidate.profile, ["name", "summary"])) {
+    return invalid("profile", "object with exactly name and summary", candidate.profile, "Profile object shape is invalid.");
   }
-  if (!keysEqual(candidate.mainArea, ["title", "explanation"]) || candidate.mainArea.title !== getSleepPremiumMainAreaTitle(input) || !hasTextOnly(candidate.mainArea.explanation)) {
-    return { valid: false, reason: "Main area does not match deterministic results." };
+  if (candidate.profile.name !== input.profile) {
+    return invalid("profile.name", "exact deterministic profile string", candidate.profile.name, "Profile name does not match deterministic input.");
+  }
+  if (!hasTextOnly(candidate.profile.summary)) {
+    return invalid("profile.summary", "nonblank string, 1–1200 characters", candidate.profile.summary, "Profile summary is invalid.");
+  }
+  if (!keysEqual(candidate.mainArea, ["title", "explanation"])) {
+    return invalid("mainArea", "object with exactly title and explanation", candidate.mainArea, "Main-area object shape is invalid.");
+  }
+  if (candidate.mainArea.title !== getSleepPremiumMainAreaTitle(input)) {
+    return invalid("mainArea.title", "exact title selected by deterministic input", candidate.mainArea.title, "Main-area title does not match deterministic results.");
+  }
+  if (!hasTextOnly(candidate.mainArea.explanation)) {
+    return invalid("mainArea.explanation", "nonblank string, 1–1200 characters", candidate.mainArea.explanation, "Main-area explanation is invalid.");
   }
   if (!hasSuppliedAnswerQuote(candidate.mainArea.explanation, input)) {
-    return { valid: false, reason: "Main-area explanation must cite an exact supplied answer." };
+    return invalid("mainArea.explanation", "include at least one exact supplied answer in Serbian quotation marks", candidate.mainArea.explanation, "Main-area explanation must cite an exact supplied answer.");
   }
-  if (!keysEqual(candidate.connections, ["title", "items"]) || candidate.connections.title !== "Šta se kod tebe povezuje?" || !Array.isArray(candidate.connections.items) || candidate.connections.items.length !== 2 || candidate.connections.items.some((item) => !hasTextOnly(item))) {
-    return { valid: false, reason: "Connections section is invalid." };
+  if (!keysEqual(candidate.connections, ["title", "items"])) {
+    return invalid("connections", "object with exactly title and items", candidate.connections, "Connections object shape is invalid.");
   }
-  if (candidate.connections.items.some((item) => !hasSuppliedAnswerQuote(item, input))) {
-    return { valid: false, reason: "Each connection must cite an exact supplied answer." };
+  if (candidate.connections.title !== "Šta se kod tebe povezuje?") {
+    return invalid("connections.title", "fixed section title", candidate.connections.title, "Connections title is invalid.");
+  }
+  if (!Array.isArray(candidate.connections.items) || candidate.connections.items.length !== 2) {
+    return invalid("connections.items", "array of exactly 2 nonblank strings (1–1200 characters each)", candidate.connections.items, "Connections must contain exactly two items.");
+  }
+  if (candidate.connections.items.some((item) => !hasTextOnly(item))) {
+    const index = candidate.connections.items.findIndex((item) => !hasTextOnly(item));
+    return invalid(`connections.items[${index}]`, "nonblank string, 1–1200 characters", candidate.connections.items[index], "Connection item is invalid.");
+  }
+  const unsupportedConnectionIndex = candidate.connections.items.findIndex((item) => !hasSuppliedAnswerQuote(item, input));
+  if (unsupportedConnectionIndex >= 0) {
+    return invalid(`connections.items[${unsupportedConnectionIndex}]`, "include at least one exact supplied answer in Serbian quotation marks", candidate.connections.items[unsupportedConnectionIndex], "Each connection must cite an exact supplied answer.");
   }
 
   const mode = getSleepPremiumStrengthMode(input);
@@ -180,64 +233,93 @@ export const validateSleepPremiumReport = (candidate, input) => {
     candidate.positiveOrWatch.mode !== mode ||
     candidate.positiveOrWatch.title !== getSleepPremiumPositiveOrWatchTitle(mode) ||
     !hasTextOnly(candidate.positiveOrWatch.text)
-  ) return { valid: false, reason: "Strength/watch section violates deterministic state." };
+  ) return invalid("positiveOrWatch", `object with mode ${mode}, its fixed title, and nonblank text (1–1200 characters)`, candidate.positiveOrWatch, "Strength/watch section violates deterministic state.");
 
-  if (!keysEqual(candidate.startingPoint, ["title", "text"]) || candidate.startingPoint.title !== "Gde ima najviše smisla da počneš?" || !hasTextOnly(candidate.startingPoint.text)) {
-    return { valid: false, reason: "Starting point section is invalid." };
+  if (!keysEqual(candidate.startingPoint, ["title", "text"])) {
+    return invalid("startingPoint", "object with exactly title and text", candidate.startingPoint, "Starting-point object shape is invalid.");
   }
-  if (!keysEqual(candidate.tonight, ["title", "actions"]) || candidate.tonight.title !== "Šta možeš da uradiš već večeras?" || !Array.isArray(candidate.tonight.actions) || candidate.tonight.actions.length !== 3 || candidate.tonight.actions.some((item) => !hasTextOnly(item, 400))) {
-    return { valid: false, reason: "Tonight section must contain exactly three actions." };
+  if (candidate.startingPoint.title !== "Gde ima najviše smisla da počneš?") {
+    return invalid("startingPoint.title", "fixed section title", candidate.startingPoint.title, "Starting-point title is invalid.");
+  }
+  if (!hasTextOnly(candidate.startingPoint.text)) {
+    return invalid("startingPoint.text", "nonblank string, 1–1200 characters", candidate.startingPoint.text, "Starting-point text is invalid.");
+  }
+  if (!keysEqual(candidate.tonight, ["title", "actions"])) {
+    return invalid("tonight", "object with exactly title and actions", candidate.tonight, "Tonight object shape is invalid.");
+  }
+  if (candidate.tonight.title !== "Šta možeš da uradiš već večeras?") {
+    return invalid("tonight.title", "fixed section title", candidate.tonight.title, "Tonight title is invalid.");
+  }
+  if (!Array.isArray(candidate.tonight.actions) || candidate.tonight.actions.length !== 3) {
+    return invalid("tonight.actions", "array of exactly 3 nonblank strings, each 1–400 characters", candidate.tonight.actions, "Tonight section must contain exactly three actions.");
+  }
+  const invalidActionIndex = candidate.tonight.actions.findIndex((item) => !hasTextOnly(item, 400));
+  if (invalidActionIndex >= 0) {
+    return invalid(`tonight.actions[${invalidActionIndex}]`, "nonblank string, 1–400 characters", candidate.tonight.actions[invalidActionIndex], "Tonight action is invalid.");
   }
   if (!Array.isArray(candidate.sevenDayPlan) || candidate.sevenDayPlan.length !== 7) {
-    return { valid: false, reason: "Seven-day plan must contain exactly seven days." };
+    return invalid("sevenDayPlan", "array of exactly 7 day objects", candidate.sevenDayPlan, "Seven-day plan must contain exactly seven days.");
   }
   for (let index = 0; index < 7; index += 1) {
     const day = candidate.sevenDayPlan[index];
     if (!keysEqual(day, ["day", "title", "action"]) || day.day !== index + 1 || !hasTextOnly(day.title, 100) || !hasTextOnly(day.action, 400)) {
-      return { valid: false, reason: `Seven-day plan entry ${index + 1} is invalid.` };
+      return invalid(`sevenDayPlan[${index}]`, `object {day: ${index + 1}, title: nonblank string 1–100 chars, action: nonblank string 1–400 chars}`, day, `Seven-day plan entry ${index + 1} is invalid.`);
     }
   }
-  if (!keysEqual(candidate.tracking, ["title", "items"]) || candidate.tracking.title !== "Šta vredi da pratiš?" || !Array.isArray(candidate.tracking.items) || candidate.tracking.items.length < 2 || candidate.tracking.items.length > 4 || candidate.tracking.items.some((item) => !hasTextOnly(item, 200))) {
-    return { valid: false, reason: "Tracking section must contain two to four items." };
+  if (!keysEqual(candidate.tracking, ["title", "items"])) {
+    return invalid("tracking", "object with exactly title and items", candidate.tracking, "Tracking object shape is invalid.");
   }
-  if (!hasTextOnly(candidate.closing, 800)) return { valid: false, reason: "Closing text is empty or too long." };
+  if (candidate.tracking.title !== "Šta vredi da pratiš?") {
+    return invalid("tracking.title", "fixed section title", candidate.tracking.title, "Tracking title is invalid.");
+  }
+  if (!Array.isArray(candidate.tracking.items) || candidate.tracking.items.length < 2 || candidate.tracking.items.length > 4) {
+    return invalid("tracking.items", "array of 2–4 nonblank strings, each 1–200 characters", candidate.tracking.items, "Tracking section must contain two to four items.");
+  }
+  const invalidTrackingIndex = candidate.tracking.items.findIndex((item) => !hasTextOnly(item, 200));
+  if (invalidTrackingIndex >= 0) {
+    return invalid(`tracking.items[${invalidTrackingIndex}]`, "nonblank string, 1–200 characters", candidate.tracking.items[invalidTrackingIndex], "Tracking item is invalid.");
+  }
+  if (!hasTextOnly(candidate.closing, 800)) {
+    return invalid("closing", "nonblank string, 1–800 characters", candidate.closing, "Closing text is empty or too long.");
+  }
 
   const normalizeForSafety = (text) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/gu, "d").toLowerCase();
   const customerStrings = collectReportStrings(candidate);
   const suppliedAnswers = new Set(input.answers.map((item) => item.answer));
-  const quotedAnswers = customerStrings.flatMap((text) =>
-    [...text.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => match[1].trim())
+  const quotedAnswers = customerStrings.flatMap(({ value, field }) =>
+    [...value.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => ({ quoted: match[1].trim(), field }))
   );
-  if (quotedAnswers.some((quoted) => !suppliedAnswers.has(quoted))) {
-    return { valid: false, reason: "Report contains quoted answer text not present in the supplied answers." };
+  const unsupportedQuote = quotedAnswers.find(({ quoted }) => !suppliedAnswers.has(quoted));
+  if (unsupportedQuote) {
+    return invalid(unsupportedQuote.field, "any quoted text must exactly match a supplied answer; do not expose quoted text in logs", { type: "string", length: unsupportedQuote.quoted.length }, "Report contains quoted answer text not present in the supplied answers.");
   }
   const withoutEvidenceQuotes = (text) => text.replace(/[„“]([^”“]+)[”“]/gu, (whole, quoted) =>
     suppliedAnswers.has(quoted.trim()) ? " " : whole
   );
-  const normalizedStrings = customerStrings.map((text) => normalizeForSafety(withoutEvidenceQuotes(text)));
+  const normalizedStrings = customerStrings.map(({ value }) => normalizeForSafety(withoutEvidenceQuotes(value)));
   const unsafeCopyIndex = normalizedStrings.findIndex((text) => INVALID_CUSTOMER_COPY.test(text));
   if (unsafeCopyIndex >= 0) {
-    return { valid: false, reason: `Report text item ${unsafeCopyIndex + 1} contains technical, diagnostic, causal, or score copy.` };
+    return invalid(customerStrings[unsafeCopyIndex].field, "customer-safe prose without technical, diagnostic, causal, or score claims", customerStrings[unsafeCopyIndex].value, "Report text contains disallowed technical, diagnostic, causal, or score copy.");
   }
 
   const strengthText = normalizeForSafety(withoutEvidenceQuotes(candidate.positiveOrWatch.text));
   if (mode === "watch" && UNSUPPORTED_STRENGTH_COPY.test(strengthText)) {
-    return { valid: false, reason: "Watch mode must not claim an unsupported positive strength." };
+    return invalid("positiveOrWatch.text", "observation-focused wording without unsupported positive-strength claims", candidate.positiveOrWatch.text, "Watch mode must not claim an unsupported positive strength.");
   }
   if (mode === "watch" && !OBSERVATION_COPY.test(strengthText)) {
-    return { valid: false, reason: "Watch mode must describe something to observe." };
+    return invalid("positiveOrWatch.text", "include a permitted observation cue", candidate.positiveOrWatch.text, "Watch mode must describe something to observe.");
   }
   if (mode === "strength") {
     const supportedStableAreas = SLEEP_PREMIUM_DIMENSION_KEYS.filter((key) => input.dimensions[key].state === "STABLE");
     if (!supportedStableAreas.some((key) => STABLE_EVIDENCE[key].test(strengthText))) {
-      return { valid: false, reason: "Strength copy is not tied to any STABLE area." };
+      return invalid("positiveOrWatch.text", "strength wording must refer to a deterministic STABLE area", candidate.positiveOrWatch.text, "Strength copy is not tied to any STABLE area.");
     }
   }
 
   const mainExplanation = normalizeForSafety(candidate.mainArea.explanation);
   const weakCoreAreas = CORE_DIMENSIONS.filter((key) => input.dimensions[key].state === "WEAK");
   if (weakCoreAreas.some((key) => !WEAK_CORE_EVIDENCE[key].test(mainExplanation))) {
-    return { valid: false, reason: "Main-area explanation omits a weak core area." };
+    return invalid("mainArea.explanation", "mention each deterministic weak core area", candidate.mainArea.explanation, "Main-area explanation omits a weak core area.");
   }
 
   return { valid: true, report: candidate, reason: "ok" };

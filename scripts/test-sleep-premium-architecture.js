@@ -123,6 +123,10 @@ alteredAnswerQuote.mainArea.explanation = "Ovaj deo vredi sagledati uz odgovor â
 const alteredQuoteValidation = validateSleepPremiumReport(alteredAnswerQuote, validationInput);
 assert.equal(alteredQuoteValidation.valid, false);
 assert.match(alteredQuoteValidation.reason, /exact supplied answer/i);
+assert.equal(alteredQuoteValidation.diagnostic.field, "mainArea.explanation");
+assert.equal(alteredQuoteValidation.diagnostic.received.type, "string");
+assert.equal(typeof alteredQuoteValidation.diagnostic.received.length, "number");
+assert.equal(Object.hasOwn(alteredQuoteValidation.diagnostic.received, "value"), false);
 const wrongProfile = structuredClone(validReport);
 wrongProfile.profile.name = "BUDAN UM";
 assert.equal(validateSleepPremiumReport(wrongProfile, validationInput).valid, false);
@@ -173,6 +177,31 @@ const schema = buildSleepPremiumJsonSchema(validationInput);
 assert.equal(schema.type, "json_schema");
 assert.equal(schema.schema.properties.sevenDayPlan.minItems, 7);
 assert.equal(schema.schema.properties.sevenDayPlan.maxItems, 7);
+assert.equal(schema.schema.properties.version.enum[0], 1);
+assert.equal(schema.schema.properties.profile.properties.summary.maxLength, 1200);
+assert.equal(schema.schema.properties.tonight.properties.actions.items.maxLength, 400);
+assert.equal(schema.schema.properties.sevenDayPlan.items.properties.title.maxLength, 100);
+assert.equal(schema.schema.properties.sevenDayPlan.items.properties.action.maxLength, 400);
+assert.equal(schema.schema.properties.tracking.properties.items.items.maxLength, 200);
+assert.equal(schema.schema.properties.closing.maxLength, 800);
+assert.equal(schema.schema.properties.closing.pattern, "\\S");
+
+const overlongAction = structuredClone(validReport);
+overlongAction.tonight.actions[0] = "x".repeat(401);
+const overlongActionError = await assert.rejects(
+  generateSleepPremiumReport({
+    input: validationInput,
+    openaiClient: mockClient({ status: "completed", output_parsed: overlongAction }),
+    apiKeyAvailable: true,
+    fallbackOnError: false,
+  }),
+  (error) => error.code === "PREMIUM_SCHEMA_VALIDATION" && error.diagnostic.field === "tonight.actions[0]"
+    && error.diagnostic.expected === "nonblank string, 1â€“400 characters"
+    && error.diagnostic.received.type === "string"
+    && error.diagnostic.received.length === 401
+    && !Object.hasOwn(error.diagnostic.received, "value")
+);
+assert.equal(overlongActionError, undefined);
 
 const invalidJsonResult = await generateSleepPremiumReport({
   input: validationInput,

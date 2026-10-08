@@ -9,7 +9,12 @@ const MAX_OUTPUT_TOKENS = 5000;
 
 const validateGeneratedReport = (candidate, input) => {
   const validation = validateSleepPremiumReport(candidate, input);
-  if (!validation.valid) throw new TypeError(validation.reason);
+  if (!validation.valid) {
+    const error = new TypeError(validation.reason);
+    error.code = "PREMIUM_SCHEMA_VALIDATION";
+    error.diagnostic = validation.diagnostic;
+    throw error;
+  }
   return validation.report;
 };
 

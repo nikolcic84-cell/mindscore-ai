@@ -27,8 +27,17 @@ const classifyFailure = (error) => {
   if (status === 429 || /rate_limit|too_many_requests/i.test(`${code} ${type}`)) {
     return { category: "rate limit error", status };
   }
+  if (code === "premium_schema_validation") {
+    return {
+      category: "schema/JSON validation error",
+      status,
+      field: error.diagnostic?.field || "unknown",
+      expected: error.diagnostic?.expected || "unspecified constraint",
+      received: error.diagnostic?.received || { type: "unknown" },
+    };
+  }
   if (error instanceof SyntaxError || error instanceof TypeError) {
-    return { category: "schema/JSON validation error", status };
+    return { category: "schema/JSON validation error", status, field: "response JSON", expected: "complete JSON object", received: { type: "unparseable JSON" } };
   }
   if (/model_not_found|invalid_model|unsupported_model/i.test(`${code} ${type}`)) {
     return { category: "model/API error", status };
