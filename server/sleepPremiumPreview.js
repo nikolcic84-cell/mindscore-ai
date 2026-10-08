@@ -65,7 +65,7 @@ export const generateSleepPremiumPreview = async ({
       apiKeyAvailable,
       fallbackOnError: true,
       includeFailureDiagnostics: true,
-      onCustomerSafetyFailure: (diagnostic) => logPreviewStatus(log, "CUSTOMER SAFETY: FAIL", diagnostic),
+      onCustomerSafetyFailure: (diagnostic) => logPreviewStatus(log, "CUSTOMER SAFETY: FAIL", JSON.stringify(diagnostic)),
       ...(timeoutMs ? { timeoutMs } : {}),
     });
   } catch (error) {

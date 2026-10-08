@@ -30,8 +30,9 @@ const classifyGenerationFailure = (error) => {
 const validateGeneratedReport = (candidate, input, onCustomerSafetyFailure) => {
   const validation = validateSleepPremiumReport(candidate, input);
   if (!validation.valid) {
-    // TEMPORARY: explicit opt-in on the staging branch only; main/other branches fail closed.
-    if (process.env.TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS === "true" &&
+    // TEMPORARY: staging preview logs by default; an explicit false disables it.
+    // Do not require a second opt-in that silently leaves only shape metadata in logs.
+    if (process.env.TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS !== "false" &&
       process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
       process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" && typeof onCustomerSafetyFailure === "function" &&
       ["Report contains disallowed customer-facing copy.", "Report promises a sleep outcome."].includes(validation.reason)) {
@@ -40,7 +41,9 @@ const validateGeneratedReport = (candidate, input, onCustomerSafetyFailure) => {
       const diagnostic = diagnoseSleepPremiumCustomerSafety(field, value, input);
       // Diagnostic delivery must never affect validation, fallback, or report contents.
       if (diagnostic) {
-        try { onCustomerSafetyFailure(diagnostic); } catch { /* Logging is observational only. */ }
+        try {
+          onCustomerSafetyFailure({ ...diagnostic, reason: validation.reason, expected: validation.diagnostic.expected });
+        } catch { /* Logging is observational only. */ }
       }
     }
     const error = new TypeError(validation.reason);
