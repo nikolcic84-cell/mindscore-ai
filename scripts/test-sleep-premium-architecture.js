@@ -9,6 +9,7 @@ import {
   validateSleepPremiumReport,
 } from "../server/sleepPremiumSchema.js";
 import { generateSleepPremiumReport } from "../server/sleepPremiumGenerator.js";
+import { buildSleepPremiumPrompt } from "../server/sleepPremiumPrompt.js";
 import { SLEEP_ANSWER_OPTIONS, SLEEP_QUESTIONS } from "../src/psychology/sleepAssessmentContent.js";
 import { calculateSleepSignature } from "../src/psychology/sleepSignature.js";
 
@@ -118,6 +119,61 @@ const validationInput = makeInput(personas["MIRNA NOĆ"]);
 const validReport = makeValidReport(validationInput);
 const validReportValidation = validateSleepPremiumReport(validReport, validationInput);
 assert.equal(validReportValidation.valid, true, validReportValidation.reason);
+const safeSummary = "Tvoji odgovori opisuju tvoje iskustvo sa snom iz više uglova. Izveštaj povezuje ove utiske u pregled koji možeš pažljivo da razmotriš.";
+const safeSummaryReport = structuredClone(validReport);
+safeSummaryReport.profile.summary = safeSummary;
+assert.equal(validateSleepPremiumReport(safeSummaryReport, validationInput).valid, true);
+
+const unsafeNumericSummary = structuredClone(validReport);
+unsafeNumericSummary.profile.summary = "Tvoj profil je STABLE, rezultat je 75/100 i iznad praga od 60.";
+const unsafeNumericValidation = validateSleepPremiumReport(unsafeNumericSummary, validationInput);
+assert.equal(unsafeNumericValidation.valid, false);
+assert.equal(unsafeNumericValidation.diagnostic.field, "profile.summary");
+assert.match(unsafeNumericValidation.diagnostic.expected, /no digits, numeric scores, or thresholds/i);
+assert.equal(Object.hasOwn(unsafeNumericValidation.diagnostic.received, "value"), false);
+
+const internalStateSummary = structuredClone(validReport);
+internalStateSummary.profile.summary = "Tvoje stanje je STABLE.";
+assert.equal(validateSleepPremiumReport(internalStateSummary, validationInput).valid, false);
+
+const unsafeMedicalSummary = structuredClone(validReport);
+unsafeMedicalSummary.profile.summary = "Tvoji odgovori potvrđuju da imaš nesanicu.";
+const unsafeMedicalValidation = validateSleepPremiumReport(unsafeMedicalSummary, validationInput);
+assert.equal(unsafeMedicalValidation.valid, false);
+assert.equal(unsafeMedicalValidation.diagnostic.field, "profile.summary");
+
+const blankSummary = structuredClone(validReport);
+blankSummary.profile.summary = "   ";
+const blankSummaryValidation = validateSleepPremiumReport(blankSummary, validationInput);
+assert.equal(blankSummaryValidation.valid, false);
+assert.equal(blankSummaryValidation.diagnostic.field, "profile.summary");
+assert.equal(blankSummaryValidation.diagnostic.received.blank, true);
+
+const schema = buildSleepPremiumJsonSchema(validationInput);
+assert.equal(schema.schema.properties.profile.properties.name.enum[0], validationInput.profile);
+assert.equal(schema.schema.properties.profile.properties.summary.pattern, "^[^0-9]*\\S[^0-9]*$");
+assert.match(schema.schema.properties.profile.properties.summary.description, /digits.*thresholds/i);
+const prompt = buildSleepPremiumPrompt(validationInput, {
+  profile: validationInput.profile,
+  profileSummaryMaxLength: schema.schema.properties.profile.properties.summary.maxLength,
+  mainAreaTitle: schema.schema.properties.mainArea.properties.title.enum[0],
+  positiveOrWatchMode: schema.schema.properties.positiveOrWatch.properties.mode.enum[0],
+  positiveOrWatchTitle: schema.schema.properties.positiveOrWatch.properties.title.const,
+});
+assert.match(prompt, /profile\.summary.*1–2 rečenice/i);
+assert.match(prompt, /ne navodi cifre, bodove, procente, pragove/i);
+
+await assert.rejects(
+  generateSleepPremiumReport({
+    input: validationInput,
+    openaiClient: mockClient({ status: "completed", output_parsed: unsafeNumericSummary }),
+    apiKeyAvailable: true,
+    fallbackOnError: false,
+  }),
+  (error) => error.code === "PREMIUM_SCHEMA_VALIDATION" && error.diagnostic.field === "profile.summary"
+    && !Object.hasOwn(error.diagnostic.received, "value")
+);
+
 const alteredAnswerQuote = structuredClone(validReport);
 alteredAnswerQuote.mainArea.explanation = "Ovaj deo vredi sagledati uz odgovor „izmenjen odgovor“.";
 const alteredQuoteValidation = validateSleepPremiumReport(alteredAnswerQuote, validationInput);
@@ -173,7 +229,6 @@ assert.equal(validateSleepPremiumReport(causalClaim, validationInput).valid, fal
 const sevenDaysOutOfOrder = structuredClone(validReport);
 sevenDaysOutOfOrder.sevenDayPlan[5].day = 7;
 assert.equal(validateSleepPremiumReport(sevenDaysOutOfOrder, validationInput).valid, false);
-const schema = buildSleepPremiumJsonSchema(validationInput);
 assert.equal(schema.type, "json_schema");
 assert.equal(schema.schema.properties.sevenDayPlan.minItems, 7);
 assert.equal(schema.schema.properties.sevenDayPlan.maxItems, 7);

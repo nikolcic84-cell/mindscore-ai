@@ -13,6 +13,11 @@ const keysEqual = (value, expected) =>
   expected.every((key) => Object.prototype.hasOwnProperty.call(value, key));
 
 const textSchema = (maxLength = 1200) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
+const profileSummarySchema = {
+  ...textSchema(),
+  pattern: "^[^0-9]*\\S[^0-9]*$",
+  description: "Customer-facing Serbian summary. Use 1–2 concise sentences grounded only in the supplied deterministic profile. Do not include digits, scores, percentages, thresholds, internal labels or terminology, medical or diagnostic claims, or causal claims.",
+};
 const fixedStringSchema = (value) => ({ type: "string", enum: [value] });
 const safeShape = (value) => {
   if (value === null) return { type: "null" };
@@ -75,7 +80,7 @@ const makeProperties = (input) => {
     version: { type: "integer", enum: [1] },
     profile: objectSchema({
       name: { type: "string", enum: [input.profile] },
-      summary: textSchema(),
+      summary: profileSummarySchema,
     }),
     mainArea: objectSchema({
       title: { type: "string", enum: [getSleepPremiumMainAreaTitle(input)] },
@@ -196,6 +201,9 @@ export const validateSleepPremiumReport = (candidate, input) => {
   }
   if (!hasTextOnly(candidate.profile.summary)) {
     return invalid("profile.summary", "nonblank string, 1–1200 characters", candidate.profile.summary, "Profile summary is invalid.");
+  }
+  if (/\d/u.test(candidate.profile.summary)) {
+    return invalid("profile.summary", "nonblank customer-facing prose, 1–1200 characters, with no digits, numeric scores, or thresholds", candidate.profile.summary, "Profile summary must not contain numeric scores or thresholds.");
   }
   if (!keysEqual(candidate.mainArea, ["title", "explanation"])) {
     return invalid("mainArea", "object with exactly title and explanation", candidate.mainArea, "Main-area object shape is invalid.");

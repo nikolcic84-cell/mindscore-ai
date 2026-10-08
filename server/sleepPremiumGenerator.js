@@ -86,6 +86,7 @@ export const generateSleepPremiumReport = async ({
           text: { format: makeParseableTextFormat(schema, JSON.parse) },
           input: buildSleepPremiumPrompt(input, {
             profile: input.profile,
+            profileSummaryMaxLength: schema.schema.properties.profile.properties.summary.maxLength,
             mainAreaTitle: schema.schema.properties.mainArea.properties.title.enum[0],
             positiveOrWatchMode: schema.schema.properties.positiveOrWatch.properties.mode.enum[0],
             positiveOrWatchTitle: schema.schema.properties.positiveOrWatch.properties.title.const,
