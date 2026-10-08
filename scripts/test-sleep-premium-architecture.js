@@ -190,6 +190,7 @@ assert.equal(preview.status, 200);
 assert.equal(preview.body.source, "ai");
 assert.equal(preview.body.deterministicProfile, "BUDAN UM");
 assert.equal(preview.body.report.profile, "BUDAN UM");
+assert.equal(preview.body.report.profile, preview.body.deterministicProfile, "valid v2 staging preview profile matches the deterministic profile");
 assert.equal(preview.body.report.review_questions.length, 3);
 assert.equal(Object.hasOwn(preview.body.report, "source"), false);
 

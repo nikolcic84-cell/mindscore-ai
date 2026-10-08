@@ -1339,7 +1339,7 @@ function SleepPremiumDiscoveryPage() {
       if (
         !signatureResult?.signature ||
         data.deterministicProfile !== signatureResult.signature ||
-        data.report.profile?.name !== signatureResult.signature
+        data.report.profile !== signatureResult.signature
       ) throw new Error("profile_mismatch");
       setPreviewResult(data);
     } catch {
