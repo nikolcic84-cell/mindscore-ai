@@ -1141,7 +1141,7 @@ try {
       answers: personas[2],
       openaiClient: mockClient(incompleteApiResponse, (request) => {
         assert.equal(request.model, "gpt-5-mini");
-        assert.equal(request.max_output_tokens, 5000);
+        assert.equal(request.max_output_tokens, branch === "premium-ai-staging" && previewFlag === "true" ? 8000 : 5000);
         assert.equal(Object.hasOwn(request, "max_completion_tokens"), false);
       }),
       apiKeyAvailable: true,
@@ -1166,7 +1166,7 @@ try {
             { type: "output_text", status: "incomplete", finish_reason: "length" },
           ] },
         ],
-        configuredModel: "gpt-5-mini", max_output_tokens: 5000,
+        configuredModel: "gpt-5-mini", max_output_tokens: 8000,
         internalReason: 'response.status !== "completed" OR Boolean(response.incomplete_details) === true -> AI response was incomplete.',
       });
     }

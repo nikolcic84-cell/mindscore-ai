@@ -97,7 +97,7 @@ const getJsonDiagnostics = (response, text, parseError = null) => {
 };
 
 // TEMPORARY metadata-only diagnostics. Never copy free-form API messages or content.
-const getIncompleteResponseMetadata = (response) => {
+const getIncompleteResponseMetadata = (response, maxOutputTokens) => {
   const metadataToken = (value, allowed) => typeof value !== "string" ? null
     : allowed.includes(value) ? value : "[withheld: unrecognized metadata]";
   const statuses = ["completed", "incomplete", "failed", "in_progress", "queued", "cancelled"];
@@ -134,7 +134,7 @@ const getIncompleteResponseMetadata = (response) => {
       content: Array.isArray(item?.content) ? item.content.map(itemMetadata) : [],
     })),
     configuredModel: MODEL,
-    max_output_tokens: MAX_OUTPUT_TOKENS,
+    max_output_tokens: maxOutputTokens,
     internalReason: `${failedChecks.join(" OR ")} -> AI response was incomplete.`,
   };
 };
@@ -207,12 +207,14 @@ export const generateSleepPremiumReport = async ({
   const schema = buildSleepPremiumJsonSchema(input);
   const properties = schema.schema.properties;
   const mode = getSleepPremiumStrengthMode(input);
+  const maxOutputTokens = process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
+    process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" ? 8000 : MAX_OUTPUT_TOKENS;
   try {
     const response = await callWithTimeout((signal) =>
       openaiClient.responses.create(
         {
           model: MODEL,
-          max_output_tokens: MAX_OUTPUT_TOKENS,
+          max_output_tokens: maxOutputTokens,
           text: { format: schema },
           input: buildSleepPremiumPrompt(input, {
             profile: input.profile,
@@ -233,7 +235,7 @@ export const generateSleepPremiumReport = async ({
     if (response?.status !== "completed" || response.incomplete_details) {
       if (process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
         process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" && typeof onIncompleteResponse === "function") {
-        try { onIncompleteResponse(getIncompleteResponseMetadata(response)); } catch { /* Observational only. */ }
+        try { onIncompleteResponse(getIncompleteResponseMetadata(response, maxOutputTokens)); } catch { /* Observational only. */ }
       }
       const error = new TypeError("AI response was incomplete.");
       error.jsonDiagnostics = getJsonDiagnostics(response, getResponseText(response));
