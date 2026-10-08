@@ -229,13 +229,12 @@ for (const points of personas) {
     /JEDNA ČINJENICA — JEDNO OBJAŠNJENJE.*uglavnom objasni jednom/,
     /Detaljna objašnjenja zadrži u postojećem supporting_content/,
     /3–5 kratkih rečenica.*odakle početi.*jedan mali prvi pokušaj/,
-    /70–110 reči.*700 znakova ima prednost/,
+    /60–100 reči.*700 znakova ima prednost/,
     /Svaka connections stavka: 1–2 kratke rečenice.*120–240 znakova/,
     /ne citat A \+ citat B \+ generički savet/,
     /Ne objašnjavaj ponovo vezu već obrađenu u prioritetu/,
     /Svaka tracking stavka.*60–120 znakova.*Nije dodatna preporuka/,
     /action je jedna kratka rečenica.*70–120 znakova.*35–75 znakova/,
-    /dan 3 olakšava pokušaj prema iskustvu dana 2.*dan 4 samo poredi.*dan 5 uvodi drugačiji pristup istoj temi/,
     /rationale pripada supporting_content.days/,
     /Svaku alternatives stavku počni direktno drugim postupkom.*100–200 znakova/,
     /Ne prepisuj dan 2 ili dan 5 kao novu alternativu/,
@@ -254,6 +253,48 @@ for (const points of personas) {
     /bez produžavanja teksta.*„korelira sa“.*„eksperimentisati sa“.*„promenljiv deo za probu“.*„testirati“.*„hipoteza“/,
     /Preporuke i dalje zasnivaj na stvarnim odgovorima, ne na generičkim savetima/,
   ]) assert.match(reportPrompt, copyGuidance);
+  // Check writer responsibilities, not exact generated Serbian output or semantic token quotas.
+  const strategy = reportPrompt.split("\n");
+  const lineFor = (prefix) => {
+    const line = strategy.find((entry) => entry.startsWith(prefix));
+    assert.ok(line, `strategy guidance exists: ${prefix}`);
+    return line;
+  };
+  const wholeProfile = lineFor("STRATEGIJA CELE SLIKE:");
+  assert.match(wholeProfile, /svih 12 odgovora/);
+  assert.match(wholeProfile, /potkrepljene teme/);
+  assert.match(wholeProfile, /Ne ispisuj.*ne dodaj JSON ključeve.*ne izmišljaj temu/);
+  const responsibilities = lineFor("RAZLIČITI POSLOVI SEKCIJA:");
+  for (const field of ["profile_explanation", "priority", "connections", "tracking", "seven_day_plan", "alternatives", "supporting_content"]) {
+    assert.ok(responsibilities.includes(field), `distinct role specified for ${field}`);
+  }
+  const introGuidance = lineFor("profile_explanation:");
+  assert.match(introGuidance, /najmanje dva smisleno različita dela sna.*odgovori podržavaju/);
+  assert.match(introGuidance, /Ne daj savet.*ne prepričavaj samo.*prioritet/);
+  assert.match(lineFor("Kroz connections"), /najmanje tri različite potkrepljene teme.*Svaka stavka donosi novu/);
+  assert.match(lineFor("Kroz connections"), /Ne nameći kvotu.*ne izmišljaj/);
+  assert.match(lineFor("Tracking širi sliku"), /sporednim temama.*još nisu potpuno objašnjene/);
+  assert.match(lineFor("Tracking širi sliku"), /Ne ponavljaj connections.*ne pretvaraj tracking u listu radnji/);
+  const progression = lineFor("Napredovanje plana kroz celu sliku:");
+  const dayRoles = [
+    /dan 1.*zapažanje.*večeri, noći i jutra.*bez namerne promene/,
+    /dan 2.*jedan mali pokušaj.*fiksni prioritet/,
+    /dan 3.*DRUGA potkrepljena oblast.*posmatranje ili mala bezbedna promena.*ne prilagođavanje dana 2/,
+    /dan 4.*poređenje dana 1–3.*bez novog velikog pokušaja/,
+    /dan 5.*TREĆI UGAO.*još jedne potkrepljene teme.*ne duža ili kraća verzija dana 2/,
+    /dan 6.*korisnik bira i ponavlja/,
+    /dan 7.*osvrt.*JEDNE realne stvari za nastavak/,
+  ];
+  const dayInstructions = progression.split(";");
+  dayRoles.forEach((role, index) => assert.match(dayInstructions[index], role));
+  assert.match(lineFor("Plan normalno"), /najmanje tri različite teme potkrepljene odgovorima/);
+  assert.match(lineFor("Plan normalno"), /manje od tri.*bez izmišljanja treće/);
+  assert.match(lineFor("Plan normalno"), /Prioritet ostaje nepromenjen.*nisu novi prioriteti/);
+  const alternativeGuidance = lineFor("alternatives:");
+  assert.match(alternativeGuidance, /DRUGU potkrepljenu temu.*svih odgovora/);
+  assert.match(alternativeGuidance, /ne automatski večernju rutinu i misli/);
+  assert.match(alternativeGuidance, /drugi put, ne novi Priority #1/);
+  assert.doesNotMatch(reportPrompt, /dan 3 prilagodi njegov obim|dan 3 olakšava pokušaj|dan 5 uvodi drugačiji pristup istoj temi|drugi istražuje drugi praktičan pristup toj temi/);
   for (const avoidedWording of [
     "obrazac", "signal", "faktor", "analiza pokazuje", "podaci pokazuju", "testirati hipotezu",
     "vizuelna stimulacija", "analiziram", "vidim", "zaključio sam", "pokazujem ti", "fokusiram se",
@@ -264,7 +305,7 @@ for (const points of personas) {
     /Vrati samo JSON.*version: 2.*Ne dodaj sekcije ili ključeve/,
     /Model nikada ne bira profil ili prioritet; ne menjaj ih i ne izvodi ocene/,
     /Naslov je UVEK „ŠTA JOŠ VREDI DA PRATIŠ“, nezavisno od mode/,
-    /profile_explanation: jedna ili dve kratke rečenice.*do 180.*bez ponavljanja naziva profila/,
+    /profile_explanation: 2–3 kratke rečenice.*bez ponavljanja naziva profila/,
     /priority.explanation: objasni zašto krenuti baš od fiksnog prioriteta.*relevantne izabrane odgovore.*konkretan pravac/,
     /Razlikuj ono što osoba već radi od onoga što može tek da proba/,
     /Sažmi ih prirodno.*nije potreban citat u svakoj rečenici/,
@@ -277,13 +318,11 @@ for (const points of personas) {
     /To nisu novi prioriteti, lista problema, dijagnoze ili generičke pohvale/,
     /TAČNO sedam objekata redom sa day vrednostima 1–7.*action <=300.*observe <=250.*action <=150.*observe <=100/,
     /bez stalnog ponavljanja naziva prioriteta/,
-    /dan 1 početno zapažanje.*dan 2 mali praktičan eksperiment.*dan 3 prilagodi.*dan 4 uporedi.*dan 5 DRUGI, stvarno različit eksperiment.*dan 6 ponovi.*dan 7 pregledaj/,
-    /ne ista navika sa drugim trajanjem.*Prvi eksperiment ostaje uz prioritet.*uz kontekst ostalih odgovora/,
     /Ne menjaj više stvari odjednom, ne svodi plan na pisanje beležaka/,
     /ako već postoji mirna rutina bez ekrana, ne predstavljaj odlaganje telefona kao neophodan korak/,
     /misli aktivne uprkos mirnoj rutini.*završavanje planiranja pre nje.*Ne pretpostavljaj telefon ako je izabran TV/,
     /alternatives: 1–2 konkretna, stvarno drugačija pristupa.*AKO TI PRVI KORAK NE ODGOVARA/,
-    /Naslov ne dodaj kao JSON ključ.*Osloni se na druge odgovore, naročito večernju rutinu i misli/,
+    /Naslov ne dodaj kao JSON ključ.*Osloni se na DRUGU potkrepljenu temu/,
     /Ne nuditi samo praćenje, zapisivanje ili manju verziju istog eksperimenta/,
     /review_questions: vrati TAČNO tri kratka, različita pitanja/,
     /after_seven_days: objasni kako uporediti početak i kraj.*bez obećanja ishoda/,
