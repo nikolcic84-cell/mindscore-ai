@@ -89,6 +89,8 @@ export const generateSleepPremiumReport = async ({
             profileSummaryMaxLength: schema.schema.properties.profile.properties.summary.maxLength,
             mainAreaTitle: schema.schema.properties.mainArea.properties.title.enum[0],
             mainAreaExplanationMaxLength: schema.schema.properties.mainArea.properties.explanation.maxLength,
+            tonightActionMaxLength: schema.schema.properties.tonight.properties.actions.items.maxLength,
+            sevenDayActionMaxLength: schema.schema.properties.sevenDayPlan.items.properties.action.maxLength,
             positiveOrWatchMode: schema.schema.properties.positiveOrWatch.properties.mode.enum[0],
             positiveOrWatchTitle: schema.schema.properties.positiveOrWatch.properties.title.const,
           }),

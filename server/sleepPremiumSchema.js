@@ -23,6 +23,10 @@ const mainAreaExplanationSchema = () => ({
   ...textSchema(MAIN_AREA_EXPLANATION_MAX_LENGTH),
   description: "Short, natural Serbian prose addressed directly to the customer. Explain the deterministic main sleep area using only the supplied answers and result. Include at least one complete answer copied exactly inside Serbian quotation marks. Do not include scores/results, points, percentages, thresholds, internal labels, scoring/dimension/AI/technical terminology, medical diagnoses, unsupported causal claims, or claims that the true cause is known.",
 });
+const wellnessActionSchema = (maxLength) => ({
+  ...textSchema(maxLength),
+  description: "One concise, practical suggestion in natural everyday Serbian, phrased as something the customer may try. Avoid assumptions presented as facts, diagnosis or medical conclusions, causal claims, scores/percentages/thresholds, internal labels such as WEAK/MIXED/STABLE, technical/system/AI terminology, and medication or treatment instructions.",
+});
 const fixedStringSchema = (value) => ({ type: "string", enum: [value] });
 const safeShape = (value) => {
   if (value === null) return { type: "null" };
@@ -106,7 +110,12 @@ const makeProperties = (input) => {
     }),
     tonight: objectSchema({
       title: fixedStringSchema("Šta možeš da uradiš već večeras?"),
-      actions: stringArraySchema(3, 3, 400),
+      actions: {
+        type: "array",
+        minItems: 3,
+        maxItems: 3,
+        items: wellnessActionSchema(400),
+      },
     }),
     sevenDayPlan: {
       type: "array",
@@ -115,7 +124,7 @@ const makeProperties = (input) => {
       items: objectSchema({
         day: { type: "integer", minimum: 1, maximum: 7 },
         title: textSchema(100),
-        action: textSchema(400),
+        action: wellnessActionSchema(400),
       }),
     },
     tracking: objectSchema({

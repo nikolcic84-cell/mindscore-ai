@@ -58,6 +58,11 @@ const makeValidReport = (input) => {
   };
 };
 const mockClient = (response) => ({ responses: { parse: async () => response } });
+const withTonightAction = (report, index, action) => {
+  const candidate = structuredClone(report);
+  candidate.tonight.actions[index] = action;
+  return candidate;
+};
 
 for (const [label, points] of Object.entries(personas)) {
   const input = makeInput(points);
@@ -198,6 +203,8 @@ const prompt = buildSleepPremiumPrompt(validationInput, {
   profileSummaryMaxLength: schema.schema.properties.profile.properties.summary.maxLength,
   mainAreaTitle: schema.schema.properties.mainArea.properties.title.enum[0],
   mainAreaExplanationMaxLength: schema.schema.properties.mainArea.properties.explanation.maxLength,
+  tonightActionMaxLength: schema.schema.properties.tonight.properties.actions.items.maxLength,
+  sevenDayActionMaxLength: schema.schema.properties.sevenDayPlan.items.properties.action.maxLength,
   positiveOrWatchMode: schema.schema.properties.positiveOrWatch.properties.mode.enum[0],
   positiveOrWatchTitle: schema.schema.properties.positiveOrWatch.properties.title.const,
 });
@@ -205,6 +212,45 @@ assert.equal(prompt.includes("profile.summary je kratak, prirodan tekst za koris
 assert.equal(prompt.includes("ne navodi cifre, bodove, procente, pragove"), true);
 assert.equal(prompt.includes("mainArea.explanation je kratko, prirodno srpsko obraćanje korisniku od najviše 500 znakova"), true);
 assert.equal(prompt.includes("pravi uzrok problema sa snom"), true);
+assert.equal(prompt.includes("Pokušaj da poslednjih 30 minuta pre spavanja provedeš bez telefona."), true);
+assert.equal(prompt.includes("Lezi približno u isto vreme kao prethodne večeri."), true);
+assert.equal(prompt.includes("Ako ti misli ostanu aktivne, zapiši ih kratko pre nego što legneš."), true);
+assert.equal(prompt.includes("LOŠI primeri — nikada ne piši ovakve tvrdnje"), true);
+assert.equal(prompt.includes("Ne preformuliši ove primere kao preporuke."), true);
+
+const validTonightAction = withTonightAction(validReport, 2, "Ako ti misli ostanu aktivne, zapiši ih kratko pre nego što legneš.");
+assert.equal(validateSleepPremiumReport(validTonightAction, validationInput).valid, true);
+
+const unsafeTonightCases = [
+  ["diagnostic", "Ova nesanica pokazuje da imaš poremećaj sna."],
+  ["causal", "Kasno ležanje izaziva tvoj loš san."],
+  ["score/threshold/internal", "Tvoja WEAK oblast ima rezultat 42/100, ispod praga."],
+  ["technical", "Optimizuj sleep classifier pre spavanja."],
+];
+for (const [label, text] of unsafeTonightCases) {
+  const candidate = withTonightAction(validReport, 2, text);
+  const validation = validateSleepPremiumReport(candidate, validationInput);
+  assert.equal(validation.valid, false, `${label} action must fail`);
+  assert.equal(validation.diagnostic.field, "tonight.actions[2]");
+}
+
+const blankTonightAction = withTonightAction(validReport, 2, "   ");
+const blankTonightActionValidation = validateSleepPremiumReport(blankTonightAction, validationInput);
+assert.equal(blankTonightActionValidation.valid, false);
+assert.equal(blankTonightActionValidation.diagnostic.field, "tonight.actions[2]");
+assert.equal(blankTonightActionValidation.diagnostic.received.blank, true);
+
+const nonStringTonightAction = withTonightAction(validReport, 2, null);
+const nonStringTonightActionValidation = validateSleepPremiumReport(nonStringTonightAction, validationInput);
+assert.equal(nonStringTonightActionValidation.valid, false);
+assert.equal(nonStringTonightActionValidation.diagnostic.field, "tonight.actions[2]");
+assert.equal(nonStringTonightActionValidation.diagnostic.received.type, "null");
+
+const unsafeSevenDayAction = structuredClone(validReport);
+unsafeSevenDayAction.sevenDayPlan[2].action = "Kasno ležanje izaziva tvoj loš san.";
+const unsafeSevenDayActionValidation = validateSleepPremiumReport(unsafeSevenDayAction, validationInput);
+assert.equal(unsafeSevenDayActionValidation.valid, false);
+assert.equal(unsafeSevenDayActionValidation.diagnostic.field, "sevenDayPlan[2].action");
 
 await assert.rejects(
   generateSleepPremiumReport({
@@ -289,8 +335,10 @@ assert.equal(schema.schema.properties.sevenDayPlan.maxItems, 7);
 assert.equal(schema.schema.properties.version.enum[0], 1);
 assert.equal(schema.schema.properties.profile.properties.summary.maxLength, 1200);
 assert.equal(schema.schema.properties.tonight.properties.actions.items.maxLength, 400);
+assert.match(schema.schema.properties.tonight.properties.actions.items.description, /natural everyday Serbian.*diagnosis.*causal claims/i);
 assert.equal(schema.schema.properties.sevenDayPlan.items.properties.title.maxLength, 100);
 assert.equal(schema.schema.properties.sevenDayPlan.items.properties.action.maxLength, 400);
+assert.equal(schema.schema.properties.sevenDayPlan.items.properties.action.description, schema.schema.properties.tonight.properties.actions.items.description);
 assert.equal(schema.schema.properties.tracking.properties.items.items.maxLength, 200);
 assert.equal(schema.schema.properties.closing.maxLength, 800);
 assert.equal(schema.schema.properties.closing.pattern, "\\S");
