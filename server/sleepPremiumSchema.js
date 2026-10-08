@@ -188,6 +188,50 @@ const removeAnswerQuotes = (text, input) => text.replace(/[„“]([^”“]+)[�
   input.answers.some((answer) => answer.answer === quoted.trim()) ? " " : whole
 );
 
+// Observational only: reuse the runtime regexes and quote exemption without changing validation.
+export const diagnoseSleepPremiumCustomerSafety = (field, value, input) => {
+  if (typeof value !== "string") return null;
+  const unquoted = removeAnswerQuotes(value, input);
+  const safeCopy = normalizeForSafety(unquoted);
+  const invalidMatch = INVALID_CUSTOMER_COPY.exec(safeCopy);
+  const match = invalidMatch || GUARANTEE_COPY.exec(safeCopy);
+  if (!match) return null;
+
+  let category = "outcome-promising";
+  if (invalidMatch) {
+    const token = match[0];
+    category = /\d/u.test(token) ? "score"
+      : /^(?:nesanic|apnej|depres|anksiozn|hormons|neurolosk|dijagnoz|dijagnost|poremec|bolest|klinick|medikament|lekov|lek\b|terapij|lecen)/u.test(token) ? "medical"
+        : /^(?:uzrok|izaziv|prouzrok|dovod|remet|doprin|kriv|posledic|zbog)/u.test(token) ? "causal"
+          : /^(?:algorithm|algoritam|faktor|signal|obrazac|obrasc)/u.test(token) ? "technical"
+            : /^(?:scoring|dimension|mapped value|classifier|ai confidence|stable|mixed|weak|stabil|mesovit|slab)/u.test(token) ? "internal"
+              : "other";
+  }
+
+  // Map normalized match offsets back to the original spelling (including diacritics).
+  const offsets = [];
+  let offset = 0;
+  for (const character of unquoted) {
+    for (let index = 0; index < normalizeForSafety(character).length; index += 1) {
+      offsets.push({ start: offset, end: offset + character.length });
+    }
+    offset += character.length;
+  }
+  const rejectedText = unquoted.slice(offsets[match.index].start, offsets[match.index + match[0].length - 1].end);
+  // Withhold the whole diagnostic field if likely credentials or identifiers occur.
+  // This affects logging only, never the generated report or the validation decision.
+  const identifiersDetected = /\S+@\S+|\b(?:cs_|pi_|cus_|sess_|session[_ -]?|assessment[_ -]?|user[_ -]?id[\s:=_-]*|sk[-_]|pk_(?:live|test)_|whsec_)[\w-]+|\b(?:bearer\s+\S+|(?:password|passwd|credential|api[_ -]?key|access[_ -]?token|secret)\s*[:=]\s*\S+)|\b[0-9a-f]{8}-[0-9a-f-]{27,}\b|(?:\+?\d[\s().-]*){7,}|\b[A-Za-z0-9_-]{24,}\b/iu.test(value);
+  return {
+    field,
+    returnedText: identifiersDetected ? "[withheld: possible personal identifier]" : value,
+    rejectedText: identifiersDetected ? "[withheld: possible personal identifier]" : rejectedText,
+    normalizedMatch: identifiersDetected ? "[withheld: possible personal identifier]" : match[0],
+    category,
+    rule: invalidMatch ? "INVALID_CUSTOMER_COPY" : "GUARANTEE_COPY",
+    regex: (invalidMatch ? INVALID_CUSTOMER_COPY : GUARANTEE_COPY).toString(),
+  };
+};
+
 export const validateSleepPremiumReport = (candidate, input) => {
   if (!input || !SLEEP_PREMIUM_PROFILE_NAMES.includes(input.profile)) {
     return invalid("input.profile", "configured deterministic profile", input?.profile, "Invalid deterministic Premium input.");

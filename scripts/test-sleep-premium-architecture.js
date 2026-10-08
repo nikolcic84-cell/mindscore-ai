@@ -4,6 +4,7 @@ import { buildSleepPremiumInput } from "../server/sleepPremiumInput.js";
 import { buildSleepPremiumFallback } from "../server/sleepPremiumFallback.js";
 import {
   buildSleepPremiumJsonSchema,
+  diagnoseSleepPremiumCustomerSafety,
   getSleepPremiumAreaOverview,
   getSleepPremiumPriority,
   getSleepPremiumStrengthMode,
@@ -205,6 +206,50 @@ const onsetPriorityFallback = structuredClone(onsetPlanFallback);
 const exactOnsetAnswer = onsetInput.answers.find(({ questionId }) => questionId === "Q2").answer;
 onsetPriorityFallback.priority.explanation = `U okviru teme Period pre sna, tvoj odgovor „${exactOnsetAnswer}“ daje konkretan lični kontekst za ovaj prioritet.`;
 assert.equal(validateSleepPremiumReport(onsetPriorityFallback, onsetInput).valid, true, "priority explanation with exact selected answer and fixed priority passes");
+assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", onsetPriorityFallback.priority.explanation, onsetInput), null);
+// Synthetic diagnostic fixtures, NOT the unavailable 238-character staging response.
+const safetyDiagnosticCases = [
+  ["nesanicu", "medical", "INVALID_CUSTOMER_COPY"],
+  ["zbog", "causal", "INVALID_CUSTOMER_COPY"],
+  ["WEAK", "internal", "INVALID_CUSTOMER_COPY"],
+  ["obrazac", "technical", "INVALID_CUSTOMER_COPY"],
+  ["42/100", "score", "INVALID_CUSTOMER_COPY"],
+  ["poboljšati san", "outcome-promising", "GUARANTEE_COPY"],
+];
+for (const [phrase, category, rule] of safetyDiagnosticCases) {
+  const report = structuredClone(onsetPriorityFallback);
+  report.priority.explanation += ` ${phrase}.`;
+  const result = validateSleepPremiumReport(report, onsetInput);
+  assert.equal(result.valid, false);
+  assert.equal(result.diagnostic.field, "priority.explanation");
+  const diagnostic = diagnoseSleepPremiumCustomerSafety("priority.explanation", report.priority.explanation, onsetInput);
+  assert.equal(diagnostic.returnedText, report.priority.explanation);
+  assert.equal(diagnostic.rejectedText, phrase);
+  assert.equal(diagnostic.category, category);
+  assert.equal(diagnostic.rule, rule);
+  assert.ok(new RegExp(diagnostic.regex.slice(1, diagnostic.regex.lastIndexOf("/")), "iu").test(diagnostic.normalizedMatch));
+}
+const negatedCause = structuredClone(onsetPriorityFallback);
+negatedCause.priority.explanation += " Bez tvrdnje o uzroku.";
+assert.equal(validateSleepPremiumReport(negatedCause, onsetInput).valid, false, "negating a disallowed token does not bypass the runtime rule");
+assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", negatedCause.priority.explanation, onsetInput).rejectedText, "uzroku");
+const privateDiagnosticText = `${negatedCause.priority.explanation} example@example.test cs_test_private_identifier`;
+const privateDiagnostic = diagnoseSleepPremiumCustomerSafety("priority.explanation", privateDiagnosticText, onsetInput);
+assert.equal(privateDiagnostic.returnedText, "[withheld: possible personal identifier]");
+assert.equal(JSON.stringify(privateDiagnostic).includes("example@example.test"), false);
+assert.equal(JSON.stringify(privateDiagnostic).includes("cs_test_private_identifier"), false);
+for (const sensitiveContent of [
+  "sk-test-only-placeholder", "sk_test_placeholder", "pk_live_placeholder", "whsec_placeholder",
+  "Bearer diagnostic-test-token", "password=diagnostic-test-value", "API_KEY: diagnostic-test-value",
+  "user_id=diagnostic-test-id", "12345678-1234-1234-1234-123456789abc", "+381 60 123 4567",
+]) {
+  const diagnostic = diagnoseSleepPremiumCustomerSafety("priority.explanation", `${negatedCause.priority.explanation} ${sensitiveContent}`, onsetInput);
+  assert.equal(diagnostic.returnedText, "[withheld: possible personal identifier]");
+  assert.equal(JSON.stringify(diagnostic).includes(sensitiveContent), false, "diagnostic withholds credentials and identifiers");
+}
+const stableAnswerInput = buildSleepPremiumInput(personas[0]);
+const stableAnswer = stableAnswerInput.answers.find(({ questionId }) => questionId === "Q8").answer;
+assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", `Tvoj odgovor „${stableAnswer}“ je lični kontekst.`, stableAnswerInput), null, "exact selected answers retain the existing safety exemption");
 const missingPriorityAnswer = structuredClone(onsetPriorityFallback);
 missingPriorityAnswer.priority.explanation = "U okviru teme Period pre sna, ovo je koristan prvi fokus koji vredi pratiti.";
 expectInvalid(missingPriorityAnswer, "priority.explanation", onsetInput);
@@ -366,6 +411,65 @@ assert.equal(rejectedConnectionAi.source, "fallback");
 assert.equal(rejectedConnectionAi.failureType, "schema_validation_failure");
 assert.equal(rejectedConnectionAi.failureDiagnostic.field, "connections[1].questionIds");
 assert.deepEqual(rejectedConnectionAi.report, fallback);
+const safetyLogs = [];
+const diagnosticEnvKeys = ["ENABLE_PREMIUM_AI_PREVIEW", "TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS", "RENDER_GIT_BRANCH"];
+const previousDiagnosticEnv = Object.fromEntries(diagnosticEnvKeys.map((key) => [key, process.env[key]]));
+try {
+  process.env.TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS = "true";
+  process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
+  const gateCases = [
+    ...[undefined, "false", "TRUE", "true"].map((flag) => ({ flag, temporary: "true", branch: "premium-ai-staging", logs: flag === "true" ? 1 : 0 })),
+    ...[undefined, "false", "TRUE"].map((temporary) => ({ flag: "true", temporary, branch: "premium-ai-staging", logs: 0 })),
+    ...[undefined, "main", "production", "other-branch"].map((branch) => ({ flag: "true", temporary: "true", branch, logs: 0 })),
+    { flag: "true", temporary: "true", branch: "premium-ai-staging", logs: 1 },
+  ];
+  for (const { flag, temporary, branch, logs } of gateCases) {
+    if (flag === undefined) delete process.env.ENABLE_PREMIUM_AI_PREVIEW;
+    else process.env.ENABLE_PREMIUM_AI_PREVIEW = flag;
+    if (temporary === undefined) delete process.env.TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS;
+    else process.env.TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS = temporary;
+    if (branch === undefined) delete process.env.RENDER_GIT_BRANCH;
+    else process.env.RENDER_GIT_BRANCH = branch;
+    safetyLogs.length = 0;
+    const rejectedSafetyAi = await generateSleepPremiumReport({
+      input: onsetInput,
+      openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(negatedCause) }),
+      apiKeyAvailable: true,
+      includeFailureDiagnostics: true,
+      onCustomerSafetyFailure: (diagnostic) => safetyLogs.push(diagnostic),
+    });
+    assert.equal(rejectedSafetyAi.source, "fallback");
+    assert.equal(rejectedSafetyAi.failureDiagnostic.field, "priority.explanation");
+    assert.deepEqual(rejectedSafetyAi.report, onsetPlanFallback, "rejected AI copy is never sanitized or accepted");
+    assert.equal(safetyLogs.length, logs, "diagnostics require temporary opt-in, preview opt-in and the staging branch; main/production fail closed");
+    assert.equal(JSON.stringify(rejectedSafetyAi).includes(negatedCause.priority.explanation), false, "raw failed field is not exposed in the generator response");
+  }
+  assert.equal(safetyLogs[0].rejectedText, "uzroku");
+  assert.equal(safetyLogs[0].category, "causal");
+  const previewSafetyLogs = [];
+  const rejectedSafetyPreview = await generateSleepPremiumPreview({
+    enabled: true,
+    answers: personas[2],
+    openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(negatedCause) }),
+    apiKeyAvailable: true,
+    log: (label, diagnostic) => previewSafetyLogs.push({ label, diagnostic }),
+  });
+  assert.equal(previewSafetyLogs.find(({ label }) => label === "CUSTOMER SAFETY: FAIL").diagnostic.returnedText, negatedCause.priority.explanation);
+  assert.equal(JSON.stringify(rejectedSafetyPreview.body).includes(negatedCause.priority.explanation), false, "raw failed field is server-log-only, not an HTTP response");
+  const loggingFailure = await generateSleepPremiumReport({
+    input: onsetInput,
+    openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(negatedCause) }),
+    apiKeyAvailable: true,
+    onCustomerSafetyFailure: () => { throw new Error("Diagnostic logger unavailable."); },
+  });
+  assert.equal(loggingFailure.source, "fallback");
+  assert.equal(loggingFailure.reason, "Report contains disallowed customer-facing copy.");
+} finally {
+  for (const [key, value] of Object.entries(previousDiagnosticEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
 const timeout = await generateSleepPremiumReport({
   input,
   openaiClient: { responses: { create: () => new Promise(() => {}) } },

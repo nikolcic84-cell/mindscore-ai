@@ -70,6 +70,7 @@ try {
     apiKeyAvailable: true,
     fallbackOnError: false,
     timeoutMs: STAGING_AI_TIMEOUT_MS,
+    onCustomerSafetyFailure: (diagnostic) => console.error("CUSTOMER SAFETY: FAIL", JSON.stringify(diagnostic)),
   });
   fallbackUsed = generation.source === "fallback";
   failUnless(generation.source === "ai", `Expected AI source; generator returned ${generation.source}.`);

@@ -2,6 +2,7 @@ import { buildSleepPremiumFallback } from "./sleepPremiumFallback.js";
 import { buildSleepPremiumPrompt } from "./sleepPremiumPrompt.js";
 import {
   buildSleepPremiumJsonSchema,
+  diagnoseSleepPremiumCustomerSafety,
   getSleepPremiumAreaOverview,
   getSleepPremiumPriority,
   getSleepPremiumStrengthMode,
@@ -26,9 +27,22 @@ const classifyGenerationFailure = (error) => {
   return { failureType: "other_generator_error", status };
 };
 
-const validateGeneratedReport = (candidate, input) => {
+const validateGeneratedReport = (candidate, input, onCustomerSafetyFailure) => {
   const validation = validateSleepPremiumReport(candidate, input);
   if (!validation.valid) {
+    // TEMPORARY: explicit opt-in on the staging branch only; main/other branches fail closed.
+    if (process.env.TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS === "true" &&
+      process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
+      process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" && typeof onCustomerSafetyFailure === "function" &&
+      ["Report contains disallowed customer-facing copy.", "Report promises a sleep outcome."].includes(validation.reason)) {
+      const field = validation.diagnostic.field;
+      const value = field.replace(/\[(\d+)\]/gu, ".$1").split(".").reduce((parent, key) => parent?.[key], candidate);
+      const diagnostic = diagnoseSleepPremiumCustomerSafety(field, value, input);
+      // Diagnostic delivery must never affect validation, fallback, or report contents.
+      if (diagnostic) {
+        try { onCustomerSafetyFailure(diagnostic); } catch { /* Logging is observational only. */ }
+      }
+    }
     const error = new TypeError(validation.reason);
     error.code = "PREMIUM_SCHEMA_VALIDATION";
     error.diagnostic = validation.diagnostic;
@@ -114,6 +128,7 @@ export const generateSleepPremiumReport = async ({
   fallbackOnError = true,
   timeoutMs = TIMEOUT_MS,
   includeFailureDiagnostics = false,
+  onCustomerSafetyFailure,
 }) => {
   const fallback = () => buildSleepPremiumFallback(input);
   if (!apiKeyAvailable || !openaiClient?.responses?.create) {
@@ -157,7 +172,7 @@ export const generateSleepPremiumReport = async ({
       error.jsonDiagnostics = getJsonDiagnostics(response, getResponseText(response));
       throw error;
     }
-    const report = validateGeneratedReport(parseJsonReport(response), input);
+    const report = validateGeneratedReport(parseJsonReport(response), input, onCustomerSafetyFailure);
     return { report, source: "ai", reason: "ok" };
   } catch (error) {
     if (!fallbackOnError) throw error;
