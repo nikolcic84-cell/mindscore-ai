@@ -217,6 +217,10 @@ assert.equal(prompt.includes("Lezi približno u isto vreme kao prethodne večeri
 assert.equal(prompt.includes("Ako ti misli ostanu aktivne, zapiši ih kratko pre nego što legneš."), true);
 assert.equal(prompt.includes("LOŠI primeri — nikada ne piši ovakve tvrdnje"), true);
 assert.equal(prompt.includes("Ne preformuliši ove primere kao preporuke."), true);
+assert.equal(prompt.includes("Svaka od svih sedam stavki sevenDayPlan[].action mora biti zaseban"), true);
+assert.equal(prompt.includes("Probaj da ujutru zabeležiš kako se osećaš."), true);
+assert.equal(prompt.includes("Uporedi kako se osećaš nakon različitih večernjih rutina."), true);
+assert.equal(prompt.includes("Ne obećavaj ishod niti tvrdi da je dejstvo izvesno."), true);
 
 const validTonightAction = withTonightAction(validReport, 2, "Ako ti misli ostanu aktivne, zapiši ih kratko pre nego što legneš.");
 assert.equal(validateSleepPremiumReport(validTonightAction, validationInput).valid, true);
@@ -251,6 +255,36 @@ unsafeSevenDayAction.sevenDayPlan[2].action = "Kasno ležanje izaziva tvoj loš 
 const unsafeSevenDayActionValidation = validateSleepPremiumReport(unsafeSevenDayAction, validationInput);
 assert.equal(unsafeSevenDayActionValidation.valid, false);
 assert.equal(unsafeSevenDayActionValidation.diagnostic.field, "sevenDayPlan[2].action");
+
+const safeSevenDayActions = [
+  "Probaj da ujutru zabeležiš kako se osećaš.",
+  "Obrati pažnju na to šta ti prija u večernjoj rutini.",
+  "Zapiši približno vreme kada si legao/la.",
+  "Pokušaj da ponoviš jednu malu naviku koja ti odgovara.",
+  "Uporedi kako se osećaš nakon različitih večernjih rutina.",
+  "Zabeleži šta želiš da zadržiš u svojoj rutini.",
+  "Probaj da odvojiš nekoliko mirnih minuta pre odlaska u krevet.",
+];
+const completeSafePlan = structuredClone(validReport);
+completeSafePlan.sevenDayPlan.forEach((day, index) => {
+  day.action = safeSevenDayActions[index];
+});
+assert.equal(validateSleepPremiumReport(completeSafePlan, validationInput).valid, true);
+
+for (let index = 0; index < 7; index += 1) {
+  const causalPlan = structuredClone(validReport);
+  causalPlan.sevenDayPlan[index].action = "Kasno ležanje izaziva tvoj loš san.";
+  const causalPlanValidation = validateSleepPremiumReport(causalPlan, validationInput);
+  assert.equal(causalPlanValidation.valid, false, `day ${index + 1} causal action must fail`);
+  assert.equal(causalPlanValidation.diagnostic.field, `sevenDayPlan[${index}].action`);
+
+  const promisePlan = structuredClone(validReport);
+  promisePlan.sevenDayPlan[index].action = "Probaj ovu rutinu; sigurno će poboljšati tvoj san.";
+  const promisePlanValidation = validateSleepPremiumReport(promisePlan, validationInput);
+  assert.equal(promisePlanValidation.valid, false, `day ${index + 1} guaranteed outcome must fail`);
+  assert.equal(promisePlanValidation.diagnostic.field, `sevenDayPlan[${index}].action`);
+  assert.match(promisePlanValidation.reason, /promises a sleep outcome/i);
+}
 
 await assert.rejects(
   generateSleepPremiumReport({
@@ -338,7 +372,8 @@ assert.equal(schema.schema.properties.tonight.properties.actions.items.maxLength
 assert.match(schema.schema.properties.tonight.properties.actions.items.description, /natural everyday Serbian.*diagnosis.*causal claims/i);
 assert.equal(schema.schema.properties.sevenDayPlan.items.properties.title.maxLength, 100);
 assert.equal(schema.schema.properties.sevenDayPlan.items.properties.action.maxLength, 400);
-assert.equal(schema.schema.properties.sevenDayPlan.items.properties.action.description, schema.schema.properties.tonight.properties.actions.items.description);
+assert.match(schema.schema.properties.sevenDayPlan.items.properties.action.description, /everyday Serbian wellness suggestion.*diagnoses.*causal claims/i);
+assert.match(schema.schema.properties.sevenDayPlan.items.properties.action.description, /Do not claim or imply the action will definitely improve, fix, cure, regulate, or solve sleep/i);
 assert.equal(schema.schema.properties.tracking.properties.items.items.maxLength, 200);
 assert.equal(schema.schema.properties.closing.maxLength, 800);
 assert.equal(schema.schema.properties.closing.pattern, "\\S");

@@ -27,6 +27,10 @@ const wellnessActionSchema = (maxLength) => ({
   ...textSchema(maxLength),
   description: "One concise, practical suggestion in natural everyday Serbian, phrased as something the customer may try. Avoid assumptions presented as facts, diagnosis or medical conclusions, causal claims, scores/percentages/thresholds, internal labels such as WEAK/MIXED/STABLE, technical/system/AI terminology, and medication or treatment instructions.",
 });
+const sevenDayActionSchema = (maxLength) => ({
+  ...textSchema(maxLength),
+  description: "One brief, simple, everyday Serbian wellness suggestion for this plan day. Use neutral experimental wording such as try, notice, write down, or compare. Do not claim or imply the action will definitely improve, fix, cure, regulate, or solve sleep. No diagnoses, medical claims, causal claims, scores, thresholds, dimensions, internal labels, technical terms, medication, or treatment instructions.",
+});
 const fixedStringSchema = (value) => ({ type: "string", enum: [value] });
 const safeShape = (value) => {
   if (value === null) return { type: "null" };
@@ -124,7 +128,7 @@ const makeProperties = (input) => {
       items: objectSchema({
         day: { type: "integer", minimum: 1, maximum: 7 },
         title: textSchema(100),
-        action: wellnessActionSchema(400),
+        action: sevenDayActionSchema(400),
       }),
     },
     tracking: objectSchema({
@@ -144,6 +148,8 @@ export const buildSleepPremiumJsonSchema = (input) => ({
 
 const INVALID_CUSTOMER_COPY = /\b(?:scoring|dimension|mapped value|classifier|ai confidence|faktor\w*|signal\w*|obrazac\w*|obrasc\w*|stable|mixed|weak|stabil\w*|mesovit\w*|slab\w*|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|hormons\w*|neurolosk\w*|dijagnoz\w*|dijagnost\w*|poremec\w*|bolest\w*|klinick\w*|medikament\w*|lekov\w*|\blek\b|terapij\w*|lecen\w*|uzrok\w*|izaziv\w*|prouzrok\w*|dovod\w*|remet\w*|doprin\w*|kriv\w*|posledic\w*|\bzbog\b)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
 const MAIN_AREA_SCORE_OR_THRESHOLD_COPY = /\b(?:score|scor\w*|rezultat\w*|ocen\w*|poen\w*|bod\w*|prag\w*|threshold\w*|granica\w*)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
+const ACTION_PROMISE_COPY = /\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b.{0,60}\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b|\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b.{0,60}\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b/iu;
+const normalizeForSafety = (text) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/gu, "d").toLowerCase();
 const UNSUPPORTED_STRENGTH_COPY = /\b(?:dobr\w*|odlicn\w*|funkcionis\w*|snag\w*|jak\w*|uspesn\w*|zadrz\w*|oslonc\w*|prednost\w*|pomaz\w*|podrz\w*)\b/u;
 const OBSERVATION_COPY = /\b(?:prat\w*|obrati\w*|posmatr\w*|bele[zž]\w*|primet\w*|naredn\w*)\b/u;
 const STABLE_EVIDENCE = Object.freeze({
@@ -294,6 +300,9 @@ export const validateSleepPremiumReport = (candidate, input) => {
     if (!keysEqual(day, ["day", "title", "action"]) || day.day !== index + 1 || !hasTextOnly(day.title, 100) || !hasTextOnly(day.action, 400)) {
       return invalid(`sevenDayPlan[${index}]`, `object {day: ${index + 1}, title: nonblank string 1–100 chars, action: nonblank string 1–400 chars}`, day, `Seven-day plan entry ${index + 1} is invalid.`);
     }
+    if (ACTION_PROMISE_COPY.test(normalizeForSafety(day.action))) {
+      return invalid(`sevenDayPlan[${index}].action`, "neutral experimental suggestion; do not promise to improve, fix, cure, regulate, or solve sleep", day.action, `Seven-day plan entry ${index + 1} promises a sleep outcome.`);
+    }
   }
   if (!keysEqual(candidate.tracking, ["title", "items"])) {
     return invalid("tracking", "object with exactly title and items", candidate.tracking, "Tracking object shape is invalid.");
@@ -312,7 +321,6 @@ export const validateSleepPremiumReport = (candidate, input) => {
     return invalid("closing", "nonblank string, 1–800 characters", candidate.closing, "Closing text is empty or too long.");
   }
 
-  const normalizeForSafety = (text) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/gu, "d").toLowerCase();
   const customerStrings = collectReportStrings(candidate);
   const suppliedAnswers = new Set(input.answers.map((item) => item.answer));
   const quotedAnswers = customerStrings.flatMap(({ value, field }) =>
