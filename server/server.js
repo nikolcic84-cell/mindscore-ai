@@ -109,9 +109,13 @@ if (!FRONTEND_BASE_URL) {
 console.log("[startup] Storage directory", DATA_DIR);
 
 const _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2025-06-30.basil",
-});
+const stripeSecretKey = typeof process.env.STRIPE_SECRET_KEY === "string"
+  ? process.env.STRIPE_SECRET_KEY.trim()
+  : "";
+const stripe = stripeSecretKey
+  ? new Stripe(stripeSecretKey, { apiVersion: "2025-06-30.basil" })
+  : null;
+const STRIPE_CONFIGURATION_ERROR = "Payment processing is not configured on this service.";
 
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecure = process.env.SMTP_SECURE === "true";
@@ -711,6 +715,9 @@ app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
   async (req, res) => {
+    if (!stripe) {
+      return res.status(503).json({ error: STRIPE_CONFIGURATION_ERROR });
+    }
     const signature = req.headers["stripe-signature"];
     if (!signature) {
       return res.status(400).send("Missing Stripe signature");
@@ -883,6 +890,9 @@ app.post("/api/admin/premium-report/:assessmentId/regenerate", async (req, res) 
 
 app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res) => {
   try {
+    if (!stripe) {
+      return res.status(503).json({ error: STRIPE_CONFIGURATION_ERROR });
+    }
     if (!FRONTEND_BASE_URL) {
       return res.status(500).json({
         error: "Server configuration error: FRONTEND_BASE_URL is not set.",
@@ -1003,6 +1013,9 @@ const derivePublicStatus = (paid, reportStatus) => {
 
 app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (req, res) => {
   try {
+    if (!stripe) {
+      return res.status(503).json({ status: "PAYMENT_FAILED", error: STRIPE_CONFIGURATION_ERROR });
+    }
     const verifyStartedAt = Date.now();
     const sessionId = toSafeText(req.params.sessionId);
     if (!sessionId) return res.status(400).json({ status: "PAYMENT_FAILED", error: "Missing session id." });
@@ -1086,6 +1099,9 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
 
 app.get("/api/premium-report/download", rateLimit(60_000, 20), async (req, res) => {
   try {
+    if (!stripe) {
+      return res.status(503).json({ status: "PAYMENT_FAILED", error: STRIPE_CONFIGURATION_ERROR });
+    }
     const token = toSafeText(req.query.token);
     if (!token) return res.status(400).json({ status: "PAYMENT_FAILED", error: "Missing token." });
 
