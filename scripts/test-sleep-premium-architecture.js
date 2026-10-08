@@ -230,8 +230,8 @@ for (const points of personas) {
     /JEDNA ČINJENICA — JEDNO OBJAŠNJENJE.*uglavnom objasni jednom/,
     /Detaljna objašnjenja zadrži u postojećem supporting_content/,
     /3–5 kratkih rečenica.*odakle početi.*jedan mali prvi pokušaj/,
-    /60–100 reči.*700 znakova ima prednost/,
-    /Svaka connections stavka: 1–2 kratke rečenice.*120–240 znakova/,
+    /70–110 reči.*700 znakova ima prednost/,
+    /Svaka connections stavka:.*2–4 kratke rečenice.*ISTOM postojećem text stringu/,
     /ne citat A \+ citat B \+ generički savet/,
     /Ne objašnjavaj ponovo vezu već obrađenu u prioritetu/,
     /Svaka tracking stavka.*60–120 znakova.*Nije dodatna preporuka/,
@@ -270,6 +270,7 @@ for (const points of personas) {
     assert.ok(responsibilities.includes(field), `distinct role specified for ${field}`);
   }
   const introGuidance = lineFor("profile_explanation:");
+  assert.match(introGuidance, /3–4 kratke rečenice/);
   assert.match(introGuidance, /najmanje dva smisleno različita dela sna.*odgovori podržavaju/);
   assert.match(introGuidance, /Ne daj savet.*ne prepričavaj samo.*prioritet/);
   assert.match(lineFor("Kroz connections"), /najmanje tri različite potkrepljene teme.*Svaka stavka donosi novu/);
@@ -295,6 +296,48 @@ for (const points of personas) {
   assert.match(alternativeGuidance, /DRUGU potkrepljenu temu.*svih odgovora/);
   assert.match(alternativeGuidance, /ne automatski večernju rutinu i misli/);
   assert.match(alternativeGuidance, /drugi put, ne novi Priority #1/);
+  // Editorial intentions are checked, not exact AI sentences or invented semantic gates.
+  const insightFirst = lineFor("UVID PRE SAVETA:");
+  assert.match(insightFirst, /prvo objasni.*tek potom/);
+  assert.match(insightFirst, /činjenice.*kontrast.*tumačenje.*neizvesnost.*korisno pitanje.*eventualna radnja/);
+  assert.match(insightFirst, /ne ispisuj te interne oznake/);
+  const insights = lineFor("Svaka connections stavka:");
+  assert.match(insights, /kratak korisnički naslov.*ne dodaj title ključ/);
+  assert.match(insights, /najmanje dve informacije.*uvid/);
+  assert.match(insights, /zašto je.*zanimljiv.*još ne znamo/);
+  assert.match(insights, /tri snažna uvida kada postoje.*dozvoljenih 2–4/);
+  const positives = lineFor("KONTRASTI I ONO ŠTO VEĆ PRIJA:");
+  assert.match(positives, /razlike između početka noći i buđenja/);
+  assert.match(positives, /samo kada ih stvarni odgovori potvrđuju/);
+  assert.match(positives, /Pozitivni odgovori iz svih 12 ostaju dostupni/);
+  assert.match(positives, /U uvod ili connections.*1–2 stvarno potkrepljena/);
+  assert.match(positives, /ne mora da se menja prvo.*Ne dodaj odeljak ili novi ključ/);
+  assert.match(positives, /nema potkrepljenog pozitivnog dela.*ne izmišljaj pohvalu/);
+  const uncertainty = lineFor("KORISNA NEIZVESNOST:");
+  assert.match(uncertainty, /šta je zaista opisano.*12 odgovora ne govori/);
+  assert.match(uncertainty, /konkretno nepoznato.*menja razumevanje/);
+  assert.match(uncertainty, /Pitanje.*ne zameni ga.*Nikada.*uzročni ili medicinski dokaz/);
+  const trackingDefault = lineFor("Tracking podrazumevano");
+  assert.match(trackingDefault, /najviše DVE.*treća samo ako/);
+  assert.match(trackingDefault, /nerazjašnjeno pitanje.*promenilo razumevanje/);
+  const lightPlan = lineFor("Plan je kratka podrška");
+  assert.match(lightPlan, /ne glavni deo.*učiti o svom snu/);
+  assert.match(lightPlan, /tačno sedam dana.*determinističku raspodelu/);
+  assert.match(lightPlan, /Bez proizvoljnih navika.*toaleta.*nepotrebne noćne aktivnosti/);
+  assert.match(lightPlan, /ne postavljaj alarm.*nasumičnim savetom/);
+  assert.match(lightPlan, /ne podržavaju novu radnju.*zapažanje te dodeljene teme/);
+  assert.match(lineFor("Alternativa mora"), /zašto.*druga potkrepljena tema.*razuman početak/);
+  assert.match(lineFor("Alternativa mora"), /ne.*obećanje.*drugi put uspeti/);
+  assert.match(lineFor("BEZ PRAZNOG UVODA:"), /Počni odnosom između iskustava.*tek onda pitanjem/);
+  assert.match(lineFor("BEZ PRAZNOG UVODA:"), /iste dužine ili kraći/);
+  const editorialReview = lineFor("TIHA UREDNIČKA PROVERA");
+  assert.match(editorialReview, /ne ispisuj je niti dodaj ključeve/);
+  assert.deepEqual([...editorialReview.matchAll(/\((\d+)\)/gu)].map((match) => Number(match[1])), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.match(editorialReview, /bar tri.*kada ih odgovori podržavaju/);
+  assert.match(editorialReview, /poznato.*nepoznatog.*ne treba prvo menjati/);
+  assert.match(editorialReview, /obrisati pasus.*skrati.*Ponavljam li savet.*ukloni/);
+  assert.match(editorialReview, /dani 2\/3\/5.*serverovoj raspodeli/);
+  assert.match(editorialReview, /izmislio.*ponašanje, simptom, uzrok ili preporuku.*ukloni/);
   assert.doesNotMatch(reportPrompt, /dan 3 prilagodi njegov obim|dan 3 olakšava pokušaj|dan 5 uvodi drugačiji pristup istoj temi|drugi istražuje drugi praktičan pristup toj temi/);
   for (const avoidedWording of [
     "obrazac", "signal", "faktor", "analiza pokazuje", "podaci pokazuju", "testirati hipotezu",
@@ -306,7 +349,7 @@ for (const points of personas) {
     /Vrati samo JSON.*version: 2.*Ne dodaj sekcije ili ključeve/,
     /Model nikada ne bira profil ili prioritet; ne menjaj ih i ne izvodi ocene/,
     /Naslov je UVEK „ŠTA JOŠ VREDI DA PRATIŠ“, nezavisno od mode/,
-    /profile_explanation: 2–3 kratke rečenice.*bez ponavljanja naziva profila/,
+    /profile_explanation: 3–4 kratke rečenice.*bez ponavljanja naziva profila/,
     /priority.explanation: objasni zašto krenuti baš od fiksnog prioriteta.*relevantne izabrane odgovore.*konkretan pravac/,
     /Razlikuj ono što osoba već radi od onoga što može tek da proba/,
     /Sažmi ih prirodno.*nije potreban citat u svakoj rečenici/,
