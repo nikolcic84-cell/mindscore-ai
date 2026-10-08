@@ -212,7 +212,7 @@ const safetyDiagnosticCases = [
   ["nesanicu", "medical", "INVALID_CUSTOMER_COPY"],
   ["zbog", "causal", "INVALID_CUSTOMER_COPY"],
   ["WEAK", "internal", "INVALID_CUSTOMER_COPY"],
-  ["obrazac", "technical", "INVALID_CUSTOMER_COPY"],
+  ["algoritam", "technical", "INVALID_CUSTOMER_COPY"],
   ["42/100", "score", "INVALID_CUSTOMER_COPY"],
   ["poboljšati san", "outcome-promising", "GUARANTEE_COPY"],
 ];
@@ -230,6 +230,52 @@ for (const [phrase, category, rule] of safetyDiagnosticCases) {
   assert.ok(new RegExp(diagnostic.regex.slice(1, diagnostic.regex.lastIndexOf("/")), "iu").test(diagnostic.normalizedMatch));
 }
 const negatedCause = structuredClone(onsetPriorityFallback);
+// Customer vocabulary fixtures: the full original Render sentence was not supplied.
+const naturalPatternSentences = [
+  "Za period pre sna, primeti koji se obrazac ponavlja tokom tvojih večeri.",
+  "Za period pre sna, primeti koje obrasce vidiš u svojim beleškama.",
+  "Za period pre sna, razmotri da li se slični obrasci ponavljaju kroz dane.",
+  "Za period pre sna, uporedi svoje beleške i razmisli o obrascu svoje večeri.",
+  "Za period pre sna, pogledaj kako se tvoja zapažanja razlikuju od tog obrasca.",
+  "Za period pre sna, razmisli o obrascima koje primećuješ tokom nedelje.",
+  "Za period pre sna, uporedi nekoliko obrazaca iz svojih beležaka.",
+  "Za period pre sna, OBRASCE iz beležaka posmatraj kao lična zapažanja.",
+];
+for (const sentence of naturalPatternSentences) {
+  const report = structuredClone(onsetPriorityFallback);
+  report.after_seven_days = sentence;
+  assert.equal(validateSleepPremiumReport(report, onsetInput).valid, true, `normal Serbian recurring-habit copy is accepted: ${sentence}`);
+  assert.equal(diagnoseSleepPremiumCustomerSafety("after_seven_days", sentence, onsetInput), null);
+  const priorityReport = structuredClone(onsetPriorityFallback);
+  priorityReport.priority.explanation += ` ${sentence}`;
+  assert.equal(validateSleepPremiumReport(priorityReport, onsetInput).valid, true, "ordinary pattern words do not weaken exact priority evidence requirements");
+}
+const retainedSafetyPhrases = [
+  ["scoring", "internal"], ["dimension", "internal"], ["mapped value", "internal"],
+  ["classifier", "internal"], ["AI confidence", "internal"], ["WEAK", "internal"],
+  ["MIXED", "internal"], ["STABLE", "internal"],
+  ["algorithm", "technical"], ["algoritam", "technical"], ["faktor", "technical"], ["signal", "technical"],
+  ["nesanicu", "medical"], ["apneju", "medical"], ["dijagnoza", "medical"], ["terapija", "medical"],
+  ["lek", "medical"], ["uzrok", "causal"], ["izaziva", "causal"], ["zbog", "causal"],
+  ["42/100", "score"], ["72%", "score"], ["42,5 %", "score"],
+  ["scoring prag za WEAK dimension", "internal"],
+  ["classifier koristi schema, prompt i tokens za AI confidence", "internal"],
+  ["algoritam određuje obrasce prema internim pravilima", "technical"],
+  ["obrasci potvrđuju dijagnozu", "medical"],
+  ["obrasce izaziva tvoja navika", "causal"],
+  ["obrazac ima rezultat 42/100", "score"],
+  ["ovaj korak će sigurno poboljšati san", "outcome-promising"],
+];
+for (const [phrase, category] of retainedSafetyPhrases) {
+  const report = structuredClone(onsetPriorityFallback);
+  report.after_seven_days = `Za period pre sna: ${phrase}.`;
+  const result = validateSleepPremiumReport(report, onsetInput);
+  assert.equal(result.valid, false, `existing safety rule remains: ${phrase}`);
+  assert.equal(result.diagnostic.field, "after_seven_days");
+  const diagnostic = diagnoseSleepPremiumCustomerSafety("after_seven_days", report.after_seven_days, onsetInput);
+  assert.equal(diagnostic.category, category);
+  assert.equal(diagnostic.rule, category === "outcome-promising" ? "GUARANTEE_COPY" : "INVALID_CUSTOMER_COPY");
+}
 negatedCause.priority.explanation += " Bez tvrdnje o uzroku.";
 assert.equal(validateSleepPremiumReport(negatedCause, onsetInput).valid, false, "negating a disallowed token does not bypass the runtime rule");
 assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", negatedCause.priority.explanation, onsetInput).rejectedText, "uzroku");

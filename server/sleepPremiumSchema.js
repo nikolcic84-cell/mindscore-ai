@@ -145,7 +145,7 @@ export const buildSleepPremiumJsonSchema = (input) => ({
   schema: makeSchema(input),
 });
 
-const INVALID_CUSTOMER_COPY = /\b(?:scoring|dimension|mapped value|classifier|ai confidence|algorithm|algoritam|faktor\w*|signal\w*|obrazac\w*|obrasc\w*|stable|mixed|weak|stabil\w*|mesovit\w*|slab\w*|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|hormons\w*|neurolosk\w*|dijagnoz\w*|dijagnost\w*|poremec\w*|bolest\w*|klinick\w*|medikament\w*|lekov\w*|\blek\b|terapij\w*|lecen\w*|uzrok\w*|izaziv\w*|prouzrok\w*|dovod\w*|remet\w*|doprin\w*|kriv\w*|posledic\w*|\bzbog\b)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
+const INVALID_CUSTOMER_COPY = /\b(?:scoring|dimension|mapped value|classifier|ai confidence|algorithm|algoritam|faktor\w*|signal\w*|stable|mixed|weak|stabil\w*|mesovit\w*|slab\w*|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|hormons\w*|neurolosk\w*|dijagnoz\w*|dijagnost\w*|poremec\w*|bolest\w*|klinick\w*|medikament\w*|lekov\w*|\blek\b|terapij\w*|lecen\w*|uzrok\w*|izaziv\w*|prouzrok\w*|dovod\w*|remet\w*|doprin\w*|kriv\w*|posledic\w*|\bzbog\b)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
 const GUARANTEE_COPY = /\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b.{0,60}\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b|\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b.{0,60}\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b/iu;
 const STABLE_EVIDENCE = Object.freeze({
   recovery: /(?:oporav|jutarn|buden|energij|odmor|ustajan)/u,
@@ -203,7 +203,7 @@ export const diagnoseSleepPremiumCustomerSafety = (field, value, input) => {
     category = /\d/u.test(token) ? "score"
       : /^(?:nesanic|apnej|depres|anksiozn|hormons|neurolosk|dijagnoz|dijagnost|poremec|bolest|klinick|medikament|lekov|lek\b|terapij|lecen)/u.test(token) ? "medical"
         : /^(?:uzrok|izaziv|prouzrok|dovod|remet|doprin|kriv|posledic|zbog)/u.test(token) ? "causal"
-          : /^(?:algorithm|algoritam|faktor|signal|obrazac|obrasc)/u.test(token) ? "technical"
+          : /^(?:algorithm|algoritam|faktor|signal)/u.test(token) ? "technical"
             : /^(?:scoring|dimension|mapped value|classifier|ai confidence|stable|mixed|weak|stabil|mesovit|slab)/u.test(token) ? "internal"
               : "other";
   }
