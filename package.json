@@ -11,11 +11,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
     "jspdf": "^4.2.1",
+    "nodemailer": "^6.10.1",
     "openai": "^5.23.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "recharts": "^3.9.2"
+    "recharts": "^3.9.2",
+    "stripe": "^18.3.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
