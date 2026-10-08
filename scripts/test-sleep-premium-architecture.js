@@ -419,7 +419,7 @@ try {
   process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
   const gateCases = [
     ...[undefined, "false", "TRUE", "true"].map((flag) => ({ flag, temporary: "true", branch: "premium-ai-staging", logs: flag === "true" ? 1 : 0 })),
-    ...[undefined, "false", "TRUE"].map((temporary) => ({ flag: "true", temporary, branch: "premium-ai-staging", logs: temporary === "false" ? 0 : 1 })),
+    ...[undefined, "false", "TRUE"].map((temporary) => ({ flag: "true", temporary, branch: "premium-ai-staging", logs: 1 })),
     ...[undefined, "main", "production", "other-branch"].map((branch) => ({ flag: "true", temporary: "true", branch, logs: 0 })),
     { flag: "true", temporary: "true", branch: "premium-ai-staging", logs: 1 },
   ];
@@ -441,7 +441,7 @@ try {
     assert.equal(rejectedSafetyAi.source, "fallback");
     assert.equal(rejectedSafetyAi.failureDiagnostic.field, "priority.explanation");
     assert.deepEqual(rejectedSafetyAi.report, onsetPlanFallback, "rejected AI copy is never sanitized or accepted");
-    assert.equal(safetyLogs.length, logs, "staging preview diagnoses by default without a second opt-in; explicit false disables it and main/production fail closed");
+    assert.equal(safetyLogs.length, logs, "only staging branch and preview flag control diagnostics; legacy temporary flag cannot suppress evidence logs");
     assert.equal(JSON.stringify(rejectedSafetyAi).includes(negatedCause.priority.explanation), false, "raw failed field is not exposed in the generator response");
   }
   assert.equal(safetyLogs[0].rejectedText, "uzroku");
@@ -454,7 +454,7 @@ try {
     apiKeyAvailable: true,
     log: (label, diagnostic) => previewSafetyLogs.push({ label, diagnostic }),
   });
-  assert.equal(JSON.parse(previewSafetyLogs.find(({ label }) => label === "CUSTOMER SAFETY: FAIL").diagnostic).returnedText, negatedCause.priority.explanation);
+  assert.equal(JSON.parse(previewSafetyLogs.find(({ label }) => label === "[PREMIUM_AI_REJECTED_FIELD]").diagnostic).exactRejectedText, negatedCause.priority.explanation);
   assert.equal(JSON.stringify(rejectedSafetyPreview.body).includes(negatedCause.priority.explanation), false, "raw failed field is server-log-only, not an HTTP response");
   // Reproduce the reported nested failure path, not the unknown real 121-character text.
   const nestedFailure = structuredClone(onsetPlanFallback);
@@ -476,16 +476,16 @@ try {
       apiKeyAvailable: true,
       log: (label, diagnostic) => logs.push({ label, diagnostic }),
     });
-    const contentLogs = logs.filter(({ label }) => label === "CUSTOMER SAFETY: FAIL");
+    const contentLogs = logs.filter(({ label }) => label === "[PREMIUM_AI_REJECTED_FIELD]");
     assert.equal(contentLogs.length, branch === "premium-ai-staging" ? 1 : 0);
     if (branch === "premium-ai-staging") {
       const diagnostic = JSON.parse(contentLogs[0].diagnostic);
       assert.equal(diagnostic.field, "connections[2].text");
-      assert.equal(diagnostic.returnedText, nestedRejectedText, "nested string comes from the rejected AI candidate, not safeShape metadata or the fallback");
-      assert.equal(diagnostic.expected, nestedValidation.diagnostic.expected);
-      assert.equal(diagnostic.reason, nestedValidation.reason);
-      assert.equal(diagnostic.rejectedText, "uzroku");
-      assert.equal(diagnostic.category, "causal");
+      assert.equal(diagnostic.exactRejectedText, nestedRejectedText, "nested string comes from the rejected AI candidate, not safeShape metadata or the fallback");
+      assert.equal(diagnostic.expectedRule, nestedValidation.diagnostic.expected);
+      assert.equal(diagnostic.rejectionReason, nestedValidation.reason);
+      assert.equal(diagnostic.matchedTokenOrCategory.token, "uzroku");
+      assert.equal(diagnostic.matchedTokenOrCategory.category, "causal");
       assert.equal(Object.hasOwn(diagnostic, "report"), false);
       assert.equal(contentLogs[0].diagnostic.includes(nestedFailure.profile_explanation), false, "unrelated generated content is not logged");
     } else {
@@ -496,6 +496,72 @@ try {
     assert.deepEqual(validateSleepPremiumReport(nestedFailure, onsetInput), nestedValidation, "logging does not mutate the candidate or validator result");
   }
   process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
+  // Synthetic evidence-only failure: deliberately has no safety-regex token or exact answer quote.
+  const evidenceFailure = structuredClone(onsetPlanFallback);
+  const originalEvidenceText = "  Period pre sna je tema koju vredi pratiti.\nObrati pažnju na svoje veče — bez menjanja svega odjednom.  ";
+  evidenceFailure.priority.explanation = originalEvidenceText;
+  const evidenceValidation = validateSleepPremiumReport(evidenceFailure, onsetInput);
+  assert.equal(evidenceValidation.valid, false);
+  assert.equal(evidenceValidation.diagnostic.field, "priority.explanation");
+  assert.match(evidenceValidation.diagnostic.expected, /Period pre sna.*exact selected answer/);
+  assert.equal(diagnoseSleepPremiumCustomerSafety("priority.explanation", originalEvidenceText, onsetInput), null, "evidence failures do not need a safety-regex match to log");
+  for (const branch of ["premium-ai-staging", "main", "production", undefined]) {
+    if (branch === undefined) delete process.env.RENDER_GIT_BRANCH;
+    else process.env.RENDER_GIT_BRANCH = branch;
+    const callbacks = [];
+    const rejected = await generateSleepPremiumReport({
+      input: onsetInput,
+      openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(evidenceFailure) }),
+      apiKeyAvailable: true,
+      includeFailureDiagnostics: true,
+      onCustomerSafetyFailure: (diagnostic) => callbacks.push(diagnostic),
+    });
+    assert.equal(callbacks.length, branch === "premium-ai-staging" ? 1 : 0);
+    if (branch === "premium-ai-staging") {
+      assert.equal(callbacks[0].exactRejectedText, originalEvidenceText, "original text retains whitespace, newline, dash and Serbian diacritics character-for-character");
+      assert.equal(callbacks[0].deterministicProfile, onsetInput.profile);
+      assert.equal(callbacks[0].field, "priority.explanation");
+      assert.equal(callbacks[0].expectedRule, evidenceValidation.diagnostic.expected);
+      assert.equal(callbacks[0].rejectionReason, evidenceValidation.reason);
+      assert.equal(Object.hasOwn(callbacks[0], "matchedTokenOrCategory"), false);
+    }
+    assert.equal(rejected.source, "fallback");
+    assert.deepEqual(rejected.failureDiagnostic, evidenceValidation.diagnostic);
+    assert.equal(JSON.stringify(rejected).includes("Period pre sna je tema koju vredi pratiti"), false);
+    assert.deepEqual(validateSleepPremiumReport(evidenceFailure, onsetInput), evidenceValidation);
+  }
+  process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
+  const evidenceLogs = [];
+  const evidencePreview = await generateSleepPremiumPreview({
+    enabled: true,
+    answers: personas[2],
+    openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(evidenceFailure) }),
+    apiKeyAvailable: true,
+    log: (label, diagnostic) => evidenceLogs.push({ label, diagnostic }),
+  });
+  const rejectedFieldLogs = evidenceLogs.filter(({ label }) => label === "[PREMIUM_AI_REJECTED_FIELD]");
+  assert.equal(rejectedFieldLogs.length, 1, "one clearly searchable JSON entry per rejected generated field");
+  assert.deepEqual(JSON.parse(rejectedFieldLogs[0].diagnostic), {
+    deterministicProfile: onsetInput.profile,
+    field: "priority.explanation",
+    exactRejectedText: originalEvidenceText,
+    expectedRule: evidenceValidation.diagnostic.expected,
+    rejectionReason: evidenceValidation.reason,
+  });
+  assert.equal(JSON.stringify(evidencePreview.body).includes("Period pre sna je tema koju vredi pratiti"), false);
+  for (const secret of ["example@example.test", "sk-test-placeholder", "password=test-placeholder", "cs_test_placeholder"]) {
+    const privateFailure = structuredClone(evidenceFailure);
+    privateFailure.priority.explanation += ` ${secret}`;
+    const privateLogs = [];
+    await generateSleepPremiumReport({
+      input: onsetInput,
+      openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(privateFailure) }),
+      apiKeyAvailable: true,
+      onCustomerSafetyFailure: (diagnostic) => privateLogs.push(diagnostic),
+    });
+    assert.equal(privateLogs[0].exactRejectedText, "[withheld: possible personal identifier]");
+    assert.equal(JSON.stringify(privateLogs).includes(secret), false, "non-safety rejection diagnostics also withhold private data");
+  }
   const thrownDiagnostics = [];
   await assert.rejects(generateSleepPremiumReport({
     input: onsetInput,

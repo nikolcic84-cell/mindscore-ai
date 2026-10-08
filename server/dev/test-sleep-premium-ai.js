@@ -70,7 +70,11 @@ try {
     apiKeyAvailable: true,
     fallbackOnError: false,
     timeoutMs: STAGING_AI_TIMEOUT_MS,
-    onCustomerSafetyFailure: (diagnostic) => console.error("CUSTOMER SAFETY: FAIL", JSON.stringify(diagnostic)),
+    onCustomerSafetyFailure: ({ deterministicProfile, field, exactRejectedText, expectedRule, rejectionReason, matchedTokenOrCategory }) =>
+      console.error("[PREMIUM_AI_REJECTED_FIELD]", JSON.stringify({
+        deterministicProfile, field, exactRejectedText, expectedRule, rejectionReason,
+        ...(matchedTokenOrCategory ? { matchedTokenOrCategory } : {}),
+      })),
   });
   fallbackUsed = generation.source === "fallback";
   failUnless(generation.source === "ai", `Expected AI source; generator returned ${generation.source}.`);

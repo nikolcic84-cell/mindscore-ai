@@ -30,19 +30,35 @@ const classifyGenerationFailure = (error) => {
 const validateGeneratedReport = (candidate, input, onCustomerSafetyFailure) => {
   const validation = validateSleepPremiumReport(candidate, input);
   if (!validation.valid) {
-    // TEMPORARY: staging preview logs by default; an explicit false disables it.
-    // Do not require a second opt-in that silently leaves only shape metadata in logs.
-    if (process.env.TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS !== "false" &&
-      process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
-      process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" && typeof onCustomerSafetyFailure === "function" &&
-      ["Report contains disallowed customer-facing copy.", "Report promises a sleep outcome."].includes(validation.reason)) {
+    // TEMPORARY: observe every rejected string field, not only safety-regex failures.
+    // The callback name is retained for compatibility; its scope includes evidence failures.
+    if (process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
+      process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" && typeof onCustomerSafetyFailure === "function") {
       const field = validation.diagnostic.field;
       const value = field.replace(/\[(\d+)\]/gu, ".$1").split(".").reduce((parent, key) => parent?.[key], candidate);
-      const diagnostic = diagnoseSleepPremiumCustomerSafety(field, value, input);
       // Diagnostic delivery must never affect validation, fallback, or report contents.
-      if (diagnostic) {
+      if (typeof value === "string") {
         try {
-          onCustomerSafetyFailure({ ...diagnostic, reason: validation.reason, expected: validation.diagnostic.expected });
+          const safetyDiagnostic = diagnoseSleepPremiumCustomerSafety(field, value, input);
+          // Evidence/length failures have no safety match, but need the same privacy guard.
+          const sensitive = /\S+@\S+|\b(?:cs_|pi_|cus_|sess_|session[_ -]?|assessment[_ -]?|user[_ -]?id[\s:=_-]*|sk[-_]|pk_(?:live|test)_|whsec_)[\w-]+|\b(?:bearer\s+\S+|(?:password|passwd|credential|api[_ -]?key|access[_ -]?token|secret)\s*[:=]\s*\S+)|\b[0-9a-f]{8}-[0-9a-f-]{27,}\b|(?:\+?\d[\s().-]*){7,}|\b[A-Za-z0-9_-]{24,}\b/iu.test(value);
+          const exactRejectedText = sensitive ? "[withheld: possible personal identifier]" : value;
+          onCustomerSafetyFailure({
+            ...safetyDiagnostic,
+            field,
+            returnedText: exactRejectedText,
+            deterministicProfile: input.profile,
+            exactRejectedText,
+            expectedRule: validation.diagnostic.expected,
+            rejectionReason: validation.reason,
+            ...(safetyDiagnostic ? { matchedTokenOrCategory: {
+              token: safetyDiagnostic.rejectedText,
+              category: safetyDiagnostic.category,
+              rule: safetyDiagnostic.rule,
+            } } : {}),
+            reason: validation.reason,
+            expected: validation.diagnostic.expected,
+          });
         } catch { /* Logging is observational only. */ }
       }
     }

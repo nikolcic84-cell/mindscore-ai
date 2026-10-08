@@ -65,7 +65,11 @@ export const generateSleepPremiumPreview = async ({
       apiKeyAvailable,
       fallbackOnError: true,
       includeFailureDiagnostics: true,
-      onCustomerSafetyFailure: (diagnostic) => logPreviewStatus(log, "CUSTOMER SAFETY: FAIL", JSON.stringify(diagnostic)),
+      onCustomerSafetyFailure: ({ deterministicProfile, field, exactRejectedText, expectedRule, rejectionReason, matchedTokenOrCategory }) =>
+        logPreviewStatus(log, "[PREMIUM_AI_REJECTED_FIELD]", JSON.stringify({
+          deterministicProfile, field, exactRejectedText, expectedRule, rejectionReason,
+          ...(matchedTokenOrCategory ? { matchedTokenOrCategory } : {}),
+        })),
       ...(timeoutMs ? { timeoutMs } : {}),
     });
   } catch (error) {
