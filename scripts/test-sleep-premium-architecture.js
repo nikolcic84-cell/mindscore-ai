@@ -412,6 +412,119 @@ assert.equal(rejectedConnectionAi.failureType, "schema_validation_failure");
 assert.equal(rejectedConnectionAi.failureDiagnostic.field, "connections[1].questionIds");
 assert.deepEqual(rejectedConnectionAi.report, fallback);
 const safetyLogs = [];
+const previousIncompleteEnv = {
+  RENDER_GIT_BRANCH: process.env.RENDER_GIT_BRANCH,
+  ENABLE_PREMIUM_AI_PREVIEW: process.env.ENABLE_PREMIUM_AI_PREVIEW,
+};
+try {
+  const privateApiText = "private@example.test sk-test-secret-placeholder password=private-user-data";
+  const incompleteApiResponse = {
+    id: "resp_test123",
+    status: "incomplete",
+    incomplete_details: { reason: "max_output_tokens", unrelated: privateApiText },
+    error: { code: "server_error", message: privateApiText, credentials: privateApiText },
+    output_text: privateApiText,
+    output: [
+      { type: "reasoning", status: "completed", summary: [{ type: "summary_text", text: privateApiText }] },
+      { type: "message", status: "incomplete", finish_reason: "length", id: "msg_private", content: [
+        { type: "output_text", status: "incomplete", finish_reason: "length", text: privateApiText },
+      ] },
+    ],
+    email: privateApiText,
+  };
+  for (const [branch, previewFlag] of [
+    ["premium-ai-staging", "true"], ["main", "true"], ["production", "true"],
+    [undefined, "true"], ["premium-ai-staging", "false"], ["premium-ai-staging", undefined],
+  ]) {
+    if (branch === undefined) delete process.env.RENDER_GIT_BRANCH;
+    else process.env.RENDER_GIT_BRANCH = branch;
+    if (previewFlag === undefined) delete process.env.ENABLE_PREMIUM_AI_PREVIEW;
+    else process.env.ENABLE_PREMIUM_AI_PREVIEW = previewFlag;
+    const logs = [];
+    const result = await generateSleepPremiumPreview({
+      enabled: true,
+      answers: personas[2],
+      openaiClient: mockClient(incompleteApiResponse, (request) => {
+        assert.equal(request.model, "gpt-5-mini");
+        assert.equal(request.max_output_tokens, 5000);
+        assert.equal(Object.hasOwn(request, "max_completion_tokens"), false);
+      }),
+      apiKeyAvailable: true,
+      log: (label, details) => logs.push({ label, details }),
+    });
+    const metadataLogs = logs.filter(({ label }) => label === "[PREMIUM_AI_INCOMPLETE_RESPONSE]");
+    assert.equal(metadataLogs.length, branch === "premium-ai-staging" && previewFlag === "true" ? 1 : 0);
+    assert.equal(result.body.fallbackDiagnostic.code, "INCOMPLETE_RESPONSE");
+    assert.ok(logs.some(({ label }) => label === "SCHEMA: NOT RUN"));
+    assert.equal(JSON.stringify(result.body).includes("resp_test123"), false, "raw API metadata is server-log-only");
+    assert.equal(JSON.stringify(logs).includes(privateApiText), false);
+    if (metadataLogs.length) {
+      assert.deepEqual(JSON.parse(metadataLogs[0].details), {
+        id: "resp_test123", status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        error: { code: "server_error", message: "[withheld: free-form API error message]" },
+        outputTextExists: true, outputTextCharacterLength: privateApiText.length,
+        outputItemCount: 2, outputItemTypes: ["reasoning", "message"],
+        outputItemMetadata: [
+          { type: "reasoning", status: "completed", content: [] },
+          { type: "message", status: "incomplete", finish_reason: "length", content: [
+            { type: "output_text", status: "incomplete", finish_reason: "length" },
+          ] },
+        ],
+        configuredModel: "gpt-5-mini", max_output_tokens: 5000,
+        internalReason: 'response.status !== "completed" OR Boolean(response.incomplete_details) === true -> AI response was incomplete.',
+      });
+    }
+  }
+  process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
+  process.env.ENABLE_PREMIUM_AI_PREVIEW = "true";
+  for (const [response, expectedFailure, expectedLogs] of [
+    [{ status: "incomplete", incomplete_details: { reason: "content_filter" }, output_text: "" }, "incomplete_response", 1],
+    [{ status: "completed", incomplete_details: {}, output_text: JSON.stringify(fallback) }, "incomplete_response", 1],
+    [{ status: "failed", error: { code: "server_error" }, output: [] }, "incomplete_response", 1],
+    [{ output_text: JSON.stringify(fallback) }, "incomplete_response", 1],
+    [{ status: "completed", output_text: "" }, "invalid_json", 0],
+    [{ status: "completed" }, "invalid_json", 0],
+    [{ status: "completed", output_text: "not JSON" }, "invalid_json", 0],
+    [{ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(fallback) }] }] }, undefined, 0],
+  ]) {
+    const diagnostics = [];
+    const result = await generateSleepPremiumReport({
+      input, openaiClient: mockClient(response), apiKeyAvailable: true, includeFailureDiagnostics: true,
+      onIncompleteResponse: (metadata) => diagnostics.push(metadata),
+    });
+    assert.equal(result.failureType, expectedFailure, "diagnostics do not change completeness/parsing classification");
+    assert.equal(diagnostics.length, expectedLogs);
+    if (diagnostics.length) {
+      const failedPredicates = diagnostics[0].internalReason;
+      assert.equal(failedPredicates.includes('response.status !== "completed"'), response.status !== "completed");
+      assert.equal(failedPredicates.includes("Boolean(response.incomplete_details) === true"), Boolean(response.incomplete_details));
+      assert.equal(diagnostics[0].outputTextExists, typeof response.output_text === "string");
+    }
+  }
+  for (const client of [
+    { responses: { create: () => new Promise(() => {}) } },
+    { responses: { create: async () => { const error = new Error("Network unavailable."); error.name = "APIConnectionError"; throw error; } } },
+  ]) {
+    const diagnostics = [];
+    const result = await generateSleepPremiumReport({
+      input, openaiClient: client, apiKeyAvailable: true, timeoutMs: 1, includeFailureDiagnostics: true,
+      onIncompleteResponse: (metadata) => diagnostics.push(metadata),
+    });
+    assert.ok(["timeout", "openai_request_failed"].includes(result.failureType));
+    assert.equal(diagnostics.length, 0, "timeout/network failures are not incomplete API responses");
+  }
+  const loggingErrorResult = await generateSleepPremiumReport({
+    input, openaiClient: mockClient(incompleteApiResponse), apiKeyAvailable: true, includeFailureDiagnostics: true,
+    onIncompleteResponse: () => { throw new Error("Logger failed."); },
+  });
+  assert.equal(loggingErrorResult.failureType, "incomplete_response", "logging cannot change fallback or classification");
+} finally {
+  for (const [key, value] of Object.entries(previousIncompleteEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
 const diagnosticEnvKeys = ["ENABLE_PREMIUM_AI_PREVIEW", "TEMP_PREMIUM_AI_SAFETY_DIAGNOSTICS", "RENDER_GIT_BRANCH"];
 const previousDiagnosticEnv = Object.fromEntries(diagnosticEnvKeys.map((key) => [key, process.env[key]]));
 try {

@@ -96,6 +96,49 @@ const getJsonDiagnostics = (response, text, parseError = null) => {
   };
 };
 
+// TEMPORARY metadata-only diagnostics. Never copy free-form API messages or content.
+const getIncompleteResponseMetadata = (response) => {
+  const metadataToken = (value, allowed) => typeof value !== "string" ? null
+    : allowed.includes(value) ? value : "[withheld: unrecognized metadata]";
+  const statuses = ["completed", "incomplete", "failed", "in_progress", "queued", "cancelled"];
+  const types = ["message", "reasoning", "output_text", "refusal", "function_call", "function_call_output",
+    "web_search_call", "file_search_call", "computer_call", "computer_call_output", "image_generation_call",
+    "code_interpreter_call", "local_shell_call", "local_shell_call_output", "mcp_call", "mcp_list_tools", "mcp_approval_request", "mcp_approval_response"];
+  const finishReasons = ["stop", "length", "max_output_tokens", "content_filter", "tool_calls", "function_call"];
+  const itemMetadata = (item) => ({
+    type: metadataToken(item?.type, types),
+    ...(item?.status !== undefined ? { status: metadataToken(item.status, statuses) } : {}),
+    ...(item?.finish_reason !== undefined ? { finish_reason: metadataToken(item.finish_reason, finishReasons) } : {}),
+  });
+  const output = Array.isArray(response?.output) ? response.output : [];
+  const failedChecks = [
+    ...(response?.status !== "completed" ? ['response.status !== "completed"'] : []),
+    ...(response?.incomplete_details ? ["Boolean(response.incomplete_details) === true"] : []),
+  ];
+  return {
+    ...(typeof response?.id === "string" ? { id: /^resp_[A-Za-z0-9]+$/u.test(response.id) ? response.id : "[withheld: unrecognized response id]" } : {}),
+    status: metadataToken(response?.status, statuses),
+    ...(response?.incomplete_details != null ? { incomplete_details: {
+      reason: metadataToken(response.incomplete_details.reason, ["max_output_tokens", "content_filter"]),
+    } } : {}),
+    ...(response?.error != null ? { error: {
+      code: metadataToken(response.error.code, ["server_error", "rate_limit_exceeded", "invalid_prompt", "vector_store_timeout", "invalid_image", "invalid_image_format", "invalid_base64_image", "image_too_large", "image_too_small", "image_parse_error", "image_content_policy_violation", "invalid_image_mode", "image_file_too_large", "unsupported_image_media_type", "empty_image_file", "failed_to_download_image", "image_file_not_found"]),
+      ...(response.error.message !== undefined ? { message: "[withheld: free-form API error message]" } : {}),
+    } } : {}),
+    outputTextExists: typeof response?.output_text === "string",
+    outputTextCharacterLength: typeof response?.output_text === "string" ? response.output_text.length : 0,
+    outputItemCount: output.length,
+    outputItemTypes: output.map((item) => metadataToken(item?.type, types)),
+    outputItemMetadata: output.map((item) => ({
+      ...itemMetadata(item),
+      content: Array.isArray(item?.content) ? item.content.map(itemMetadata) : [],
+    })),
+    configuredModel: MODEL,
+    max_output_tokens: MAX_OUTPUT_TOKENS,
+    internalReason: `${failedChecks.join(" OR ")} -> AI response was incomplete.`,
+  };
+};
+
 const parseJsonReport = (response) => {
   const text = getResponseText(response);
   if (hasRefusal(response)) {
@@ -148,6 +191,7 @@ export const generateSleepPremiumReport = async ({
   timeoutMs = TIMEOUT_MS,
   includeFailureDiagnostics = false,
   onCustomerSafetyFailure,
+  onIncompleteResponse,
 }) => {
   const fallback = () => buildSleepPremiumFallback(input);
   if (!apiKeyAvailable || !openaiClient?.responses?.create) {
@@ -187,6 +231,10 @@ export const generateSleepPremiumReport = async ({
     );
 
     if (response?.status !== "completed" || response.incomplete_details) {
+      if (process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
+        process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" && typeof onIncompleteResponse === "function") {
+        try { onIncompleteResponse(getIncompleteResponseMetadata(response)); } catch { /* Observational only. */ }
+      }
       const error = new TypeError("AI response was incomplete.");
       error.jsonDiagnostics = getJsonDiagnostics(response, getResponseText(response));
       throw error;

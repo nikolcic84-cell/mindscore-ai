@@ -65,6 +65,8 @@ export const generateSleepPremiumPreview = async ({
       apiKeyAvailable,
       fallbackOnError: true,
       includeFailureDiagnostics: true,
+      onIncompleteResponse: (metadata) =>
+        logPreviewStatus(log, "[PREMIUM_AI_INCOMPLETE_RESPONSE]", JSON.stringify(metadata)),
       onCustomerSafetyFailure: ({ deterministicProfile, field, exactRejectedText, expectedRule, rejectionReason, matchedTokenOrCategory }) =>
         logPreviewStatus(log, "[PREMIUM_AI_REJECTED_FIELD]", JSON.stringify({
           deterministicProfile, field, exactRejectedText, expectedRule, rejectionReason,
