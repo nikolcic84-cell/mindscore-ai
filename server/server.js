@@ -758,6 +758,18 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// TEMPORARY synthetic-only Phase 2 benchmark; never mounted on main/other services.
+if (process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
+  process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" &&
+  process.env.RENDER_EXTERNAL_HOSTNAME === "mindscore-premium-staging.onrender.com") {
+  const { registerSleepPremiumBenchmarkRoute } = await import("./sleepPremiumBenchmarkRoute.js");
+  registerSleepPremiumBenchmarkRoute(app, {
+    openaiClient: _openaiClient,
+    apiKeyAvailable: Boolean(process.env.OPENAI_API_KEY),
+    cacheDir: path.join(DATA_DIR, "premium-writer-benchmark-v1"),
+  });
+}
+
 const MAX_PREMIUM_AI_PREVIEWS_PER_PROCESS = 3;
 let premiumAiPreviewCount = 0;
 
