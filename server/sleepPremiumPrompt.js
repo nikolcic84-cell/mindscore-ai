@@ -8,13 +8,13 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
   const connectionExampleIds = input.answers.slice(0, 2).map(({ questionId }) => questionId);
   const connectionExample = `Validan primer strukture connections stavke: ${JSON.stringify({ questionIds: connectionExampleIds, text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })}`;
   const planExampleSteps = [
-    ["zabeleži početni utisak o ovoj temi, bez promene rutine", "primeti kako ova tema izgleda uobičajenog dana"],
-    ["isprobaj jedan mali korak samo u okviru ove teme", "primeti šta se dešava tokom ili posle tog koraka u istoj temi"],
-    ["ponovi mali korak u okviru iste teme", "primeti šta ti je u vezi s ovom temom bilo lako ili teško"],
-    ["uporedi iskustvo iz ove teme sa početnim utiskom", "primeti šta je u vezi s istom temom slično ili različito"],
-    ["napravi samo malu izmenu koraka unutar iste teme", "primeti kako se ta izmena odnosi na istu temu"],
-    ["ponovi najjednostavniji korak vezan za ovu temu", "primeti šta se događa u okviru ove teme pri ponavljanju"],
-    ["pregledaj beleške i utiske o ovoj temi", "izdvoji šta si primetio/la baš o ovoj temi tokom sedam dana"],
+    ["zabeleži početni utisak o ovoj temi, bez promene rutine", "obrati pažnju na to kako doživljavaš ovu temu uobičajenog dana"],
+    ["probaj jedan mali korak samo u okviru ove teme", "zabeleži šta primećuješ tokom ili posle tog koraka u istoj temi"],
+    ["ponovi mali korak u okviru iste teme", "vidi kako ti odgovara taj korak u istoj temi"],
+    ["uporedi iskustvo iz ove teme sa početnim utiskom", "uporedi kako se osećaš u vezi sa istom temom"],
+    ["probaj malu izmenu koraka unutar iste teme", "obrati pažnju na to šta primećuješ posle te izmene u istoj temi"],
+    ["ponovi najjednostavniji korak vezan za ovu temu", "zabeleži šta se događa u okviru ove teme pri ponavljanju"],
+    ["pregledaj beleške i utiske o ovoj temi", "vidi šta si primetio/la baš o ovoj temi tokom sedam dana"],
   ];
   const planFocusExample = `Primer koherentnog napredovanja za stvarni prioritet „${enforced.priorityArea}“ (samo primer strukture): ${JSON.stringify({ seven_day_plan: planExampleSteps.map(([action, observe], index) => ({ day: index + 1, action: `Za prioritet „${enforced.priorityArea}“: ${action}.`, observe: `U vezi sa prioritetom „${enforced.priorityArea}“: ${observe}.` })) })}. Za stvarni izveštaj napiši personalizovane, bezbedne predloge, ali zadrži ovu doslednu vezu sa prioritetom u SVAKOM action i observe polju.`;
   return [
@@ -30,7 +30,7 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
     connectionExample,
     `Za svaku connections stavku proveri da su oba ID-ja preuzeta iz ulaznih odgovora, da su međusobno različita, i da je text čitljiv korisniku bez izlaganja ID-ja. Odgovor u textu personalizuj prema izabranim stavkama, ali nema potrebe za doslovnim citatima.`,
     `stable_or_tracking.items: vrati 1–2 kratke stavke. Naslov i mode su fiksni. Ne nazovi oblast snagom ako to ne podržavaju dostavljeni odgovori i fiksni režim.`,
-    `seven_day_plan: vrati TAČNO sedam objekata redom sa day vrednostima 1–7 i tačno postojećim poljima day, action i observe. Za SVAKI dan, i action i observe moraju izričito da uključe naziv fiksnog prioriteta „${enforced.priorityArea}“ ili njegov jasan prirodan opis koji ostaje prepoznatljiv kao ista tema. Action je konkretan mali korak unutar te teme. Observe govori šta da primeti baš u vezi sa tom temom i tim dnevnim korakom. Ne prelazi na druge oblasti sna i ne piši generičke dane čija je veza sa prioritetom samo podrazumevana. Zadrži progresiju: dan 1 početno zapažanje; dan 2 uvedi mali korak unutar prioriteta; dan 3 ponovi u istoj temi; dan 4 uporedi; dan 5 blago prilagodi korak u istoj temi; dan 6 ponovi održiv korak; dan 7 pregledaj zapažanja o istoj temi. Ne menjaj više stvari odjednom i ne obećavaj ishod.`,
+    `seven_day_plan: vrati TAČNO sedam objekata redom sa day vrednostima 1–7 i tačno postojećim poljima day, action i observe. Za SVAKI dan, i action i observe moraju izričito da uključe naziv fiksnog prioriteta „${enforced.priorityArea}“ ili njegov jasan prirodan opis koji ostaje prepoznatljiv kao ista tema. Action je konkretan mali, praktičan korak unutar te teme. Observe govori šta da primeti baš u vezi sa tom temom i tim dnevnim korakom. U svih 14 tekstova koristi jednostavan svakodnevni srpski i istraživački ton, npr. „probaj“, „obrati pažnju“, „zabeleži“, „vidi kako ti odgovara“, „uporedi kako se osećaš“. Svaki action i observe mora biti ne-medicinski; bez dijagnoza, simptoma kao dokaza, tretmana, lekova ili terapijskih uputstava; bez uzročnih tvrdnji; bez internih/tehničkih izraza kao scoring, dimensions, thresholds, classifier, WEAK, STABLE, MIXED ili AI confidence; bez cifara/rezultata; i bez obećanja da nešto poboljša, popravi, reši, reguliše, vrati ili izazove bolji san. Ova ograničenja važe za SVAKU pojedinačnu stavku, ne samo za plan u celini. Ne prelazi na druge oblasti sna i ne piši generičke dane čija je veza sa prioritetom samo podrazumevana. Zadrži progresiju: dan 1 početno zapažanje; dan 2 uvedi mali korak unutar prioriteta; dan 3 ponovi u istoj temi; dan 4 uporedi; dan 5 blago prilagodi korak u istoj temi; dan 6 ponovi održiv korak; dan 7 pregledaj zapažanja o istoj temi. Ne menjaj više stvari odjednom i ne obećavaj ishod.`,
     planFocusExample,
     "alternatives: vrati 1–2 praktične alternativne načine rada na istom prioritetu, ne nepovezane generičke savete.",
     "review_questions: vrati TAČNO tri kratka pitanja za lični osvrt posle plana. Pitanja su različita i vezana za isti prioritet.",

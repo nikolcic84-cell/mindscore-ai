@@ -146,6 +146,9 @@ const onsetPrompt = buildSleepPremiumPrompt(onsetInput, {
   profileExplanationMaxLength: schema.schema.properties.profile_explanation.maxLength,
 });
 assert.match(onsetPrompt, /SVAKI dan, i action i observe moraju izričito da uključe naziv fiksnog prioriteta/);
+assert.match(onsetPrompt, /U svih 14 tekstova koristi jednostavan svakodnevni srpski/);
+assert.match(onsetPrompt, /dijagnoza.*uzročnih tvrdnji.*WEAK.*MIXED.*obećanja/s);
+assert.match(onsetPrompt, /probaj.*obrati pažnju.*zabeleži.*vidi kako ti odgovara.*uporedi kako se osećaš/s);
 assert.ok(onsetPrompt.includes("„Period pre sna“"), "plan instructions and example are bound to the deterministic sleep-onset priority");
 assert.ok(onsetPrompt.includes('"day":7') && onsetPrompt.includes('"action":"Za prioritet'));
 
@@ -188,6 +191,48 @@ assert.deepEqual(onsetPlanFallback.seven_day_plan.map(({ day }) => day), [1, 2, 
 assert.equal(onsetPlanFallback.seven_day_plan.every(({ action, observe }) =>
   action.toLowerCase().includes("period pre sna") && observe.toLowerCase().includes("period pre sna")
 ), true, "every action and observation explicitly stays on the fixed priority");
+const safeExploratoryPlan = structuredClone(onsetPlanFallback);
+const safeExploratoryActions = [
+  "Za period pre sna, zabeleži početni utisak bez menjanja rutine.",
+  "Za period pre sna, probaj jedan mali, rahatan korak.",
+  "Za period pre sna, ponovi korak koji si izabrao/la.",
+  "Za period pre sna, uporedi kako se osećaš sa početnim utiskom.",
+  "Za period pre sna, probaj malu izmenu unutar iste teme.",
+  "Za period pre sna, vidi kako ti odgovara najjednostavniji korak.",
+  "Za period pre sna, pregledaj svoja zapažanja iz proteklih dana.",
+];
+const safeExploratoryObservations = [
+  "Za period pre sna, obrati pažnju na svoj uobičajeni utisak.",
+  "Za period pre sna, zabeleži šta primećuješ tokom ovog koraka.",
+  "Za period pre sna, vidi kako ti odgovara ponavljanje koraka.",
+  "Za period pre sna, uporedi kako se osećaš danas.",
+  "Za period pre sna, obrati pažnju na svoj utisak posle izmene.",
+  "Za period pre sna, zabeleži šta ti je bilo najjednostavnije.",
+  "Za period pre sna, uporedi svoja zapažanja kroz dane.",
+];
+safeExploratoryPlan.seven_day_plan.forEach((day, index) => {
+  day.action = safeExploratoryActions[index];
+  day.observe = safeExploratoryObservations[index];
+});
+assert.equal(validateSleepPremiumReport(safeExploratoryPlan, onsetInput).valid, true, "every safe everyday action and observation passes when anchored to the fixed priority");
+const unsafePlanPhrases = [
+  "kasni sati uzrokuju loš san",
+  "ovo dokazuje da imaš nesanicu",
+  "započni terapiju ovim korakom",
+  "tvoja WEAK dimension prema classifier scoring-u",
+  "tvoj rezultat je 42/100, ispod praga",
+  "ovo će sigurno poboljšati san",
+  "ovo će rešiti i regulisati tvoj san",
+];
+for (let index = 0; index < onsetPlanFallback.seven_day_plan.length; index += 1) {
+  const unsafeActionPlan = structuredClone(onsetPlanFallback);
+  unsafeActionPlan.seven_day_plan[index].action = `Za period pre sna: ${unsafePlanPhrases[index]}.`;
+  expectInvalid(unsafeActionPlan, `seven_day_plan[${index}].action`, onsetInput);
+
+  const unsafeObservationPlan = structuredClone(onsetPlanFallback);
+  unsafeObservationPlan.seven_day_plan[index].observe = `Za period pre sna: ${unsafePlanPhrases[index]}.`;
+  expectInvalid(unsafeObservationPlan, `seven_day_plan[${index}].observe`, onsetInput);
+}
 const driftingActionPlan = structuredClone(onsetPlanFallback);
 driftingActionPlan.seven_day_plan[1].action = "Prošetaj tokom dana i primeti dnevnu energiju.";
 expectInvalid(driftingActionPlan, "seven_day_plan[1]", onsetInput);
