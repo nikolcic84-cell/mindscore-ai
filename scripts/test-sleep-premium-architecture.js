@@ -134,6 +134,12 @@ assert.match(prompt, /Nemoj parafrazirati citirani odgovor/);
 assert.ok(prompt.includes(`Tvoj odgovor „${input.answers[0].answer}“ daje konkretan lični oslonac`), "profile explanation example uses a complete selected answer from the current input");
 assert.match(prompt, /KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO/);
 assert.match(prompt, /Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj/);
+assert.match(prompt, /priority: title mora biti tačno/);
+assert.match(prompt, /Explanation mora jasno obrazložiti ZAŠTO JE UPRAVO OVAJ FIKSNI PRIORITET/);
+assert.match(prompt, /Obavezno uključi najmanje jedan relevantan odabrani odgovor iz pitanja koja se odnose na ovaj prioritet, kopiran VERBATIM/);
+assert.match(prompt, /KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO/);
+assert.match(prompt, /Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj citirani odgovor/);
+assert.ok(prompt.includes(`Tema ${getSleepPremiumPriority(input).title} je smislen prvi fokus za razmatranje. Tvoj odgovor „${input.answers[0].answer}“`), "priority example has a verbatim answer and preserves the fixed priority");
 assert.ok(prompt.includes(JSON.stringify({ questionIds: input.answers.slice(0, 2).map(({ questionId }) => questionId), text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })), "prompt includes a valid connection object example with actual available question IDs");
 
 const onsetInput = buildSleepPremiumInput(personas[2]);
@@ -196,6 +202,9 @@ assert.equal(validateSleepPremiumReport(onsetPriorityFallback, onsetInput).valid
 const missingPriorityAnswer = structuredClone(onsetPriorityFallback);
 missingPriorityAnswer.priority.explanation = "U okviru teme Period pre sna, ovo je koristan prvi fokus koji vredi pratiti.";
 expectInvalid(missingPriorityAnswer, "priority.explanation", onsetInput);
+const missingPriorityEvidence = structuredClone(onsetPriorityFallback);
+missingPriorityEvidence.priority.explanation = "Period pre sna je smislen prvi fokus koji možeš da razmotriš. Obrati pažnju šta ti odgovara.";
+expectInvalid(missingPriorityEvidence, "priority.explanation", onsetInput);
 const paraphrasedPriorityAnswer = structuredClone(onsetPriorityFallback);
 paraphrasedPriorityAnswer.priority.explanation = `U okviru teme Period pre sna, tvoj odgovor „${exactOnsetAnswer.slice(0, -1)}.“ daje konkretan lični kontekst za ovaj prioritet.`;
 expectInvalid(paraphrasedPriorityAnswer, "priority.explanation", onsetInput);
