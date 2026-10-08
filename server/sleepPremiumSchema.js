@@ -13,11 +13,16 @@ const keysEqual = (value, expected) =>
   expected.every((key) => Object.prototype.hasOwnProperty.call(value, key));
 
 const textSchema = (maxLength = 1200) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
+const MAIN_AREA_EXPLANATION_MAX_LENGTH = 500;
 const profileSummarySchema = {
   ...textSchema(),
   pattern: "^[^0-9]*\\S[^0-9]*$",
   description: "Customer-facing Serbian summary. Use 1–2 concise sentences grounded only in the supplied deterministic profile. Do not include digits, scores, percentages, thresholds, internal labels or terminology, medical or diagnostic claims, or causal claims.",
 };
+const mainAreaExplanationSchema = () => ({
+  ...textSchema(MAIN_AREA_EXPLANATION_MAX_LENGTH),
+  description: "Short, natural Serbian prose addressed directly to the customer. Explain the deterministic main sleep area using only the supplied answers and result. Include at least one complete answer copied exactly inside Serbian quotation marks. Do not include scores/results, points, percentages, thresholds, internal labels, scoring/dimension/AI/technical terminology, medical diagnoses, unsupported causal claims, or claims that the true cause is known.",
+});
 const fixedStringSchema = (value) => ({ type: "string", enum: [value] });
 const safeShape = (value) => {
   if (value === null) return { type: "null" };
@@ -84,7 +89,7 @@ const makeProperties = (input) => {
     }),
     mainArea: objectSchema({
       title: { type: "string", enum: [getSleepPremiumMainAreaTitle(input)] },
-      explanation: textSchema(),
+      explanation: mainAreaExplanationSchema(),
     }),
     connections: objectSchema({
       title: fixedStringSchema("Šta se kod tebe povezuje?"),
@@ -129,6 +134,7 @@ export const buildSleepPremiumJsonSchema = (input) => ({
 });
 
 const INVALID_CUSTOMER_COPY = /\b(?:scoring|dimension|mapped value|classifier|ai confidence|faktor\w*|signal\w*|obrazac\w*|obrasc\w*|stable|mixed|weak|stabil\w*|mesovit\w*|slab\w*|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|hormons\w*|neurolosk\w*|dijagnoz\w*|dijagnost\w*|poremec\w*|bolest\w*|klinick\w*|medikament\w*|lekov\w*|\blek\b|terapij\w*|lecen\w*|uzrok\w*|izaziv\w*|prouzrok\w*|dovod\w*|remet\w*|doprin\w*|kriv\w*|posledic\w*|\bzbog\b)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
+const MAIN_AREA_SCORE_OR_THRESHOLD_COPY = /\b(?:score|scor\w*|rezultat\w*|ocen\w*|poen\w*|bod\w*|prag\w*|threshold\w*|granica\w*)\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%)/iu;
 const UNSUPPORTED_STRENGTH_COPY = /\b(?:dobr\w*|odlicn\w*|funkcionis\w*|snag\w*|jak\w*|uspesn\w*|zadrz\w*|oslonc\w*|prednost\w*|pomaz\w*|podrz\w*)\b/u;
 const OBSERVATION_COPY = /\b(?:prat\w*|obrati\w*|posmatr\w*|bele[zž]\w*|primet\w*|naredn\w*)\b/u;
 const STABLE_EVIDENCE = Object.freeze({
@@ -168,6 +174,9 @@ const hasSuppliedAnswerQuote = (text, input) => {
   const quotes = [...text.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => match[1].trim());
   return quotes.some((quoted) => input.answers.some((item) => item.answer === quoted));
 };
+const removeSuppliedAnswerQuotes = (text, input) => text.replace(/[„“]([^”“]+)[”“]/gu, (whole, quoted) =>
+  input.answers.some((item) => item.answer === quoted.trim()) ? " " : whole
+);
 
 const hasTextOnly = (value, maxLength = 1200) =>
   typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
@@ -211,11 +220,14 @@ export const validateSleepPremiumReport = (candidate, input) => {
   if (candidate.mainArea.title !== getSleepPremiumMainAreaTitle(input)) {
     return invalid("mainArea.title", "exact title selected by deterministic input", candidate.mainArea.title, "Main-area title does not match deterministic results.");
   }
-  if (!hasTextOnly(candidate.mainArea.explanation)) {
-    return invalid("mainArea.explanation", "nonblank string, 1–1200 characters", candidate.mainArea.explanation, "Main-area explanation is invalid.");
+  if (!hasTextOnly(candidate.mainArea.explanation, MAIN_AREA_EXPLANATION_MAX_LENGTH)) {
+    return invalid("mainArea.explanation", `nonblank string, 1–${MAIN_AREA_EXPLANATION_MAX_LENGTH} characters`, candidate.mainArea.explanation, "Main-area explanation is invalid.");
   }
   if (!hasSuppliedAnswerQuote(candidate.mainArea.explanation, input)) {
     return invalid("mainArea.explanation", "include at least one exact supplied answer in Serbian quotation marks", candidate.mainArea.explanation, "Main-area explanation must cite an exact supplied answer.");
+  }
+  if (MAIN_AREA_SCORE_OR_THRESHOLD_COPY.test(removeSuppliedAnswerQuotes(candidate.mainArea.explanation, input))) {
+    return invalid("mainArea.explanation", "short Serbian prose without score/result/point/threshold claims outside exact supplied-answer quotes", candidate.mainArea.explanation, "Main-area explanation contains scoring or threshold copy.");
   }
   if (!keysEqual(candidate.connections, ["title", "items"])) {
     return invalid("connections", "object with exactly title and items", candidate.connections, "Connections object shape is invalid.");
@@ -301,9 +313,7 @@ export const validateSleepPremiumReport = (candidate, input) => {
   if (unsupportedQuote) {
     return invalid(unsupportedQuote.field, "any quoted text must exactly match a supplied answer; do not expose quoted text in logs", { type: "string", length: unsupportedQuote.quoted.length }, "Report contains quoted answer text not present in the supplied answers.");
   }
-  const withoutEvidenceQuotes = (text) => text.replace(/[„“]([^”“]+)[”“]/gu, (whole, quoted) =>
-    suppliedAnswers.has(quoted.trim()) ? " " : whole
-  );
+  const withoutEvidenceQuotes = (text) => removeSuppliedAnswerQuotes(text, input);
   const normalizedStrings = customerStrings.map(({ value }) => normalizeForSafety(withoutEvidenceQuotes(value)));
   const unsafeCopyIndex = normalizedStrings.findIndex((text) => INVALID_CUSTOMER_COPY.test(text));
   if (unsafeCopyIndex >= 0) {

@@ -117,8 +117,45 @@ assert.ok(buildSleepPremiumFallback(q12Input).mainArea.explanation.includes(q12I
 
 const validationInput = makeInput(personas["MIRNA NOĆ"]);
 const validReport = makeValidReport(validationInput);
+const exactEvidence = validationInput.answers[0].answer;
+const explanationWith = (text) => {
+  const report = structuredClone(validReport);
+  report.mainArea.explanation = text;
+  return report;
+};
 const validReportValidation = validateSleepPremiumReport(validReport, validationInput);
 assert.equal(validReportValidation.valid, true, validReportValidation.reason);
+const naturalMainArea = explanationWith(`Pri buđenju si izabrao/la „${exactEvidence}“. Vredi posmatrati ovaj deo sna zajedno sa ostatkom noći.`);
+assert.equal(validateSleepPremiumReport(naturalMainArea, validationInput).valid, true);
+
+const scoredMainArea = explanationWith(`Pri buđenju si izabrao/la „${exactEvidence}“. Rezultat je 75%, iznad praga od 60.`);
+const scoredMainAreaValidation = validateSleepPremiumReport(scoredMainArea, validationInput);
+assert.equal(scoredMainAreaValidation.valid, false);
+assert.equal(scoredMainAreaValidation.diagnostic.field, "mainArea.explanation");
+
+const technicalMainArea = explanationWith(`Odgovor „${exactEvidence}“ odgovara stanju STABLE prema scoring dimenziji.`);
+assert.equal(validateSleepPremiumReport(technicalMainArea, validationInput).valid, false);
+
+const medicalMainArea = explanationWith(`Odgovor „${exactEvidence}“ potvrđuje da imaš nesanicu.`);
+assert.equal(validateSleepPremiumReport(medicalMainArea, validationInput).valid, false);
+
+const causalMainArea = explanationWith(`Odgovor „${exactEvidence}“ je uzrok tvog problema sa snom.`);
+assert.equal(validateSleepPremiumReport(causalMainArea, validationInput).valid, false);
+
+const knownCauseMainArea = explanationWith(`Odgovor „${exactEvidence}“ otkriva da je pravi uzrok problema sa snom poznat.`);
+assert.equal(validateSleepPremiumReport(knownCauseMainArea, validationInput).valid, false);
+
+const blankMainArea = explanationWith("   ");
+const blankMainAreaValidation = validateSleepPremiumReport(blankMainArea, validationInput);
+assert.equal(blankMainAreaValidation.valid, false);
+assert.equal(blankMainAreaValidation.diagnostic.field, "mainArea.explanation");
+
+const nonStringMainArea = explanationWith(42);
+assert.equal(validateSleepPremiumReport(nonStringMainArea, validationInput).valid, false);
+
+const oversizedMainArea = explanationWith(`„${exactEvidence}“ ${"x".repeat(500)}`);
+assert.equal(validateSleepPremiumReport(oversizedMainArea, validationInput).valid, false);
+
 const safeSummary = "Tvoji odgovori opisuju tvoje iskustvo sa snom iz više uglova. Izveštaj povezuje ove utiske u pregled koji možeš pažljivo da razmotriš.";
 const safeSummaryReport = structuredClone(validReport);
 safeSummaryReport.profile.summary = safeSummary;
@@ -153,15 +190,21 @@ const schema = buildSleepPremiumJsonSchema(validationInput);
 assert.equal(schema.schema.properties.profile.properties.name.enum[0], validationInput.profile);
 assert.equal(schema.schema.properties.profile.properties.summary.pattern, "^[^0-9]*\\S[^0-9]*$");
 assert.match(schema.schema.properties.profile.properties.summary.description, /digits.*thresholds/i);
+assert.equal(schema.schema.properties.mainArea.properties.explanation.maxLength, 500);
+assert.equal(schema.schema.properties.mainArea.properties.explanation.pattern, "\\S");
+assert.match(schema.schema.properties.mainArea.properties.explanation.description, /medical diagnoses.*unsupported causal claims/i);
 const prompt = buildSleepPremiumPrompt(validationInput, {
   profile: validationInput.profile,
   profileSummaryMaxLength: schema.schema.properties.profile.properties.summary.maxLength,
   mainAreaTitle: schema.schema.properties.mainArea.properties.title.enum[0],
+  mainAreaExplanationMaxLength: schema.schema.properties.mainArea.properties.explanation.maxLength,
   positiveOrWatchMode: schema.schema.properties.positiveOrWatch.properties.mode.enum[0],
   positiveOrWatchTitle: schema.schema.properties.positiveOrWatch.properties.title.const,
 });
-assert.match(prompt, /profile\.summary.*1–2 rečenice/i);
-assert.match(prompt, /ne navodi cifre, bodove, procente, pragove/i);
+assert.equal(prompt.includes("profile.summary je kratak, prirodan tekst za korisnika (1–2 rečenice"), true);
+assert.equal(prompt.includes("ne navodi cifre, bodove, procente, pragove"), true);
+assert.equal(prompt.includes("mainArea.explanation je kratko, prirodno srpsko obraćanje korisniku od najviše 500 znakova"), true);
+assert.equal(prompt.includes("pravi uzrok problema sa snom"), true);
 
 await assert.rejects(
   generateSleepPremiumReport({
@@ -171,6 +214,17 @@ await assert.rejects(
     fallbackOnError: false,
   }),
   (error) => error.code === "PREMIUM_SCHEMA_VALIDATION" && error.diagnostic.field === "profile.summary"
+    && !Object.hasOwn(error.diagnostic.received, "value")
+);
+
+await assert.rejects(
+  generateSleepPremiumReport({
+    input: validationInput,
+    openaiClient: mockClient({ status: "completed", output_parsed: causalMainArea }),
+    apiKeyAvailable: true,
+    fallbackOnError: false,
+  }),
+  (error) => error.code === "PREMIUM_SCHEMA_VALIDATION" && error.diagnostic.field === "mainArea.explanation"
     && !Object.hasOwn(error.diagnostic.received, "value")
 );
 
