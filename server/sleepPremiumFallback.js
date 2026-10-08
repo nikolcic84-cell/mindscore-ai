@@ -5,17 +5,32 @@ import {
 } from "./sleepPremiumSchema.js";
 
 const answer = (input, id) => input.answers.find((item) => item.questionId === id)?.answer || "tvoj izabrani odgovor";
-const answerPair = (first, second) => `Izabrao/la si „${first}“, a takođe „${second}“. Vredi posmatrati ova dva utiska zajedno, bez pretpostavke da jedan objašnjava drugi.`;
-const focusEvidence = (input, priority) => {
-  const ids = {
+const QUESTION_TOPICS = Object.freeze({
+  Q1: "osećaju po buđenju",
+  Q2: "uspavljivanju",
+  Q3: "toku noći",
+  Q4: "ustajanju",
+  Q5: "dužini sna",
+  Q6: "vremenu pre spavanja",
+  Q7: "mislima pred san",
+  Q8: "energiji tokom dana",
+  Q9: "snu bez alarma",
+  Q10: "predvidivosti ritma",
+  Q11: "doživljaju dana posle loše noći",
+  Q12: "ukupnom utisku o poslednjim noćima",
+});
+const getFocusQuestionIds = (priority) => ({
     recovery: ["Q1", "Q8"],
     sleepOnset: ["Q2", "Q6"],
     continuity: ["Q3", "Q12"],
     rhythm: ["Q5", "Q10"],
     multiple: ["Q1", "Q3"],
     whole: ["Q1", "Q12"],
-  }[priority.key];
-  return ids.map((id) => answer(input, id));
+  })[priority.key];
+const focusEvidence = (input, priority) => getFocusQuestionIds(priority).map((id) => answer(input, id));
+const connectionText = (questionIds) => {
+  const [firstId, secondId] = questionIds;
+  return `Tvoji odgovori o ${QUESTION_TOPICS[firstId]} i ${QUESTION_TOPICS[secondId]} daju dva pogleda koja vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo.`;
 };
 const priorityContext = (priority) => ({
   recovery: "osećaj po buđenju",
@@ -31,17 +46,16 @@ const getProfileExplanation = (input) => {
   return `Tvoj profil, ${input.profile}, pruža okvir za sagledavanje tvojih odgovora, a ne opisuje svaku noć isto. Odgovori „${first}“ i „${second}“ daju dva lična pogleda koja vredi čitati zajedno.`;
 };
 
-const getConnections = (input, priority) => {
-  const answers = focusEvidence(input, priority);
+const getConnections = (priority) => {
   const extras = priority.key === "sleepOnset" ? ["Q1", "Q3"]
     : priority.key === "continuity" ? ["Q1", "Q8"]
       : priority.key === "recovery" ? ["Q3", "Q5"]
         : priority.key === "rhythm" ? ["Q1", "Q8"]
           : ["Q2", "Q8"];
   return [
-    answerPair(answers[0], answers[1]),
-    answerPair(answer(input, extras[0]), answer(input, extras[1])),
-  ];
+    getFocusQuestionIds(priority),
+    extras,
+  ].map((questionIds) => ({ questionIds, text: connectionText(questionIds) }));
 };
 
 const getStableOrTracking = (input, priority) => {
@@ -100,7 +114,7 @@ export const buildSleepPremiumFallback = (input) => {
       area: priority.title,
       explanation: `Počinje se od teme ${focus}, jer se ona izdvaja u tvojim odgovorima. Izbori „${first}“ i „${second}“ daju lični kontekst za ovaj prvi fokus, bez potrebe da ostatak sna svedeš na jednu stvar.`,
     },
-    connections: getConnections(input, priority),
+    connections: getConnections(priority),
     stable_or_tracking: getStableOrTracking(input, priority),
     seven_day_plan: getPlan(priority),
     alternatives: [

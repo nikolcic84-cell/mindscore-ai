@@ -117,7 +117,10 @@ const makeSchema = (input) => {
       area: { type: "string", enum: [priority.title] },
       explanation: customerText(COPY_LIMITS.priorityExplanation, "Briefly explain why the fixed deterministic priority is the sensible first focus using supplied answers and at least one complete exact answer quote. Do not diagnose or claim a cause."),
     }),
-    connections: arraySchema(2, 4, customerText(COPY_LIMITS.connection, "Every connection MUST include two distinct complete answer texts selected by this user, from two different questionIds. Copy each full answer exactly, character for character, in its own Serbian quotation marks. Paraphrased or partial answer evidence does not count. Do not use the same selected answer twice.")),
+    connections: arraySchema(2, 4, objectSchema({
+      questionIds: arraySchema(2, 2, { type: "string", enum: input.answers.map(({ questionId }) => questionId) }),
+      text: customerText(COPY_LIMITS.connection, "Write a natural, concise Serbian observation supported by the two selected answers identified by questionIds. Do not include or display question IDs. Do not claim that one answer causes the other."),
+    })),
     stable_or_tracking: objectSchema({
       mode: { type: "string", enum: [stableMode] },
       title: fixedTextSchema(stableMode === "stable" ? "ŠTA VREDI DA ZADRŽIŠ" : "ŠTA JOŠ VREDI DA PRATIŠ"),
@@ -164,7 +167,7 @@ const collectStrings = (report) => [
   { field: "priority.title", value: report.priority.title },
   { field: "priority.area", value: report.priority.area },
   { field: "priority.explanation", value: report.priority.explanation },
-  ...report.connections.map((value, index) => ({ field: `connections[${index}]`, value })),
+  ...report.connections.map((connection, index) => ({ field: `connections[${index}].text`, value: connection.text })),
   { field: "stable_or_tracking.title", value: report.stable_or_tracking.title },
   ...report.stable_or_tracking.items.map((value, index) => ({ field: `stable_or_tracking.items[${index}]`, value })),
   ...report.seven_day_plan.flatMap((day, index) => [
@@ -210,14 +213,24 @@ export const validateSleepPremiumReport = (candidate, input) => {
   }
   for (let index = 0; index < candidate.connections.length; index += 1) {
     const connection = candidate.connections[index];
-    const answerQuotes = getExactAnswerQuotes(connection, input);
-    const quotedAnswerTexts = [...connection.matchAll(/[„“]([^”“]+)[”“]/gu)].map((match) => match[1].trim());
-    if (
-      !hasText(connection, COPY_LIMITS.connection) ||
-      new Set(answerQuotes.map(({ questionId }) => questionId)).size < 2 ||
-      new Set(quotedAnswerTexts).size < 2
-    ) {
-      return invalid(`connections[${index}]`, "nonblank connection, at most 500 characters, citing two distinct exact selected answers", candidate.connections[index], `Connection ${index + 1} is invalid or not grounded in two exact answers.`);
+    if (!keysEqual(connection, ["questionIds", "text"])) {
+      return invalid(`connections[${index}]`, "object containing questionIds and text only", connection, `Connection ${index + 1} has an invalid structure.`);
+    }
+    if (!Array.isArray(connection.questionIds) || connection.questionIds.length !== 2) {
+      return invalid(`connections[${index}].questionIds`, "exactly two selected question IDs", connection.questionIds, `Connection ${index + 1} must identify two supporting questions.`);
+    }
+    const knownQuestionIds = new Set(input.answers.map(({ questionId }) => questionId));
+    if (connection.questionIds.some((questionId) => typeof questionId !== "string" || !knownQuestionIds.has(questionId))) {
+      return invalid(`connections[${index}].questionIds`, "two IDs present in the current answered-question input", connection.questionIds, `Connection ${index + 1} references an unknown question.`);
+    }
+    if (new Set(connection.questionIds).size !== 2) {
+      return invalid(`connections[${index}].questionIds`, "two distinct selected question IDs", connection.questionIds, `Connection ${index + 1} repeats a supporting question.`);
+    }
+    if (!hasText(connection.text, COPY_LIMITS.connection)) {
+      return invalid(`connections[${index}].text`, "nonblank natural text, at most 500 characters", connection.text, `Connection ${index + 1} text is blank or overlong.`);
+    }
+    if (/\bQ(?:[1-9]|1[0-2])\b/u.test(connection.text)) {
+      return invalid(`connections[${index}].text`, "natural customer-facing text without internal question IDs", connection.text, `Connection ${index + 1} text exposes question metadata.`);
     }
   }
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { buildSleepPremiumInput } from "../server/sleepPremiumInput.js";
 import { buildSleepPremiumFallback } from "../server/sleepPremiumFallback.js";
 import {
@@ -45,6 +46,13 @@ for (const points of personas) {
   assert.equal(report.priority.area, getSleepPremiumPriority(profileInput).title);
   assert.equal(report.stable_or_tracking.mode, getSleepPremiumStrengthMode(profileInput));
   assert.equal(report.connections.length >= 2 && report.connections.length <= 4, true);
+  assert.equal(report.connections.every(({ questionIds, text }) =>
+    questionIds.length === 2 &&
+    questionIds[0] !== questionIds[1] &&
+    questionIds.every((questionId) => profileInput.answers.some((answer) => answer.questionId === questionId)) &&
+    typeof text === "string" && text.trim().length > 0 && text.length <= 500
+  ), true);
+  assert.equal(report.connections.every(({ text }) => !/\bQ(?:[1-9]|1[0-2])\b/.test(text)), true);
   assert.equal(report.seven_day_plan.length, 7);
   assert.deepEqual(report.seven_day_plan.map(({ day }) => day), [1, 2, 3, 4, 5, 6, 7]);
   assert.equal(report.alternatives.length >= 1 && report.alternatives.length <= 2, true);
@@ -109,9 +117,21 @@ assert.match(prompt, /postepen, koherentan mini-eksperiment/);
 assert.match(prompt, /ne izvodi ocene/);
 assert.equal(prompt.includes("mappedValue"), false);
 assert.equal(prompt.includes("internalScores"), false);
-assert.match(schema.schema.properties.connections.items.description, /two distinct complete answer texts.*two different questionIds/i);
-assert.match(prompt, /SVAKA pojedinačna stavka OBAVEZNO mora sadržati DVA RAZLIČITA/);
-assert.ok(prompt.includes(`„${input.answers[0].answer}“ i „${input.answers[1].answer}“`), "prompt example uses two verbatim answers selected in this fixture");
+assert.equal(schema.schema.properties.connections.items.type, "object");
+assert.equal(schema.schema.properties.connections.items.properties.questionIds.minItems, 2);
+assert.equal(schema.schema.properties.connections.items.properties.questionIds.maxItems, 2);
+assert.deepEqual(schema.schema.properties.connections.items.properties.questionIds.items.enum, input.answers.map(({ questionId }) => questionId));
+assert.equal(schema.schema.properties.connections.items.properties.text.maxLength, 500);
+assert.match(schema.schema.properties.connections.items.properties.text.description, /natural.*Serbian.*Do not include or display question IDs/i);
+assert.match(prompt, /tačno dva različita ID-ja iz questionId polja ulaznih odgovora/);
+assert.match(prompt, /ne mora da ponavlja ili citira tekst odgovora/);
+assert.ok(prompt.includes(JSON.stringify({ questionIds: input.answers.slice(0, 2).map(({ questionId }) => questionId), text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })), "prompt includes a valid connection object example with actual available question IDs");
+
+const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+const previewHtml = await readFile(new URL("../server/dev/premium-ai-preview.html", import.meta.url), "utf8");
+assert.ok(appSource.includes("report.connections.map((connection, index) => <li key={index}>{connection.text}</li>)"));
+assert.ok(appSource.includes("report.connections.map((connection, index) => <li key={`connection-${index}`}>{connection.text}</li>)"));
+assert.ok(previewHtml.includes("report.connections.map((connection) => connection.text)"));
 
 const expectInvalid = (candidate, field) => {
   const result = validateSleepPremiumReport(candidate, input);
@@ -149,25 +169,22 @@ expectInvalid(unsafeCause, "priority.explanation");
 const unsafeGuarantee = structuredClone(fallback);
 unsafeGuarantee.seven_day_plan[0].action = "Za tvoj san: ovaj korak će sigurno poboljšati san.";
 expectInvalid(unsafeGuarantee, "seven_day_plan[0].action");
-const alteredQuote = structuredClone(fallback);
-alteredQuote.connections[0] = "Odgovori „izmenjen odgovor“ i „drugi odgovor“ daju različite utiske.";
-expectInvalid(alteredQuote, "connections[0]");
-const singleQuote = structuredClone(fallback);
-singleQuote.connections[0] = `Odgovor „${input.answers[0].answer}“ vredi sagledati pažljivo.`;
-expectInvalid(singleQuote, "connections[0]");
-for (let index = 0; index < fallback.connections.length; index += 1) {
-  const oneQuoteAtIndex = structuredClone(fallback);
-  oneQuoteAtIndex.connections[index] = `Odgovor „${input.answers[0].answer}“ vredi posmatrati kao jedan deo tvoje priče.`;
-  expectInvalid(oneQuoteAtIndex, `connections[${index}]`);
-}
-const [firstEvidence, secondEvidence] = input.answers.slice(0, 2);
-const exactTwoAnswerConnection = `Odgovori „${firstEvidence.answer}“ i „${secondEvidence.answer}“ daju dva odvojena pogleda koja vredi posmatrati zajedno.`;
-const exactTwoAnswerReport = structuredClone(fallback);
-exactTwoAnswerReport.connections[0] = exactTwoAnswerConnection;
-assert.equal(validateSleepPremiumReport(exactTwoAnswerReport, input).valid, true, "two distinct exact selected answers pass connection validation");
-const paraphrasedEvidenceReport = structuredClone(fallback);
-paraphrasedEvidenceReport.connections[0] = `Odgovori „${firstEvidence.answer} (parafrazirano)“ i „${secondEvidence.answer}“ daju dva odvojena pogleda.`;
-expectInvalid(paraphrasedEvidenceReport, "connections[0]");
+const makeConnectionReport = (connection) => {
+  const report = structuredClone(fallback);
+  report.connections[0] = connection;
+  return report;
+};
+const validConnection = {
+  questionIds: [input.answers[1].questionId, input.answers[5].questionId],
+  text: "Odgovori o uspavljivanju i vremenu pre spavanja daju dva pogleda koja vredi sagledati zajedno.",
+};
+assert.equal(validateSleepPremiumReport(makeConnectionReport(validConnection), input).valid, true, "two distinct known question IDs and natural non-quoted text pass");
+expectInvalid(makeConnectionReport({ ...validConnection, questionIds: ["Q2", "Q2"] }), "connections[0].questionIds");
+expectInvalid(makeConnectionReport({ ...validConnection, questionIds: ["Q2", "Q13"] }), "connections[0].questionIds");
+expectInvalid(makeConnectionReport({ ...validConnection, questionIds: ["Q2"] }), "connections[0].questionIds");
+expectInvalid(makeConnectionReport({ ...validConnection, text: "   " }), "connections[0].text");
+expectInvalid(makeConnectionReport({ ...validConnection, text: "x".repeat(501) }), "connections[0].text");
+expectInvalid(makeConnectionReport({ ...validConnection, text: "Q2 i Q6 daju dva pogleda koja vredi sagledati zajedno." }), "connections[0].text");
 
 const aiResult = await generateSleepPremiumReport({
   input,
@@ -220,7 +237,7 @@ assert.equal(rejectedAi.failureType, "schema_validation_failure");
 assert.equal(rejectedAi.failureDiagnostic.field, "profile");
 assert.deepEqual(rejectedAi.report, fallback);
 const invalidConnectionAi = structuredClone(fallback);
-invalidConnectionAi.connections[1] = `Odgovor „${input.answers[0].answer}“ vredi pratiti kroz naredne dane.`;
+invalidConnectionAi.connections[1] = { ...invalidConnectionAi.connections[1], questionIds: ["Q2", "Q2"] };
 const rejectedConnectionAi = await generateSleepPremiumReport({
   input,
   openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(invalidConnectionAi) }),
@@ -229,7 +246,7 @@ const rejectedConnectionAi = await generateSleepPremiumReport({
 });
 assert.equal(rejectedConnectionAi.source, "fallback");
 assert.equal(rejectedConnectionAi.failureType, "schema_validation_failure");
-assert.equal(rejectedConnectionAi.failureDiagnostic.field, "connections[1]");
+assert.equal(rejectedConnectionAi.failureDiagnostic.field, "connections[1].questionIds");
 assert.deepEqual(rejectedConnectionAi.report, fallback);
 const timeout = await generateSleepPremiumReport({
   input,

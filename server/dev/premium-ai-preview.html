@@ -84,7 +84,7 @@
         paragraph(mainArea, report.priority.explanation);
 
         const connections = section("4. Kako se tvoji odgovori povezuju");
-        list(connections, report.connections);
+        list(connections, report.connections.map((connection) => connection.text));
 
         const positive = section("5. Šta vredi zadržati ili pratiti");
         positive.append(element("h3", report.stable_or_tracking.title));

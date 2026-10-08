@@ -392,7 +392,7 @@ function SleepPremiumPaidReport({ report, areas, loading, error, onRetry }) {
 
       <section className="sleep-premium-paid-section">
         <h3>ŠTA SE POVEZUJE U TVOJIM ODGOVORIMA</h3>
-        <ul>{report.connections.map((item, index) => <li key={index}>{item}</li>)}</ul>
+        <ul>{report.connections.map((connection, index) => <li key={index}>{connection.text}</li>)}</ul>
       </section>
 
       <section className="sleep-premium-paid-section">
@@ -1262,7 +1262,7 @@ function PremiumAiPreviewReport({ report, source, deterministicProfile, fallback
       </section>
       <section>
         <h3>Tvoja povezana zapažanja</h3>
-        <ul>{report.connections.map((item, index) => <li key={`connection-${index}`}>{item}</li>)}</ul>
+        <ul>{report.connections.map((connection, index) => <li key={`connection-${index}`}>{connection.text}</li>)}</ul>
       </section>
       <section>
         <h3>{report.stable_or_tracking.title}</h3>
