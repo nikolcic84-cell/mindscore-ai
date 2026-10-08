@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node --test src/psychology/sleepSignature.test.js src/psychology/sleepPremiumReport.test.js src/psychology/sleepFreeResult.test.js src/psychology/sleepPremiumOffer.test.js scripts/test-sleep-ai-narrative.js scripts/test-sleep-premium-architecture.js",
+    "test": "node --test src/psychology/sleepSignature.test.js src/psychology/sleepPremiumReport.test.js src/psychology/sleepFreeResult.test.js src/psychology/sleepPremiumOffer.test.js scripts/test-sleep-ai-narrative.js scripts/test-sleep-premium-architecture.js scripts/test-premium-ai-preview-routes.js",
     "preview": "vite preview"
   },
   "dependencies": {

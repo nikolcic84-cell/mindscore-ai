@@ -9,6 +9,7 @@ import {
   validateSleepPremiumReport,
 } from "../server/sleepPremiumSchema.js";
 import { generateSleepPremiumReport } from "../server/sleepPremiumGenerator.js";
+import { generateSleepPremiumPreview, isPremiumAiPreviewEnabled } from "../server/sleepPremiumPreview.js";
 import { buildSleepPremiumPrompt } from "../server/sleepPremiumPrompt.js";
 import { SLEEP_ANSWER_OPTIONS, SLEEP_QUESTIONS } from "../src/psychology/sleepAssessmentContent.js";
 import { calculateSleepSignature } from "../src/psychology/sleepSignature.js";
@@ -130,6 +131,67 @@ const explanationWith = (text) => {
 };
 const validReportValidation = validateSleepPremiumReport(validReport, validationInput);
 assert.equal(validReportValidation.valid, true, validReportValidation.reason);
+assert.equal(isPremiumAiPreviewEnabled({ ENABLE_PREMIUM_AI_PREVIEW: "true" }), true);
+assert.equal(isPremiumAiPreviewEnabled({ ENABLE_PREMIUM_AI_PREVIEW: "TRUE" }), false);
+assert.equal(isPremiumAiPreviewEnabled({ ENABLE_PREMIUM_AI_PREVIEW: "1" }), false);
+assert.equal(isPremiumAiPreviewEnabled({}), false);
+let disabledPreviewCalls = 0;
+const disabledPreview = await generateSleepPremiumPreview({
+  enabled: false,
+  answers: personas["BUDAN UM"],
+  openaiClient: { responses: { parse: async () => { disabledPreviewCalls += 1; return {}; } } },
+  apiKeyAvailable: true,
+});
+assert.equal(disabledPreview.status, 404);
+assert.equal(disabledPreviewCalls, 0);
+const invalidAnswersPreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: [1, 2],
+  openaiClient: { responses: { parse: async () => { disabledPreviewCalls += 1; return {}; } } },
+  apiKeyAvailable: true,
+});
+assert.equal(invalidAnswersPreview.status, 400);
+assert.equal(disabledPreviewCalls, 0);
+
+const awakeInput = makeInput(personas["BUDAN UM"]);
+const awakeAiCandidate = buildSleepPremiumFallback(awakeInput);
+const previewLogs = [];
+let previewAiCalls = 0;
+const awakePreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas["BUDAN UM"],
+  openaiClient: { responses: { parse: async () => { previewAiCalls += 1; return { status: "completed", output_parsed: awakeAiCandidate }; } } },
+  apiKeyAvailable: true,
+  log: (event, details) => previewLogs.push({ event, details }),
+});
+assert.equal(awakePreview.status, 200);
+assert.equal(awakePreview.body.source, "ai");
+assert.equal(awakePreview.body.deterministicProfile, "BUDAN UM");
+assert.equal(awakePreview.body.report.profile.name, "BUDAN UM");
+assert.equal(previewAiCalls, 1);
+assert.equal(Object.hasOwn(awakePreview.body.report.positiveOrWatch, "mode"), false);
+assert.equal(previewLogs.some(({ event }) => event === "REAL AI: SUCCESS"), true);
+assert.equal(previewLogs.some(({ event }) => event === "SCHEMA: PASS"), true);
+assert.equal(previewLogs.some(({ event }) => event === "FALLBACK USED: NO"), true);
+assert.equal(previewLogs.some(({ event, details }) => event === "PREMIUM PREVIEW REQUEST" && details.deterministicProfile === "BUDAN UM"), true);
+
+const invalidAwakeAiCandidate = structuredClone(awakeAiCandidate);
+invalidAwakeAiCandidate.profile.name = "MIRNA NOĆ";
+const invalidPreviewLogs = [];
+const invalidAiPreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas["BUDAN UM"],
+  openaiClient: mockClient({ status: "completed", output_parsed: invalidAwakeAiCandidate }),
+  apiKeyAvailable: true,
+  log: (event, details) => invalidPreviewLogs.push({ event, details }),
+});
+assert.equal(invalidAiPreview.status, 200);
+assert.equal(invalidAiPreview.body.source, "fallback");
+assert.equal(invalidAiPreview.body.deterministicProfile, "BUDAN UM");
+assert.equal(invalidAiPreview.body.report.profile.name, "BUDAN UM");
+assert.equal(invalidPreviewLogs.some(({ event }) => event === "REAL AI: FAILED"), true);
+assert.equal(invalidPreviewLogs.some(({ event }) => event === "SCHEMA: PASS"), true);
+assert.equal(invalidPreviewLogs.some(({ event }) => event === "FALLBACK USED: YES"), true);
 const naturalMainArea = explanationWith(`Pri buđenju si izabrao/la „${exactEvidence}“. Vredi posmatrati ovaj deo sna zajedno sa ostatkom noći.`);
 assert.equal(validateSleepPremiumReport(naturalMainArea, validationInput).valid, true);
 

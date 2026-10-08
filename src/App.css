@@ -6872,6 +6872,130 @@ input:focus-visible {
   text-align: center;
 }
 
+.premium-staging-preview-control {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(249, 242, 255, 0.2);
+}
+
+.premium-staging-preview-control > span {
+  color: rgba(249, 242, 255, 0.55);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.premium-staging-preview-button {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(190, 177, 255, 0.4);
+  border-radius: 11px;
+  background: rgba(65, 54, 94, 0.42);
+  color: #d8ccff;
+  font: inherit;
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  cursor: pointer;
+}
+
+.premium-staging-preview-button:hover:not(:disabled) {
+  border-color: rgba(207, 196, 255, 0.78);
+  background: rgba(88, 72, 128, 0.52);
+}
+
+.premium-staging-preview-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.premium-staging-preview-report {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid rgba(184, 167, 255, 0.32);
+  border-radius: 14px;
+  background: rgba(14, 13, 24, 0.66);
+  text-align: left;
+}
+
+.premium-staging-preview-report > section {
+  padding: 12px;
+  border: 1px solid rgba(249, 242, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.premium-staging-preview-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: #d8ccff;
+  font-size: 0.67rem;
+}
+
+.premium-staging-preview-banner strong {
+  letter-spacing: 0.09em;
+}
+
+.premium-staging-preview-banner span {
+  color: rgba(249, 242, 255, 0.62);
+  text-align: right;
+}
+
+.premium-staging-preview-report h3 {
+  margin: 0 0 7px;
+  color: #f4edff;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.premium-staging-preview-report p,
+.premium-staging-preview-report li,
+.premium-preview-plan span {
+  color: rgba(249, 242, 255, 0.82);
+  font-size: 0.76rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.premium-staging-preview-report p,
+.premium-staging-preview-report ul,
+.premium-staging-preview-report ol {
+  margin: 0;
+}
+
+.premium-staging-preview-report ul,
+.premium-staging-preview-report ol {
+  display: grid;
+  gap: 6px;
+  padding-left: 19px;
+}
+
+.premium-preview-profile {
+  margin-bottom: 5px !important;
+  color: #e4d9ff !important;
+  font-weight: 850;
+}
+
+.premium-preview-plan li {
+  padding-left: 2px;
+}
+
+.premium-preview-plan strong,
+.premium-preview-plan span {
+  display: block;
+}
+
+.premium-preview-plan strong {
+  margin-bottom: 2px;
+  color: #f4edff;
+  font-size: 0.76rem;
+}
+
 .sleep-discovery-back {
   align-self: center;
   padding: 4px 10px;

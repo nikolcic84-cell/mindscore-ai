@@ -1086,6 +1086,61 @@ function useSavedSleepAssessment() {
   return savedAssessment;
 }
 
+function PremiumAiPreviewReport({ report, source, deterministicProfile }) {
+  return (
+    <section className="premium-staging-preview-report" aria-label="Staging Premium AI report preview">
+      <div className="premium-staging-preview-banner">
+        <strong>STAGING PREVIEW</strong>
+        <span>{source === "fallback" ? "Postojeći rezervni izveštaj" : "Stvarni AI izveštaj"}</span>
+      </div>
+      <section>
+        <h3>Tvoj profil sna</h3>
+        <p className="premium-preview-profile">{deterministicProfile}</p>
+        <p>{report.profile.summary}</p>
+      </section>
+      <section>
+        <h3>{report.mainArea.title}</h3>
+        <p>{report.mainArea.explanation}</p>
+      </section>
+      <section>
+        <h3>{report.connections.title}</h3>
+        <ul>{report.connections.items.map((item, index) => <li key={`connection-${index}`}>{item}</li>)}</ul>
+      </section>
+      <section>
+        <h3>{report.positiveOrWatch.title}</h3>
+        <p>{report.positiveOrWatch.text}</p>
+      </section>
+      <section>
+        <h3>{report.startingPoint.title}</h3>
+        <p>{report.startingPoint.text}</p>
+      </section>
+      <section>
+        <h3>{report.tonight.title}</h3>
+        <ol>{report.tonight.actions.map((action, index) => <li key={`tonight-${index}`}>{action}</li>)}</ol>
+      </section>
+      <section>
+        <h3>Plan za narednih 7 dana</h3>
+        <ol className="premium-preview-plan">
+          {report.sevenDayPlan.map((day) => (
+            <li key={day.day}>
+              <strong>{day.title}</strong>
+              <span>{day.action}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+      <section>
+        <h3>{report.tracking.title}</h3>
+        <ul>{report.tracking.items.map((item, index) => <li key={`tracking-${index}`}>{item}</li>)}</ul>
+      </section>
+      <section>
+        <h3>Završna poruka</h3>
+        <p>{report.closing}</p>
+      </section>
+    </section>
+  );
+}
+
 function SleepPremiumDiscoveryPage() {
   const { signatureResult, userAnswers } = useSavedSleepAssessment();
   const premiumBenefits = getSleepPremiumBenefits(signatureResult);
@@ -1093,7 +1148,47 @@ function SleepPremiumDiscoveryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
+  const [premiumPreviewEnabled, setPremiumPreviewEnabled] = useState(false);
+  const [isPreviewGenerating, setIsPreviewGenerating] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [previewResult, setPreviewResult] = useState(null);
   const submitLock = useRef(false);
+
+  useEffect(() => {
+    if (!Array.isArray(userAnswers) || userAnswers.length !== 12) return undefined;
+    const controller = new AbortController();
+    fetch(apiUrl(`${API_BASE}/dev/premium-ai-preview/config`), { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((config) => setPremiumPreviewEnabled(config?.enabled === true))
+      .catch(() => setPremiumPreviewEnabled(false));
+    return () => controller.abort();
+  }, [userAnswers]);
+
+  const handlePremiumPreview = async () => {
+    if (!premiumPreviewEnabled || isPreviewGenerating || userAnswers?.length !== 12) return;
+    setIsPreviewGenerating(true);
+    setPreviewError("");
+    setPreviewResult(null);
+    try {
+      const response = await fetch(apiUrl(`${API_BASE}/dev/premium-ai-preview`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: userAnswers }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.report) throw new Error("preview_unavailable");
+      if (
+        !signatureResult?.signature ||
+        data.deterministicProfile !== signatureResult.signature ||
+        data.report.profile?.name !== signatureResult.signature
+      ) throw new Error("profile_mismatch");
+      setPreviewResult(data);
+    } catch {
+      setPreviewError("Nismo uspeli da pripremimo staging pregled. Proveri da li su tvoji odgovori dostupni i pokušaj ponovo.");
+    } finally {
+      setIsPreviewGenerating(false);
+    }
+  };
 
   const handleCheckoutSubmit = async (event) => {
     event.preventDefault();
@@ -1204,6 +1299,27 @@ function SleepPremiumDiscoveryPage() {
                 {isSubmitting ? "Otvaramo sigurno plaćanje..." : "OTKLJUČAJ MOJ DETALJNI REZULTAT →"}
               </button>
               <p className="sleep-premium-includes">Lično objašnjenje · konkretni koraci · plan za 7 dana · PDF za čuvanje</p>
+              {premiumPreviewEnabled && (
+                <div className="premium-staging-preview-control">
+                  <span>Developer alat · nije kupovina</span>
+                  <button
+                    className="premium-staging-preview-button"
+                    type="button"
+                    onClick={handlePremiumPreview}
+                    disabled={isPreviewGenerating}
+                  >
+                    {isPreviewGenerating ? "PRIPREMAM STAGING PREGLED…" : "STAGING: TESTIRAJ PREMIUM AI"}
+                  </button>
+                  {previewError && <p className="sleep-checkout-error" role="alert">{previewError}</p>}
+                  {previewResult && (
+                    <PremiumAiPreviewReport
+                      report={previewResult.report}
+                      source={previewResult.source}
+                      deterministicProfile={previewResult.deterministicProfile}
+                    />
+                  )}
+                </div>
+              )}
             </form>
 
             <p className="sleep-checkout-trust">🔒 Sigurno plaćanje putem Stripe-a</p>
