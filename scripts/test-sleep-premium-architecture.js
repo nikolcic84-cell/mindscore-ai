@@ -243,6 +243,16 @@ for (const points of personas) {
     /Ne koristi AI prvo lice/,
     /Ovo ne menja obavezne izvorne odgovore u answer_evidence/,
     /lakše za sprovesti.*više ti odgovara.*delovalo mirnije.*želiš da zadržiš/,
+    /prednost ima prirodna parafraza.*obično najviše jedan kratak citat po sekciji/,
+    /Sačuvaj stvarno značenje, učestalost i neizvesnost.*bez pojačavanja tvrdnje/,
+    /Ne pretvaraj istovremeno navedene navike u odnos uzroka i posledice/,
+    /Razlog da nešto vredi primetiti nije dokaz zašto neko loše spava/,
+    /answer_evidence ostaje doslovan izvor/,
+    /svaka radnja mora odmah biti razumljiva.*jasnim predmetom i usklađenim glagolima/,
+    /Dan 1 je početno zapažanje.*NE uvedena rutina/,
+    /Dan 4 znači poređenje sa početnim utiskom, bez novog velikog pokušaja/,
+    /bez produžavanja teksta.*„korelira sa“.*„eksperimentisati sa“.*„promenljiv deo za probu“.*„testirati“.*„hipoteza“/,
+    /Preporuke i dalje zasnivaj na stvarnim odgovorima, ne na generičkim savetima/,
   ]) assert.match(reportPrompt, copyGuidance);
   for (const avoidedWording of [
     "obrazac", "signal", "faktor", "analiza pokazuje", "podaci pokazuju", "testirati hipotezu",
