@@ -136,9 +136,10 @@ assert.match(prompt, /KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO/);
 assert.match(prompt, /Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj/);
 assert.match(prompt, /priority: title mora biti tačno/);
 assert.match(prompt, /Explanation mora jasno obrazložiti ZAŠTO JE UPRAVO OVAJ FIKSNI PRIORITET/);
-assert.match(prompt, /Obavezno uključi najmanje jedan relevantan odabrani odgovor iz pitanja koja se odnose na ovaj prioritet, kopiran VERBATIM/);
+assert.match(prompt, /OBAVEZNO uključi najmanje jedan relevantan selected answer iz liste DOKAZI ZA OVAJ PRIORITET/);
 assert.match(prompt, /KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO/);
 assert.match(prompt, /Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj citirani odgovor/);
+assert.match(prompt, /Proveri pre slanja da se ceo tekst između navodnika poklapa znak po znak/);
 assert.ok(prompt.includes(`Tema ${getSleepPremiumPriority(input).title} je smislen prvi fokus za razmatranje. Tvoj odgovor „${input.answers[0].answer}“`), "priority example has a verbatim answer and preserves the fixed priority");
 assert.ok(prompt.includes(JSON.stringify({ questionIds: input.answers.slice(0, 2).map(({ questionId }) => questionId), text: "Odgovori na ova dva pitanja daju različite poglede koje vredi sagledati zajedno, bez zaključka da jedno objašnjava drugo." })), "prompt includes a valid connection object example with actual available question IDs");
 
@@ -158,6 +159,11 @@ assert.match(onsetPrompt, /U svih 14 tekstova koristi jednostavan svakodnevni sr
 assert.match(onsetPrompt, /dijagnoza.*uzročnih tvrdnji.*WEAK.*MIXED.*obećanja/s);
 assert.match(onsetPrompt, /probaj.*obrati pažnju.*zabeleži.*vidi kako ti odgovara.*uporedi kako se osećaš/s);
 assert.ok(onsetPrompt.includes("„Period pre sna“"), "plan instructions and example are bound to the deterministic sleep-onset priority");
+const onsetEvidenceList = onsetInput.answers
+  .filter(({ questionId }) => ["Q2", "Q6"].includes(questionId))
+  .map(({ questionId, answer }) => ({ questionId, answer }));
+assert.ok(onsetPrompt.includes(`DOKAZI ZA OVAJ PRIORITET (kopiraj answer string doslovno): ${JSON.stringify(onsetEvidenceList)}`), "priority prompt gives the model the exact relevant selected answer strings");
+assert.ok(onsetPrompt.includes(`Tvoj odgovor „${onsetInput.answers.find(({ questionId }) => questionId === "Q2").answer}“`), "priority example quotes a relevant selected answer verbatim");
 assert.ok(onsetPrompt.includes('"day":7') && onsetPrompt.includes('"action":"Za prioritet'));
 
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");

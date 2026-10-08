@@ -11,7 +11,10 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
     "Više delova tvoje noći": ["Q1", "Q3"],
     "Tvoj san u celini": ["Q1", "Q12"],
   }[enforced.priorityArea] || [];
-  const priorityEvidenceAnswer = input.answers.find(({ questionId }) => priorityEvidenceQuestionIds.includes(questionId))?.answer || input.answers[0].answer;
+  const priorityEvidence = input.answers
+    .filter(({ questionId }) => priorityEvidenceQuestionIds.includes(questionId))
+    .map(({ questionId, answer }) => ({ questionId, answer }));
+  const priorityEvidenceAnswer = priorityEvidence[0]?.answer || input.answers[0].answer;
   const priorityExplanationExample = `Primer za priority.explanation uz isti prioritet „${enforced.priorityArea}“: Tema ${enforced.priorityArea} je smislen prvi fokus za razmatranje. Tvoj odgovor „${priorityEvidenceAnswer}“ daje konkretan lični kontekst.`;
   const profileExampleAnswer = input.answers[0].answer;
   const profileExplanationExample = `Primer obaveznog citata u profile_explanation: Tvoj odgovor „${profileExampleAnswer}“ daje konkretan lični oslonac za tumačenje profila.`;
@@ -35,7 +38,8 @@ export const buildSleepPremiumPrompt = (input, enforced) => {
       `stable_or_tracking.mode je konačan: ${enforced.mode}. Zadrži i unapred propisan naslov sekcije: „${enforced.stableTitle}“. Dozvoljene stvarno mirnije oblasti su: ${enforced.stableAreas.length ? enforced.stableAreas.join(", ") : "nema"}. Kod stable navedi isključivo jednu od navedenih oblasti; kod tracking opiši samo šta je korisno da se posmatra. Nikada ne prikazuj interne nazive stanja.`,
     `profile_explanation: 1–2 lične, kratke rečenice o tome kako profil pruža okvir za odgovore ove osobe, najviše ${enforced.profileExplanationMaxLength} znakova. OBAVEZNO uključi najmanje jedan ceo answer iz trenutnih 12 odgovora, kopiran VERBATIM, potpuno identično znak po znak, unutar srpskih navodnika „…“. Nemoj parafrazirati citirani odgovor; pre slanja proveri da se tekst između navodnika tačno poklapa sa nekim ulaznim answer poljem. Nemoj prepisivati generički opis profila ili predstavljati profil kao dijagnozu.`,
     profileExplanationExample,
-    `priority: title mora biti tačno „TVOJ PRIORITET #1“, area tačno „${enforced.priorityArea}“. Explanation mora jasno obrazložiti ZAŠTO JE UPRAVO OVAJ FIKSNI PRIORITET smislen prvi fokus; ne menjaj ga. Obavezno uključi najmanje jedan relevantan odabrani odgovor iz pitanja koja se odnose na ovaj prioritet, kopiran VERBATIM iz ulaznog answer polja i stavljen unutar srpskih navodnika „…“. KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO. Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj citirani odgovor; sačuvaj svaki znak, interpunkciju i dijakritik. Tekst oko citata neka bude jednostavan, prirodan i informativan, bez medicinske tvrdnje, dijagnoze ili uzročnog objašnjenja.`,
+    `priority: title mora biti tačno „TVOJ PRIORITET #1“, area tačno „${enforced.priorityArea}“. Explanation mora jasno obrazložiti ZAŠTO JE UPRAVO OVAJ FIKSNI PRIORITET smislen prvi fokus; ne menjaj ga. OBAVEZNO uključi najmanje jedan relevantan selected answer iz liste DOKAZI ZA OVAJ PRIORITET ispod, kopiran VERBATIM iz ulaznog answer polja i stavljen unutar srpskih navodnika „…“. KADA JE POTREBAN DOKAZ, KOPIRAJ selected answer TAČNO. Ne prevodi, ne skraćuj, ne normalizuj, ne sažimaj i ne parafraziraj citirani odgovor; sačuvaj svaki znak, interpunkciju i dijakritik. Izaberi tekst direktno iz liste, nemoj ga ponovo sastavljati iz sećanja. Proveri pre slanja da se ceo tekst između navodnika poklapa znak po znak sa jednim answer stringom iz liste. Tekst oko citata neka jednostavno i prirodno obrazloži fiksni prioritet, bez medicinske tvrdnje, dijagnoze ili uzročnog objašnjenja.`,
+    `DOKAZI ZA OVAJ PRIORITET (kopiraj answer string doslovno): ${JSON.stringify(priorityEvidence)}`,
     priorityExplanationExample,
     `connections: vrati 2–4 objekta, svaki tačno oblika {"questionIds": ["Qx", "Qy"], "text": "..."}. Svaki questionIds niz mora imati tačno dva različita ID-ja iz questionId polja ulaznih odgovora i oni predstavljaju dokaze za tu stavku. Polje text sadrži samo prirodan, kratak srpski opis veze između tema tih odgovora; ne mora da ponavlja ili citira tekst odgovora. U text nemoj prikazivati Q-ID oznake. Ne tvrdi uzročnost.`,
     connectionExample,
