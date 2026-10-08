@@ -13,6 +13,27 @@ const MODEL = "gpt-5-mini";
 const TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_TOKENS = 5000;
 
+const logStagingUsage = (response, source) => {
+  if (process.env.RENDER_GIT_BRANCH !== "premium-ai-staging" || process.env.ENABLE_PREMIUM_AI_PREVIEW !== "true") return;
+  // Explicit numeric allowlist: never serialize the response, request or whole usage object.
+  const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+  const usage = response?.usage;
+  const statuses = ["completed", "incomplete", "failed", "in_progress", "queued", "cancelled"];
+  const diagnostic = {
+    model: MODEL,
+    input_tokens: count(usage?.input_tokens),
+    output_tokens: count(usage?.output_tokens),
+    total_tokens: count(usage?.total_tokens),
+    ...(count(usage?.input_tokens_details?.cached_tokens) !== null
+      ? { cached_input_tokens: usage.input_tokens_details.cached_tokens } : {}),
+    ...(count(usage?.output_tokens_details?.reasoning_tokens) !== null
+      ? { reasoning_tokens: usage.output_tokens_details.reasoning_tokens } : {}),
+    response_status: statuses.includes(response?.status) ? response.status : "unavailable",
+    source,
+  };
+  try { console.log("[PREMIUM_AI_USAGE]", JSON.stringify(diagnostic)); } catch { /* Observational only. */ }
+};
+
 const classifyGenerationFailure = (error) => {
   const status = Number(error?.status || error?.statusCode) || null;
   if (error?.name === "PremiumAITimeoutError") return { failureType: "timeout", status };
@@ -195,6 +216,7 @@ export const generateSleepPremiumReport = async ({
 }) => {
   const fallback = () => buildSleepPremiumFallback(input);
   if (!apiKeyAvailable || !openaiClient?.responses?.create) {
+    logStagingUsage(null, "FALLBACK");
     if (!fallbackOnError) throw new Error("Premium AI client or OPENAI_API_KEY is unavailable.");
     return {
       report: fallback(),
@@ -209,8 +231,10 @@ export const generateSleepPremiumReport = async ({
   const mode = getSleepPremiumStrengthMode(input);
   const maxOutputTokens = process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
     process.env.ENABLE_PREMIUM_AI_PREVIEW === "true" ? 8000 : MAX_OUTPUT_TOKENS;
+  let response;
+  let usageSource = "FALLBACK";
   try {
-    const response = await callWithTimeout((signal) =>
+    response = await callWithTimeout((signal) =>
       openaiClient.responses.create(
         {
           model: MODEL,
@@ -242,6 +266,7 @@ export const generateSleepPremiumReport = async ({
       throw error;
     }
     const report = validateGeneratedReport(parseJsonReport(response), input, onCustomerSafetyFailure);
+    usageSource = "AI_GENERATED";
     return { report, source: "ai", reason: "ok" };
   } catch (error) {
     if (!fallbackOnError) throw error;
@@ -254,6 +279,8 @@ export const generateSleepPremiumReport = async ({
       ...(includeFailureDiagnostics && error?.diagnostic ? { failureDiagnostic: error.diagnostic } : {}),
       ...(includeFailureDiagnostics && error?.jsonDiagnostics ? { jsonDiagnostics: error.jsonDiagnostics } : {}),
     };
+  } finally {
+    logStagingUsage(response, usageSource);
   }
 };
 

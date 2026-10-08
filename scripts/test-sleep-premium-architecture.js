@@ -1448,6 +1448,85 @@ try {
     else process.env[key] = value;
   }
 }
+const usageEnv = Object.fromEntries(["RENDER_GIT_BRANCH", "ENABLE_PREMIUM_AI_PREVIEW"].map((key) => [key, process.env[key]]));
+const originalConsoleLog = console.log;
+try {
+  const usageLogs = [];
+  console.log = (...args) => usageLogs.push(args);
+  const apiUsage = {
+    input_tokens: 1234, output_tokens: 2345, total_tokens: 3579,
+    input_tokens_details: { cached_tokens: 432, private: "never log this" },
+    output_tokens_details: { reasoning_tokens: 765 },
+    email: "private@example.test", api_key: "sk-test-placeholder",
+  };
+  const response = { status: "completed", output_text: JSON.stringify(fallback), usage: apiUsage, payment: "private payment data" };
+  for (const [branch, flag] of [["premium-ai-staging", "true"], ["main", "true"], ["other", "true"], [undefined, "true"], ["premium-ai-staging", "false"]]) {
+    if (branch === undefined) delete process.env.RENDER_GIT_BRANCH;
+    else process.env.RENDER_GIT_BRANCH = branch;
+    process.env.ENABLE_PREMIUM_AI_PREVIEW = flag;
+    usageLogs.length = 0;
+    const result = await generateSleepPremiumReport({ input, apiKeyAvailable: true, openaiClient: mockClient(response) });
+    assert.equal(result.source, "ai");
+    assert.equal(Object.hasOwn(result, "usage"), false, "usage diagnostics are server-only");
+    assert.equal(usageLogs.length, branch === "premium-ai-staging" && flag === "true" ? 1 : 0);
+    if (usageLogs.length) {
+      assert.equal(usageLogs[0][0], "[PREMIUM_AI_USAGE]");
+      assert.deepEqual(JSON.parse(usageLogs[0][1]), {
+        model: "gpt-5-mini", input_tokens: 1234, output_tokens: 2345, total_tokens: 3579,
+        cached_input_tokens: 432, reasoning_tokens: 765, response_status: "completed", source: "AI_GENERATED",
+      });
+      for (const privateText of [response.output_text, "private@example.test", "sk-test-placeholder", "private payment data", "never log this"]) {
+        assert.equal(JSON.stringify(usageLogs).includes(privateText), false);
+      }
+    }
+  }
+  process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
+  process.env.ENABLE_PREMIUM_AI_PREVIEW = "true";
+  for (const [apiResponse, expectedSource] of [
+    [{ ...response, status: "incomplete", incomplete_details: { reason: "max_output_tokens" } }, "FALLBACK"],
+    [{ ...response, output_text: "not JSON" }, "FALLBACK"],
+    [{ ...response, output_text: JSON.stringify({ ...fallback, profile: "BUDAN UM" }) }, "FALLBACK"],
+    [{ ...response, usage: undefined }, "AI_GENERATED"],
+    [{ ...response, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } }, "AI_GENERATED"],
+    [{ ...response, usage: { input_tokens: "private@example.test", output_tokens: -1, total_tokens: NaN } }, "AI_GENERATED"],
+  ]) {
+    usageLogs.length = 0;
+    await generateSleepPremiumReport({ input, apiKeyAvailable: true, openaiClient: mockClient(apiResponse) });
+    assert.equal(usageLogs.length, 1);
+    const logged = JSON.parse(usageLogs[0][1]);
+    assert.equal(logged.source, expectedSource);
+    assert.equal(logged.input_tokens, Number.isSafeInteger(apiResponse.usage?.input_tokens) && apiResponse.usage.input_tokens >= 0 ? apiResponse.usage.input_tokens : null);
+    assert.equal(JSON.stringify(logged).includes("private@example.test"), false);
+    if (!apiResponse.usage) {
+      assert.equal(logged.output_tokens, null);
+      assert.equal(logged.total_tokens, null);
+      assert.equal(Object.hasOwn(logged, "cached_input_tokens"), false);
+      assert.equal(Object.hasOwn(logged, "reasoning_tokens"), false);
+    }
+  }
+  for (const client of [
+    { responses: { create: async () => { throw new Error("private network error"); } } },
+    { responses: { create: () => new Promise(() => {}) } },
+    undefined,
+  ]) {
+    usageLogs.length = 0;
+    await generateSleepPremiumReport({ input, apiKeyAvailable: true, openaiClient: client, timeoutMs: 1 });
+    assert.equal(usageLogs.length, 1);
+    assert.deepEqual(JSON.parse(usageLogs[0][1]), {
+      model: "gpt-5-mini", input_tokens: null, output_tokens: null, total_tokens: null,
+      response_status: "unavailable", source: "FALLBACK",
+    });
+  }
+  console.log = () => { throw new Error("Logger failed."); };
+  const acceptedWithBrokenLogger = await generateSleepPremiumReport({ input, apiKeyAvailable: true, openaiClient: mockClient(response) });
+  assert.equal(acceptedWithBrokenLogger.source, "ai", "logging cannot affect report acceptance");
+} finally {
+  console.log = originalConsoleLog;
+  for (const [key, value] of Object.entries(usageEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
 const timeout = await generateSleepPremiumReport({
   input,
   openaiClient: { responses: { create: () => new Promise(() => {}) } },
