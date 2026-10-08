@@ -773,7 +773,7 @@ if (isPremiumAiPreviewEnabled()) {
 
   app.post("/api/dev/premium-ai-preview", rateLimit(60_000, 1), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, max-age=0");
-    if (!process.env.OPENAI_API_KEY || !_openaiClient?.responses?.parse) {
+    if (!process.env.OPENAI_API_KEY || !_openaiClient?.responses?.create) {
       return res.status(503).json({ error: "Real Premium AI preview is unavailable on this service." });
     }
     if (premiumAiPreviewCount >= MAX_PREMIUM_AI_PREVIEWS_PER_PROCESS) {

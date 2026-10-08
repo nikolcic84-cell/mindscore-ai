@@ -21,7 +21,14 @@ const personas = [
   positionsToPoints(Array(12).fill(5)),
   positionsToPoints(Array(12).fill(3)),
 ];
-const mockClient = (response) => ({ responses: { parse: async () => response } });
+const mockClient = (response, onRequest = () => {}) => ({
+  responses: {
+    create: async (request) => {
+      onRequest(request);
+      return response;
+    },
+  },
+});
 const input = buildSleepPremiumInput(personas[0]);
 const fallback = buildSleepPremiumFallback(input);
 assert.deepEqual(
@@ -164,12 +171,39 @@ expectInvalid(paraphrasedEvidenceReport, "connections[0]");
 
 const aiResult = await generateSleepPremiumReport({
   input,
-  openaiClient: mockClient({ status: "completed", output_parsed: fallback }),
+  openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(fallback) }, (request) => {
+    assert.equal(request.text.format.type, "json_schema");
+    assert.equal(request.text.format.strict, true);
+    assert.equal(request.text.format.name, "mindscore_sleep_premium_report_v2");
+    assert.deepEqual(request.text.format.schema, schema.schema);
+  }),
   apiKeyAvailable: true,
   fallbackOnError: false,
 });
 assert.equal(aiResult.source, "ai");
 assert.deepEqual(aiResult.report, fallback);
+assert.equal(aiResult.report.profile, input.profile, "structured AI output retains the deterministic profile");
+
+const malformedJsonText = '{"profile":"private answer text must not be logged"';
+const malformedJson = await generateSleepPremiumReport({
+  input,
+  openaiClient: mockClient({ status: "completed", output_text: malformedJsonText }),
+  apiKeyAvailable: true,
+  includeFailureDiagnostics: true,
+});
+assert.equal(malformedJson.source, "fallback");
+assert.equal(malformedJson.failureType, "invalid_json");
+assert.deepEqual(malformedJson.jsonDiagnostics, {
+  responseStatus: "completed",
+  responseLength: malformedJsonText.length,
+  contentEmpty: false,
+  markdownFencesDetected: false,
+  refusalDetected: false,
+  parseErrorType: "SyntaxError",
+  parseErrorPosition: malformedJsonText.length,
+});
+assert.equal(JSON.stringify(malformedJson).includes(malformedJsonText), false, "malformed AI content is not returned in diagnostics");
+assert.equal(JSON.stringify(malformedJson.jsonDiagnostics).includes("private answer text"), false);
 const missingKey = await generateSleepPremiumReport({ input, apiKeyAvailable: false });
 assert.equal(missingKey.source, "fallback");
 assert.deepEqual(missingKey.report, fallback);
@@ -177,16 +211,29 @@ const invalidAi = structuredClone(fallback);
 invalidAi.profile = "BUDAN UM";
 const rejectedAi = await generateSleepPremiumReport({
   input,
-  openaiClient: mockClient({ status: "completed", output_parsed: invalidAi }),
+  openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(invalidAi) }),
   apiKeyAvailable: true,
   includeFailureDiagnostics: true,
 });
 assert.equal(rejectedAi.source, "fallback");
 assert.equal(rejectedAi.failureType, "schema_validation_failure");
+assert.equal(rejectedAi.failureDiagnostic.field, "profile");
 assert.deepEqual(rejectedAi.report, fallback);
+const invalidConnectionAi = structuredClone(fallback);
+invalidConnectionAi.connections[1] = `Odgovor „${input.answers[0].answer}“ vredi pratiti kroz naredne dane.`;
+const rejectedConnectionAi = await generateSleepPremiumReport({
+  input,
+  openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(invalidConnectionAi) }),
+  apiKeyAvailable: true,
+  includeFailureDiagnostics: true,
+});
+assert.equal(rejectedConnectionAi.source, "fallback");
+assert.equal(rejectedConnectionAi.failureType, "schema_validation_failure");
+assert.equal(rejectedConnectionAi.failureDiagnostic.field, "connections[1]");
+assert.deepEqual(rejectedConnectionAi.report, fallback);
 const timeout = await generateSleepPremiumReport({
   input,
-  openaiClient: { responses: { parse: () => new Promise(() => {}) } },
+  openaiClient: { responses: { create: () => new Promise(() => {}) } },
   apiKeyAvailable: true,
   timeoutMs: 1,
   includeFailureDiagnostics: true,
@@ -200,7 +247,7 @@ assert.equal((await generateSleepPremiumPreview({ enabled: false, answers: perso
 const preview = await generateSleepPremiumPreview({
   enabled: true,
   answers: personas[2],
-  openaiClient: mockClient({ status: "completed", output_parsed: buildSleepPremiumFallback(buildSleepPremiumInput(personas[2])) }),
+  openaiClient: mockClient({ status: "completed", output_text: JSON.stringify(buildSleepPremiumFallback(buildSleepPremiumInput(personas[2]))) }),
   apiKeyAvailable: true,
 });
 assert.equal(preview.status, 200);
@@ -210,5 +257,17 @@ assert.equal(preview.body.report.profile, "BUDAN UM");
 assert.equal(preview.body.report.profile, preview.body.deterministicProfile, "valid v2 staging preview profile matches the deterministic profile");
 assert.equal(preview.body.report.review_questions.length, 3);
 assert.equal(Object.hasOwn(preview.body.report, "source"), false);
+
+const malformedPreview = await generateSleepPremiumPreview({
+  enabled: true,
+  answers: personas[2],
+  openaiClient: mockClient({ status: "completed", output_text: malformedJsonText }),
+  apiKeyAvailable: true,
+});
+assert.equal(malformedPreview.status, 200);
+assert.equal(malformedPreview.body.source, "fallback");
+assert.equal(malformedPreview.body.fallbackDiagnostic.code, "INVALID_JSON");
+assert.deepEqual(malformedPreview.body.fallbackDiagnostic.jsonDiagnostics, malformedJson.jsonDiagnostics);
+assert.equal(JSON.stringify(malformedPreview.body).includes("private answer text"), false);
 
 console.log("Premium v2 strict contract, personalized fallback, deterministic selector, safety rules, timeout and staging preview passed.");

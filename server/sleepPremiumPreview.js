@@ -12,7 +12,17 @@ const getFallbackDiagnostic = (generation) => {
     case "timeout":
       return { code: "TIMEOUT", reason: "OpenAI request timed out.", ...(generation.status ? { status: generation.status } : {}) };
     case "invalid_json":
-      return { code: "INVALID_JSON", reason: "Invalid AI JSON." };
+      return {
+        code: "INVALID_JSON",
+        reason: "Invalid AI JSON.",
+        ...(generation.jsonDiagnostics ? { jsonDiagnostics: generation.jsonDiagnostics } : {}),
+      };
+    case "model_refusal":
+      return {
+        code: "MODEL_REFUSAL",
+        reason: "The AI did not return a report.",
+        ...(generation.jsonDiagnostics ? { jsonDiagnostics: generation.jsonDiagnostics } : {}),
+      };
     case "incomplete_response":
       return { code: "INCOMPLETE_RESPONSE", reason: "Incomplete OpenAI response." };
     case "schema_validation_failure":
@@ -102,6 +112,7 @@ export const generateSleepPremiumPreview = async ({
       reason: fallbackDiagnostic.code,
       ...(fallbackDiagnostic.status ? { status: fallbackDiagnostic.status } : {}),
       ...(fallbackDiagnostic.field ? { field: fallbackDiagnostic.field, expected: fallbackDiagnostic.expected, received: fallbackDiagnostic.received } : {}),
+      ...(fallbackDiagnostic?.jsonDiagnostics ? { jsonDiagnostics: fallbackDiagnostic.jsonDiagnostics } : {}),
     } : {}),
   });
 

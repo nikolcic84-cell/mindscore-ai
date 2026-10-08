@@ -1,4 +1,3 @@
-import { makeParseableTextFormat } from "openai/lib/parser.js";
 import { buildSleepPremiumFallback } from "./sleepPremiumFallback.js";
 import { buildSleepPremiumPrompt } from "./sleepPremiumPrompt.js";
 import {
@@ -17,10 +16,9 @@ const classifyGenerationFailure = (error) => {
   const status = Number(error?.status || error?.statusCode) || null;
   if (error?.name === "PremiumAITimeoutError") return { failureType: "timeout", status };
   if (error?.code === "PREMIUM_SCHEMA_VALIDATION") return { failureType: "schema_validation_failure", status };
+  if (error?.code === "PREMIUM_INVALID_JSON") return { failureType: "invalid_json", status };
+  if (error?.code === "PREMIUM_MODEL_REFUSAL") return { failureType: "model_refusal", status };
   if (error?.message === "AI response was incomplete.") return { failureType: "incomplete_response", status };
-  if (error instanceof SyntaxError || /json output text|valid json|unexpected end of json|incomplete/i.test(error?.message || "")) {
-    return { failureType: "invalid_json", status };
-  }
   if (status) return { failureType: "openai_http_error", status };
   if (error?.name === "APIConnectionError" || error?.name === "APIError" || error?.name === "OpenAIError") {
     return { failureType: "openai_request_failed", status };
@@ -40,28 +38,53 @@ const validateGeneratedReport = (candidate, input) => {
 };
 
 const getResponseText = (response) => {
-  if (typeof response?.output_text === "string" && response.output_text.trim()) {
-    return response.output_text;
-  }
-
-  const outputText = response?.output
+  if (typeof response?.output_text === "string") return response.output_text;
+  return response?.output
     ?.filter((item) => item?.type === "message")
     .flatMap((item) => item.content || [])
     .filter((content) => content?.type === "output_text" && typeof content.text === "string")
     .map((content) => content.text)
-    .join("");
-
-  return typeof outputText === "string" && outputText.trim() ? outputText : null;
+    .join("") ?? "";
 };
 
-const getParsedReport = (response) => {
-  if (response?.output_parsed && typeof response.output_parsed === "object") {
-    return response.output_parsed;
-  }
+const hasRefusal = (response) => response?.output
+  ?.some((item) => item?.type === "message" && item.content?.some((content) => content?.type === "refusal")) ?? false;
 
-  const responseText = getResponseText(response);
-  if (!responseText) throw new TypeError("AI response did not contain JSON output text.");
-  return JSON.parse(responseText);
+const getJsonDiagnostics = (response, text, parseError = null) => {
+  const position = parseError?.message?.match(/position\s+(\d+)/i)?.[1];
+  return {
+    responseStatus: typeof response?.status === "string" ? response.status : "unknown",
+    responseLength: text.length,
+    contentEmpty: text.trim().length === 0,
+    markdownFencesDetected: /```/.test(text),
+    refusalDetected: hasRefusal(response),
+    ...(typeof response?.incomplete_details?.reason === "string" ? { incompleteReason: response.incomplete_details.reason } : {}),
+    ...(parseError ? { parseErrorType: parseError.name || "Error", ...(position ? { parseErrorPosition: Number(position) } : {}) } : {}),
+  };
+};
+
+const parseJsonReport = (response) => {
+  const text = getResponseText(response);
+  if (hasRefusal(response)) {
+    const error = new Error("Premium AI refused the structured report request.");
+    error.code = "PREMIUM_MODEL_REFUSAL";
+    error.jsonDiagnostics = getJsonDiagnostics(response, text);
+    throw error;
+  }
+  if (!text.trim()) {
+    const error = new TypeError("AI response did not contain JSON output text.");
+    error.code = "PREMIUM_INVALID_JSON";
+    error.jsonDiagnostics = getJsonDiagnostics(response, text);
+    throw error;
+  }
+  try {
+    return JSON.parse(text);
+  } catch (parseError) {
+    const error = new TypeError("AI response did not contain valid JSON.");
+    error.code = "PREMIUM_INVALID_JSON";
+    error.jsonDiagnostics = getJsonDiagnostics(response, text, parseError);
+    throw error;
+  }
 };
 
 const callWithTimeout = async (requestFactory, timeoutMs) => {
@@ -93,7 +116,7 @@ export const generateSleepPremiumReport = async ({
   includeFailureDiagnostics = false,
 }) => {
   const fallback = () => buildSleepPremiumFallback(input);
-  if (!apiKeyAvailable || !openaiClient?.responses?.parse) {
+  if (!apiKeyAvailable || !openaiClient?.responses?.create) {
     if (!fallbackOnError) throw new Error("Premium AI client or OPENAI_API_KEY is unavailable.");
     return {
       report: fallback(),
@@ -108,11 +131,11 @@ export const generateSleepPremiumReport = async ({
   const mode = getSleepPremiumStrengthMode(input);
   try {
     const response = await callWithTimeout((signal) =>
-      openaiClient.responses.parse(
+      openaiClient.responses.create(
         {
           model: MODEL,
           max_output_tokens: MAX_OUTPUT_TOKENS,
-          text: { format: makeParseableTextFormat(schema, JSON.parse) },
+          text: { format: schema },
           input: buildSleepPremiumPrompt(input, {
             profile: input.profile,
             priorityArea: getSleepPremiumPriority(input).title,
@@ -130,9 +153,11 @@ export const generateSleepPremiumReport = async ({
     );
 
     if (response?.status !== "completed" || response.incomplete_details) {
-      throw new TypeError("AI response was incomplete.");
+      const error = new TypeError("AI response was incomplete.");
+      error.jsonDiagnostics = getJsonDiagnostics(response, getResponseText(response));
+      throw error;
     }
-    const report = validateGeneratedReport(getParsedReport(response), input);
+    const report = validateGeneratedReport(parseJsonReport(response), input);
     return { report, source: "ai", reason: "ok" };
   } catch (error) {
     if (!fallbackOnError) throw error;
@@ -143,6 +168,7 @@ export const generateSleepPremiumReport = async ({
       reason: error?.message || "AI generation failed.",
       ...(includeFailureDiagnostics ? failure : {}),
       ...(includeFailureDiagnostics && error?.diagnostic ? { failureDiagnostic: error.diagnostic } : {}),
+      ...(includeFailureDiagnostics && error?.jsonDiagnostics ? { jsonDiagnostics: error.jsonDiagnostics } : {}),
     };
   }
 };
