@@ -18,7 +18,8 @@ import { generateSleepPremiumMaster } from "../server/sleepPremiumWriter.js";
 // Standalone: node --test scripts/test-sleep-premium-benchmark-route.js
 // All AI responses are injected synthetic scaffolding, never live AI or keys.
 const LEGACY_ENDPOINT = "/api/dev/premium-writer-benchmark";
-const ENDPOINT = "/api/dev/premium-writer-benchmark-v2";
+const V2_ENDPOINT = "/api/dev/premium-writer-benchmark-v2";
+const ENDPOINT = "/api/dev/premium-writer-benchmark-v3";
 const HOST = "mindscore-premium-staging.onrender.com";
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 const staging = () => ({ RENDER_GIT_BRANCH: "premium-ai-staging", ENABLE_PREMIUM_AI_PREVIEW: "true",
@@ -41,10 +42,9 @@ after(async () => {
   assert.deepEqual(await hashSources(), hashes, "existing source/configuration files unchanged");
 });
 
-const unique = (values) => [...new Set(values)];
 function decodeWriterTransport(serialized) {
   const envelope = JSON.parse(serialized);
-  assert.equal(envelope.encoding, "tables-and-text.v2");
+  assert.equal(envelope.encoding, "tables-and-text.v2.2");
   const { brief, shared_text } = envelope;
   const decode = (value) => {
     if (Array.isArray(value)) return value.map(decode);
@@ -79,11 +79,8 @@ function draft(brief) {
       days: brief.experiment7.map(({ day }) => ({ day, rationale: "Ovaj osvrt ostaje uz postojeći korak.", reflection: null })),
       closing: "Sačuvaj prostor za ono što još nije poznato.",
     },
-    provenance: {}, compliance: { no_diagnosis: true, no_causation: true, no_guarantee: true },
+    compliance: { no_diagnosis: true, no_causation: true, no_guarantee: true },
   };
-  master.provenance = { primary_insight_id: brief.primary_insight.insight_id,
-    evidence_ids: unique(master.insights.flatMap(({ evidence_ids }) => evidence_ids)),
-    technique_ids: unique(master.plan7.map(({ technique_id }) => technique_id).filter((id) => id !== null)), device_ids: [] };
   return master;
 }
 const response = (_requestBody, _options, fixtureIndex) => {
@@ -112,9 +109,11 @@ function mock(handler = response) {
 
 async function setup(t, options = {}, cache) {
   const baseDirectory = cache ? dirname(cache) : await mkdtemp(join(tmpdir(), "sleep-bench-route-"));
-  const directory = cache ?? join(baseDirectory, "premium-writer-benchmark-v2");
   const legacyDirectory = join(baseDirectory, "premium-writer-benchmark-v1");
+  const v2Directory = join(baseDirectory, "premium-writer-benchmark-v2");
+  const directory = cache ?? join(baseDirectory, "premium-writer-benchmark-v3");
   await mkdir(directory, { recursive: true });
+  await mkdir(v2Directory, { recursive: true });
   await mkdir(legacyDirectory, { recursive: true });
   if (!cache) t.after(() => rm(baseDirectory, { recursive: true, force: true }));
   const client = options.openaiClient ?? mock();
@@ -142,7 +141,7 @@ async function setup(t, options = {}, cache) {
     if (body !== undefined) req.write(typeof body === "string" ? body : JSON.stringify(body));
     req.end();
   });
-  return { directory, legacyDirectory, client, env, registered, send };
+  return { directory, legacyDirectory, v2Directory, client, env, registered, send };
 }
 
 test("pure import is silent and production import does not load evidence", () => {
@@ -194,7 +193,7 @@ test("safe status contains only commit, enable boolean, completed count and fixt
   app.env.SECRET = "must-not-appear";
   let out = await app.send();
   assert.equal(out.status, 200);
-  assert.deepEqual(out.body, { version: "phase2bench.v2", commit: "a".repeat(40), enabled: true, completed: 0,
+  assert.deepEqual(out.body, { version: "phase2bench.v3", commit: "a".repeat(40), enabled: true, completed: 0,
     fixtures: Object.fromEntries(LETTERS.map((id) => [id, "unused"])) });
   assert.equal(out.headers["cache-control"], "no-store");
   for (const invalid of ["commit-with-secret", "a".repeat(39), "g".repeat(40), undefined]) {
@@ -249,6 +248,10 @@ test("six canonical fixtures: six real writer mock calls, complete formatter JSO
     assert.equal(result.sections.length, 6);
     assert.equal(result.master.plan7.length, 7);
     assert.ok(result.master.provenance);
+    assert.deepEqual(result.master.provenance.evidence_ids,
+      [...new Set(result.master.insights.flatMap(({ evidence_ids }) => evidence_ids))]);
+    assert.deepEqual(result.master.provenance.technique_ids,
+      [...new Set([...result.master.plan7, ...result.master.alternatives].map(({ technique_id }) => technique_id).filter(Boolean))]);
     assert.ok(result.preview.registry_snapshot);
     assert.ok(result.trace);
     assert.ok(Array.isArray(result.evidence_notes));
@@ -262,6 +265,7 @@ test("six canonical fixtures: six real writer mock calls, complete formatter JSO
     const transport = decodeWriterTransport(writerRequest.input[1].content);
     assert.deepEqual(transport, projectSleepPremiumWriterBrief(brief));
     assert.equal(writerRequest.text.format.name, "mindscore_sleep_premium_master_v1");
+    assert.equal(Object.hasOwn(writerRequest.text.format.schema.properties, "provenance"), false);
     assert.equal(writerRequest.text.verbosity, "low");
     assert.deepEqual(writerRequest.reasoning, { effort: "low" });
     assert.ok(!Object.hasOwn(transport, "supporting_facts"));
@@ -433,7 +437,11 @@ test("safe rejected candidate preserved through existing formatter; potentially 
   const expected = await generateSleepPremiumMaster({ input: buildSleepPremiumInput(benchmarkFixtures[0].answers),
     openaiClient: mock(() => ({ status: "completed", output_text: JSON.stringify(candidate) })), apiKeyAvailable: true,
     internalBenchmark: true, includeRejectedDraft: true, includePreview: true, logUsage: () => {} });
-  assert.deepEqual(out.body.result, JSON.parse(formatBenchmark(expected, { fixtureId: "A", format: "json" })));
+  const actualReview = { ...out.body.result };
+  const expectedReview = JSON.parse(formatBenchmark(expected, { fixtureId: "A", format: "json" }));
+  delete actualReview.request_latency_milliseconds;
+  delete expectedReview.request_latency_milliseconds;
+  assert.deepEqual(actualReview, expectedReview);
   assert.equal(client.calls.length, 1);
 });
 
@@ -468,12 +476,15 @@ test("corrupt disk cache or failed publication fails closed and never permits an
   assert.equal(publication.client.calls.length, 1);
 });
 
-test("v1 remains historical read-only; v2 generation and caches are isolated", async (t) => {
+test("v1/v2 remain immutable read-only; v3 generation uses an isolated cache", async (t) => {
   const app = await setup(t);
   const historical = { version: "phase2bench.v1", commit: "b".repeat(40), fixture: "A", status: "completed",
     review_only: true, release_allowed: false, result: { historical: "keep-this-record" } };
+  const historicalV2 = { ...historical, version: "phase2bench.v2", result: { historical: "keep-v2-record" } };
   await writeFile(join(app.legacyDirectory, "A.reserved"), "");
   await writeFile(join(app.legacyDirectory, "A.json"), JSON.stringify(historical));
+  await writeFile(join(app.v2Directory, "A.reserved"), "");
+  await writeFile(join(app.v2Directory, "A.json"), JSON.stringify(historicalV2));
 
   const oldRead = await app.send("GET", undefined, `${LEGACY_ENDPOINT}?fixture=A`);
   assert.equal(oldRead.status, 200);
@@ -485,13 +496,19 @@ test("v1 remains historical read-only; v2 generation and caches are isolated", a
   assert.equal((await app.send("POST", { fixture: "A" }, LEGACY_ENDPOINT)).status, 410);
   assert.equal(app.client.calls.length, 0);
 
+  assert.deepEqual((await app.send("GET", undefined, `${V2_ENDPOINT}?fixture=A`)).body, historicalV2);
+  assert.equal((await app.send("GET", undefined, V2_ENDPOINT)).body.version, "phase2bench.v2");
+  assert.equal((await app.send("POST", { fixture: "A" }, V2_ENDPOINT)).status, 410);
+  assert.deepEqual(JSON.parse(await readFile(join(app.v2Directory, "A.json"), "utf8")), historicalV2);
+
   assert.equal((await app.send("GET", undefined, `${ENDPOINT}?fixture=A`)).status, 404);
   const fresh = await app.send("POST", { fixture: "A" });
   assert.equal(fresh.status, 200, fresh.text);
-  assert.equal(fresh.body.version, "phase2bench.v2");
+  assert.equal(fresh.body.version, "phase2bench.v3");
   assert.equal(fresh.body.status, "completed");
   assert.equal(app.client.calls.length, 1);
   assert.deepEqual(JSON.parse(await readFile(join(app.legacyDirectory, "A.json"), "utf8")), historical);
+  assert.deepEqual(JSON.parse(await readFile(join(app.v2Directory, "A.json"), "utf8")), historicalV2);
   assert.deepEqual(JSON.parse(await readFile(join(app.directory, "A.json"), "utf8")), fresh.body);
   assert.deepEqual((await app.send("GET", undefined, `${LEGACY_ENDPOINT}?fixture=A`)).body, historical);
   assert.equal((await app.send("POST", { fixture: "A" }, LEGACY_ENDPOINT)).status, 410,

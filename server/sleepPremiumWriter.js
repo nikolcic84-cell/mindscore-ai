@@ -1,5 +1,5 @@
 import { buildSleepPremiumWriterBrief, projectSleepPremiumWriterBrief } from "./sleepPremiumWriterBrief.js";
-import { buildSleepPremiumMasterJsonSchema, validateSleepPremiumMaster } from "./sleepPremiumMasterSchema.js";
+import { buildSleepPremiumMasterJsonSchema, deriveSleepPremiumMasterProvenance, validateSleepPremiumMaster } from "./sleepPremiumMasterSchema.js";
 import { adaptSleepPremiumMasterForPreview } from "./sleepPremiumMasterAdapter.js";
 import { buildSleepPremiumFallback } from "./sleepPremiumFallback.js";
 import { validateSleepPremiumReport } from "./sleepPremiumSchema.js";
@@ -22,7 +22,7 @@ export function serializeSleepPremiumWriterBrief(brief) {
   const transport = projectSleepPremiumWriterBrief(brief);
   const frequencies = new Map();
   const visit = (value) => {
-    if (typeof value === "string" && value.length >= 48) frequencies.set(value, (frequencies.get(value) ?? 0) + 1);
+    if (typeof value === "string" && value.length >= 40) frequencies.set(value, (frequencies.get(value) ?? 0) + 1);
     else if (Array.isArray(value)) value.forEach(visit);
     else if (value && typeof value === "object") Object.values(value).forEach(visit);
   };
@@ -43,24 +43,19 @@ export function serializeSleepPremiumWriterBrief(brief) {
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, project(child)]));
     return value;
   };
-  return JSON.stringify({ encoding: "tables-and-text.v2", shared_text: shared, brief: project(transport) });
+  return JSON.stringify({ encoding: "tables-and-text.v2.2", shared_text: shared, brief: project(transport) });
 }
 
 // Independent Phase 2 editorial instructions. Existing v2 prompt/generator and
 // their private diagnostics are deliberately not imported or modified.
-export const SLEEP_PREMIUM_WRITER_INSTRUCTIONS = `Analiza je već završena. Ne opisuj postupak: ispričaj osobi priču koju materijal sadrži, prirodnim srpskim, latinicom. Vrati samo JSON po šemi.
-Ne radi novu analizu, rangiranje, profilisanje ili izbor prioriteta. Opažanje + razlika + otvoreno pitanje + korisno naučno objašnjenje + mali pokušaj čine priču, ne niz odgovora iz upitnika.
-Ulaz tables-and-text.v2: {$text:n}=shared_text[n]; {columns,rows} je niz objekata sa tim kolonama; days.action_ref upućuje na action_catalog. Razreši reference, uključujući sve granice.
-profile i priority.area su fiksni. primary_insight ide prvi, sekundarni samo ponuđeni i u datom redosledu; supporting_content.insights prati iste ID-jeve. facts je jedino lično činjenično uporište. Sačuvaj učestalost, uslovnost, neizvesnost i genericity_flags. Ne izmišljaj iste noći/dane, uzrok niti neprijavljene navike.
-Piši direktno o spavanju, ne o sistemu. Nikad u prozi: urednički, analitički, hipoteza, kandidat, anchor, noncausal, validator, deterministički, model, ovaj izveštaj, interni/klinički pregled u toku ili mašinski ID. Umesto 'urednička hipoteza' napiši prirodno 'Još ne znamo da li se ove stvari kod tebe javljaju zajedno.' Ne ponavljaj pravne ograde; objasni jedno konkretno nepoznato. Intro 1–2 rečenice; insight i context se dopunjuju, ne prepisuju.
-Nauka samo u insight.text/context: lično opažanje → korisno pitanje → koncept iz science → njegova granica → nazad osobi. Razlikuj opštu smernicu, okvir i malu studiju. Samo allowed_claim_ids tog insighta; ukupno 1–3 kad relevantna nauka postoji, inače []. ID znači da si stvarno objasnio taj koncept, ne ukras. Bez autora, godina, naslova, DOI/URL ili ručnih citata; server ih rešava.
-Ponuđen koristan explanation_device stvarno objasni u prozi, kao kratko zamišljeno poređenje, pa se vrati osobi. Poštuj does_not_imply; nikad ga ne predstavi kao stvaran događaj. Ako ga nisi upotrebio, device_id=null. Ne forsiraj analogiju.
-Sedam dana je JEDAN mali pokušaj: 1 početni utisak; 2 glavno pitanje; 3 drugi već dodeljeni ugao; 4 poređenje; 5 postojeća druga radnja ako je dodeljena, inače drugi koristan pogled; 6 ponovi dodeljeno jednostavno opažanje; 7 šta se razlikovalo. Svaki action/observe je kratak i konkretan, ne 'dodeljeni deo sna'. Personalizuj unutar činjenica dana. Prepiši tačne technique_id i themeIds→theme_ids iz days; null ostaje opažanje, bez nove intervencije. action_catalog i restrictions određuju granice, ne rečenice za kopiranje. Ne dodaj korak da bi razbio ponavljanje; svrhovito ponavljanje jasno nazovi. Rationale jedna kratka rečenica; reflection=null osim korisnog osvrta bez novog zadatka. I bez razlike saznaješ nešto. first_step počinje taj plan.
-Sve je dobrovoljno; preskoči ako opterećuje. Nema noćnog gledanja sata, namernog buđenja, uskraćivanja sna, ranijeg alarma, nove satnice, disanja, terapije ili obećanja koristi. Poštuj boundaries i sve lokalne limits/restrictions. Unknown nije negativan nalaz. Ne biraj uzrok među rivals; do_not_target_first i positives čuvaju ono što ne treba menjati.
-Alternatives=[] ako nema zaista različitog postojećeg koraka druge teme; nikad kopija praćenja. Ako postoji, samo postojeća days radnja/technique_id/themeIds van teme dana 2. tracking najviše dva kratka opcionalna poređenja, ne protokol.
-MIRNA NOĆ: očuvaj stabilno; bez problema, prisilne nauke, rivala, obrta, praćenja ili intervencija. Sedam kratkih dana može biti nenametljivo očuvanje bez zapisa. Ne zahtevaj stalno posmatranje.
-uncertainty.question čuva smisao best_next_question, anchor_fact_ids tačno njegove fact_ids u istom redosledu; ako je null, question=null i anchors=[].
-Provenance izračunaj TEK iz napisanih referenci: evidence_ids=jedinstvena UNIJA insights[*].evidence_ids, NE lista dostupne science; technique_ids=unija nenultih plan7/alternatives.technique_id; device_ids=unija nenultih insights.device_id. primary_insight_id je tačan primary ID. Nekorišćen claim NE dodaj ni ovde ni u insight radi prolaza. Ne popravljaj prozu novim zaključkom. Proveri tačne unije i dužinske limite pre vraćanja; compliance=true nije odobrenje.`;
+export const SLEEP_PREMIUM_WRITER_INSTRUCTIONS = `Analiza je završena. Vrati samo JSON po šemi, prirodnim srpskim, latinicom, direktno osobi. Ne rangiraj ponovo, ne menjaj profil/prioritet i ne opisuj sistem. Piši kratko; ne popunjavaj polja do limita. Ne koristi izraze „urednički pregled“, „kandidat“, „hipoteza“ ili „ovaj izveštaj“.
+Transport tables-and-text.v2.2: {$text:n}=shared_text[n]; {columns,rows} dekodiraj po kolonama; days.action_ref i observe_ref upućuju na odgovarajuće kataloge; restriction_refs, boundary_refs i global_boundary_refs su indeksi u boundary_catalog. Ispravno razreši sve reference.
+Primary insight ide prvi; sekundarni samo ponuđeni, u redosledu. supporting_content.insights prati iste sidrene uvide. facts su jedino lično činjenično uporište: sačuvaj učestalost, uslovnost, neizvesnost i genericity_flags; ne izmišljaj navike.
+Odvojeni odgovori ne znače iste noći/dane niti uzrok. Za aktivne misli i teško uspavljivanje reci da su oba odgovora prijavljena, ali da njihovo zajedničko javljanje i veza nisu poznati. Ne piši da osoba teško zaspi zbog misli bez izričitog oslonca.
+Dnevnik i samoposmatranje beleže subjektivan utisak: nikad ne nazivaj ih objektivnim merenjem/dokazom niti utvrđivanjem uzroka. Svaku naučnu tvrdnju stavi samo u insight.text/context i veži za evidence_ids iz allowed_claim_ids istog uvida; ako nema oslonca, izostavi tvrdnju. Bez autora, godina, naslova, URL/DOI ili mašinskih ID-jeva u prozi. Device koristi samo kad zaista objašnjava uz sidrene činjenice; inače null.
+Granice su authoritative u boundary_catalog; primeni samo reference vezane za svaki science/technique/device/day i global_boundary_refs, ne prepisuj granice kao nove savete. Poštuj question, rivals, do_not_target_first i supported_positives; ne biraj uzrok. Aktivnosti su dobrovoljne; nijedna nova tehnika, protokol ili promena sna. MIRNA NOĆ čuva ono što je dobro i ne izmišlja problem, obavezu, nauku ili intervenciju.
+Sedam dana ostaje jedan mali, konkretan pokušaj prema dodeljenim action/observe referencama; technique_id i theme_ids prepiši tačno, null ostaje opažanje. Bez dodatnog zadatka u rationale/reflection. Alternatives samo 0–2 već dodeljena različita koraka; tracking samo do dva kratka, opciona poređenja. Intro 1–2 kratke rečenice; napiši samo koliko uvida brief podržava. Plan i supporting content sažeti, bez ponavljanja.
+Piši kompletne, prirodne rečenice; bez engleskih placeholdera kao “Begin the allocated plan”. Ne vraćaj provenance: server ga izvodi iz validiranih sadržajnih referenci. Compliance=true nije odobrenje.`;
 
 function safeUsage(response, source) {
   const usage = response?.usage;
@@ -75,6 +70,7 @@ function safeUsage(response, source) {
 }
 
 const safeRequestId = (value) => typeof value === "string" && /^req_[a-zA-Z0-9]{8,100}$/u.test(value) ? value : null;
+const safeResponseId = (value) => typeof value === "string" && /^resp_[a-zA-Z0-9]{8,100}$/u.test(value) ? value : null;
 
 function incompleteMetadata(response, latencyMilliseconds) {
   const token = (value, allowed) => typeof value !== "string" ? null : allowed.includes(value) ? value : "[withheld: unrecognized metadata]";
@@ -92,6 +88,7 @@ function incompleteMetadata(response, latencyMilliseconds) {
     status: token(response?.status, STATUSES),
     ...(response?.incomplete_details != null ? { incomplete_details: { reason: token(response.incomplete_details.reason, ["max_output_tokens", "content_filter"]) } } : {}),
     ...(response?.error != null ? { error: {
+      type: token(response.error.type, ["server_error", "invalid_request_error", "rate_limit_error", "api_error"]),
       code: token(response.error.code, ["server_error", "rate_limit_exceeded", "invalid_prompt"]),
       ...(response.error.message !== undefined ? { message: "[withheld: free-form API error message]" } : {}),
     } } : {}),
@@ -102,6 +99,7 @@ function incompleteMetadata(response, latencyMilliseconds) {
     configuredModel: SLEEP_PREMIUM_WRITER_MODEL, max_output_tokens: SLEEP_PREMIUM_WRITER_MAX_OUTPUT_TOKENS,
     responseModel: typeof response?.model === "string" && /^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/u.test(response.model) ? response.model : null,
     requestId: safeRequestId(response?._request_id),
+    responseId: safeResponseId(response?.id),
     errorPresent: response?.error != null,
     usagePresent: response?.usage != null,
     usage: safeUsage(response, "fallback"),
@@ -181,6 +179,7 @@ export async function generateSleepPremiumMaster({
   let result;
   let requestCount = 0;
   let serializedBriefCharacters = null;
+  let schemaCharacters = null;
   let requestStarted = null;
   let requestLatencyMilliseconds = null;
   try {
@@ -195,13 +194,15 @@ export async function generateSleepPremiumMaster({
     serializedBriefCharacters = serialized.length;
     requestCount = 1;
     requestStarted = performance.now();
+    const responseSchema = buildSleepPremiumMasterJsonSchema(brief);
+    schemaCharacters = JSON.stringify(responseSchema).length;
     response = await oneCall(openaiClient, {
       model: SLEEP_PREMIUM_WRITER_MODEL, max_output_tokens: SLEEP_PREMIUM_WRITER_MAX_OUTPUT_TOKENS,
       // v1 spent 55–68% of completed output on reasoning despite finished
       // analysis. Low effort is supported by this model and leaves the same
       // 8000 cap/strict schema/safety gate, with no extra call or timeout bump.
       reasoning: { effort: "low" },
-      store: false, text: { verbosity: "low", format: buildSleepPremiumMasterJsonSchema(brief) },
+      store: false, text: { verbosity: "low", format: responseSchema },
       input: [{ role: "system", content: SLEEP_PREMIUM_WRITER_INSTRUCTIONS }, { role: "user", content: serialized }],
     }, timeoutMs);
     requestLatencyMilliseconds = Math.round(performance.now() - requestStarted);
@@ -219,6 +220,10 @@ export async function generateSleepPremiumMaster({
       .filter((part) => part?.type === "output_text" && typeof part.text === "string").map((part) => part.text).join("");
     try { draft = JSON.parse(text); } catch { throw fail("invalid_json", "AI response did not contain valid JSON."); }
     validation = validateSleepPremiumMaster(draft, brief);
+    if (validation.valid) {
+      draft = { ...draft, provenance: deriveSleepPremiumMasterProvenance(draft, brief) };
+      validation = validateSleepPremiumMaster(draft, brief);
+    }
     if (validation.valid) validation = validateWriterBounds(draft, brief);
     if (!validation.valid) throw fail("schema_validation_failure", validation.reason, { failureDiagnostic: validation.diagnostic });
     let preview;
@@ -261,15 +266,20 @@ export async function generateSleepPremiumMaster({
       result.requestCount = requestCount;
       result.serializedBriefCharacters = serializedBriefCharacters;
       result.inputMetrics = {
-        encoding: "tables-and-text.v2",
+        encoding: "tables-and-text.v2.2",
         briefCharacters: serializedBriefCharacters,
         briefEstimatedTokens: serializedBriefCharacters === null ? null : Math.ceil(serializedBriefCharacters / 4),
         instructionsCharacters: SLEEP_PREMIUM_WRITER_INSTRUCTIONS.length,
+        schemaCharacters,
+        estimatedRequestCharacters: serializedBriefCharacters === null || schemaCharacters === null ? null :
+          serializedBriefCharacters + SLEEP_PREMIUM_WRITER_INSTRUCTIONS.length + schemaCharacters,
         estimateMethod: "characters / 4, rounded up; not provider tokenization",
       };
+      result.inputMetrics.estimatedRequestTokens = result.inputMetrics.estimatedRequestCharacters === null
+        ? null : Math.ceil(result.inputMetrics.estimatedRequestCharacters / 4);
       result.requestLatencyMilliseconds = requestStarted === null ? null : requestLatencyMilliseconds ?? Math.round(performance.now() - requestStarted);
       result.providerMetadata = {
-        requestId: safeRequestId(response?._request_id), usagePresent: response?.usage != null,
+        requestId: safeRequestId(response?._request_id), responseId: safeResponseId(response?.id), usagePresent: response?.usage != null,
         responseModel: typeof response?.model === "string" && /^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/u.test(response.model) ? response.model : null,
         reasoningEffort: "low", timeoutMs,
       };

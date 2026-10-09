@@ -4,9 +4,11 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 const V1_PATH = "/api/dev/premium-writer-benchmark";
 const V2_PATH = "/api/dev/premium-writer-benchmark-v2";
+const V3_PATH = "/api/dev/premium-writer-benchmark-v3";
 const HOST = "mindscore-premium-staging.onrender.com";
 const V1_VERSION = "phase2bench.v1";
 const V2_VERSION = "phase2bench.v2";
+const V3_VERSION = "phase2bench.v3";
 const FIXTURES = Object.freeze(["A", "B", "C", "D", "E", "F"]);
 const MAX_JSON_BYTES = 256 * 1024;
 // Shared by every registration/cache directory in this process, not per app.
@@ -181,25 +183,29 @@ function registerNamespace(app, { path, version, directory, generationEnabled, o
   });
 }
 
-/** Staging-only benchmark route pair. v1 keeps historical status/cache GETs;
- * only v2 can reserve fixtures or invoke the writer. Both registrations share
- * the module-level lock and preserve the same exact exposure gates and budgets.
+/** Staging-only benchmark route set. v1 and v2 are historical read-only
+ * namespaces; only the new v3 namespace can reserve fixtures or invoke the
+ * writer. Every version keeps an independent immutable cache directory.
  */
 export function registerSleepPremiumBenchmarkRoute(app, {
   openaiClient, apiKeyAvailable, cacheDir, env = process.env,
 } = {}) {
   if (!enabled(env)) return false;
   const directory = typeof cacheDir === "string" && isAbsolute(cacheDir) ? resolve(cacheDir) : null;
-  // server.js owns the stable v1 path. Derive a sibling v2 namespace without
-  // migrating, deleting, or modifying any historical v1 cache/reservation.
-  const v2Directory = directory
-    ? basename(directory).endsWith("-v1")
-      ? join(dirname(directory), `${basename(directory).slice(0, -3)}-v2`)
-      : join(directory, "premium-writer-benchmark-v2")
+  // server.js owns the stable v1 path. Derive independent siblings without
+  // migrating, deleting, or modifying any historical version's cache.
+  const directoryForVersion = (version) => directory
+    ? /-v[123]$/u.test(basename(directory))
+      ? join(dirname(directory), `${basename(directory).replace(/-v[123]$/u, "")}-${version}`)
+      : join(directory, `premium-writer-benchmark-${version}`)
     : null;
+  const v2Directory = directoryForVersion("v2");
+  const v3Directory = directoryForVersion("v3");
   registerNamespace(app, { path: V1_PATH, version: V1_VERSION, directory,
     generationEnabled: false, openaiClient, apiKeyAvailable, env });
   registerNamespace(app, { path: V2_PATH, version: V2_VERSION, directory: v2Directory,
+    generationEnabled: false, openaiClient, apiKeyAvailable, env });
+  registerNamespace(app, { path: V3_PATH, version: V3_VERSION, directory: v3Directory,
     generationEnabled: true, openaiClient, apiKeyAvailable, env });
   return true;
 }

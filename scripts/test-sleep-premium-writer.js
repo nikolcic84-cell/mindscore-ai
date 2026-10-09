@@ -25,7 +25,7 @@ const library = loadSleepEvidenceLibrary();
 const inputs = benchmarkFixtures.map(({ answers }) => buildSleepPremiumInput(answers));
 const briefs = inputs.map((input) => buildSleepPremiumWriterBrief(input));
 const masterKeys = ["version", "profile", "priority", "intro", "insights", "tracking", "plan7", "alternatives",
-  "uncertainty", "supporting_content", "provenance", "compliance"];
+  "uncertainty", "supporting_content", "compliance"];
 const briefKeys = ["version", "profile", "priority", "supporting_facts", "primary_insight", "secondary_insights",
   "twist", "contrasts", "rivals", "best_next_question", "do_not_target_first", "supported_positives",
   "approved_science", "eligible_techniques", "explanation_devices", "experiment7", "prohibited_conclusions",
@@ -53,7 +53,7 @@ function assertFrozen(value) {
 function decodeBrief(serialized) {
   const envelope = JSON.parse(serialized);
   assert.deepEqual(Object.keys(envelope), ["encoding", "shared_text", "brief"]);
-  assert.equal(envelope.encoding, "tables-and-text.v2");
+  assert.equal(envelope.encoding, "tables-and-text.v2.2");
   const decode = (value) => {
     if (Array.isArray(value)) return value.map(decode);
     if (value && typeof value === "object") {
@@ -224,7 +224,8 @@ function mockClient(response) {
   } } } };
 }
 
-const completed = (master) => ({ status: "completed", output_text: JSON.stringify(master),
+const writerDraft = (master) => { const copy = structuredClone(master); delete copy.provenance; return copy; };
+const completed = (master) => ({ status: "completed", output_text: JSON.stringify(writerDraft(master)),
   usage: { input_tokens: 12, output_tokens: 34, total_tokens: 46, input_tokens_details: { cached_tokens: 2 }, output_tokens_details: { reasoning_tokens: 3 } } });
 const callWriter = (mock, options = {}) => generateSleepPremiumMaster({ input: inputs[0], openaiClient: mock.client, apiKeyAvailable: true, ...options });
 function assertFallback(result, type, calls) {
@@ -433,7 +434,8 @@ test("every generated prose location receives the same lexical safety gate", asy
       replace(control, "Mirno opažanje.");
       assertAccepted(control, briefs[0]);
       for (const text of ["Imaš apneju.", "Navika uzrokuje umor.", "Sigurno poboljšava san.",
-        "Spavaj manje.", "https://example.invalid/fake", "synthetic@example.invalid", "FACT_Q3", "Izmišljeni rad 2020."]) {
+        "Spavaj manje.", "https://example.invalid/fake", "synthetic@example.invalid", "FACT_Q3", "Izmišljeni rad 2020.",
+        "Begin the allocated plan; no additional action."]) {
         const candidate = structuredClone(control);
         replace(candidate, text);
         const validation = validateSleepPremiumMaster(candidate, briefs[0]);
@@ -531,7 +533,7 @@ test("writer mock success: one gpt-5-mini/8000 call, serialized brief only, no r
   assert.deepEqual(request.text.format, buildSleepPremiumMasterJsonSchema(briefs[0]));
   assert.deepEqual(request.input.map(({ role }) => role), ["system", "user"]);
   assert.equal(request.input[0].content, SLEEP_PREMIUM_WRITER_INSTRUCTIONS);
-  assert.match(request.input[0].content, /Ne radi novu analizu, rangiranje, profilisanje ili izbor prioriteta/u);
+  assert.match(request.input[0].content, /Odvojeni odgovori ne znače iste noći\/dane niti uzrok/u);
   assert.equal(request.input[1].content, serializeSleepPremiumWriterBrief(briefs[0]));
   assert.deepEqual(decodeBrief(request.input[1].content), projectSleepPremiumWriterBrief(briefs[0]));
   assert.deepEqual(request.reasoning, { effort: "low" });
@@ -543,11 +545,16 @@ test("writer mock success: one gpt-5-mini/8000 call, serialized brief only, no r
   assert.equal(result.usage.reasoning_tokens, 3);
   assert.equal(result.usage.source, "AI_GENERATED");
   assert.ok(Number.isSafeInteger(result.requestLatencyMilliseconds) && result.requestLatencyMilliseconds >= 0);
-  assert.equal(result.inputMetrics.encoding, "tables-and-text.v2");
+  assert.equal(result.inputMetrics.encoding, "tables-and-text.v2.2");
   assert.equal(result.inputMetrics.briefCharacters, result.serializedBriefCharacters);
   assert.equal(result.inputMetrics.briefEstimatedTokens, Math.ceil(result.serializedBriefCharacters / 4));
+  assert.equal(result.inputMetrics.schemaCharacters, JSON.stringify(request.text.format).length);
+  assert.ok(result.inputMetrics.estimatedRequestTokens > result.inputMetrics.briefEstimatedTokens);
   assert.equal(result.providerMetadata.reasoningEffort, "low");
   assert.equal(result.providerMetadata.timeoutMs, 60000);
+  assert.deepEqual(result.master.provenance.evidence_ids,
+    unique(result.master.insights.flatMap(({ evidence_ids }) => evidence_ids)));
+  assert.ok(!Object.hasOwn(request.text.format.schema.properties, "provenance"));
   assert.equal(diagnostics.length, 1);
   assert.equal(diagnostics[0][0], "[PREMIUM_AI_USAGE]");
   assert.deepEqual(JSON.parse(diagnostics[0][1]), result.usage);
@@ -641,7 +648,7 @@ test("writer accepts an existing bounded alternative, matching device, and outpu
   master.insights[0].device_id = device.device_id;
   provenance(master, brief);
   assertAccepted(master, brief);
-  const mock = mockClient({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(master) }] }] });
+  const mock = mockClient({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(writerDraft(master)) }] }] });
   const result = await callWriter(mock, { includePreview: false, logUsage: () => { throw new Error("Synthetic observer exception"); } });
   assert.equal(result.source, "ai");
   assert.equal(result.requestCount, 1);
@@ -668,7 +675,8 @@ test("writer retains selected uncertainty and requires available science, but ne
 test("incomplete diagnostics are metadata-only, console is captured/restored, observer exceptions are harmless", async (t) => {
   const diagnostics = staging(t);
   const privateMarker = "synthetic-private-provider-marker";
-  const mock = mockClient({ status: "incomplete", output_text: privateMarker,
+  const mock = mockClient({ id: "resp_syntheticResponseId123456", _request_id: "req_syntheticRequestId123456",
+    status: "incomplete", output_text: privateMarker,
     incomplete_details: { reason: privateMarker }, error: { code: privateMarker, message: privateMarker },
     output: [{ type: privateMarker, status: privateMarker, content: [{ type: privateMarker, text: privateMarker }] }],
     usage: { input_tokens: -1, output_tokens: privateMarker, total_tokens: Infinity } });
@@ -679,6 +687,10 @@ test("incomplete diagnostics are metadata-only, console is captured/restored, ob
   assert.equal(observed.outputTextCharacterLength, privateMarker.length);
   assert.equal(observed.outputTextExists, true);
   assert.equal(observed.max_output_tokens, 8000);
+  assert.equal(observed.requestId, "req_syntheticRequestId123456");
+  assert.equal(observed.responseId, "resp_syntheticResponseId123456");
+  assert.equal(observed.errorPresent, true);
+  assert.equal(observed.usagePresent, true);
   assert.equal(result.usage.input_tokens, null);
   assert.equal(result.usage.output_tokens, null);
   assert.equal(result.usage.total_tokens, null);

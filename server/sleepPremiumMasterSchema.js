@@ -24,8 +24,14 @@ const hasHiddenCharacters = (value) => [...value].some((character) => {
 const INTERNAL = /\b(?:scoring|scores?|dimension\w*|dimenzij\w*|mapped\s*value|internalscores|classifier|klasifikator\w*|ai confidence|algorithm|algoritam|schema|sema|json|prompt\w*|tokens?|tokeni|tokena|threshold\w*|sleeponset|recovery|continuity|rhythm|stable|mixed|weak|theme[_ -]?ids?|fact[_ -]?ids?|claim[_ -]?ids?|question[_ -]?ids?|evidence[_ -]?ids?|insight[_ -]?ids?|device[_ -]?ids?|technique[_ -]?ids?|urednick\w*|analitick\w*|kandidat\w*|anchor\w*|noncausal|validator\w*|deterministick\w*|model\w*|hipotez\w*)\b|\bovaj\s+izvestaj\b|\binternal\s+review\b|\bq\d+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b\d+(?:[.,]\d+)?\s*(?:\/\s*100|%|bod\w*|poen\w*)|\b(?:rezultat|ocena|prag\w*|score)\s*[:=]?\s*(?:je\s*)?\d+(?:[.,]\d+)?/iu;
 const SENSITIVE = /\S+@\S+|\b(?:cs_|pi_|cus_|sess_|session[_ -]?|assessment[_ -]?|user[_ -]?id[\s:=_-]*|sk[-_]|pk_(?:live|test)_|whsec_)[\w-]+|\b(?:bearer\s+\S+|(?:password|passwd|credential|api[_ -]?key|access[_ -]?token|secret)\s*[:=]\s*\S+)|\b[0-9a-f]{8}-[0-9a-f-]{27,}\b|(?:\+?\d[\s().-]*){7,}/iu;
 const MEDICAL = /\b(?:imas|imate|patis|patite|bolujes|bolujete|tvoj\w*|vasa|vas|you have|you suffer|your)\b.{0,60}\b(?:nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|poremec\w*|bolest\w*|insomnia|apnea|depression)\b|\b(?:dijagnostik\w*|diagnos\w*|medikament\w*|lekov\w*|lek|terapij\w*|lecen\w*|izlec\w*|prescri\w*|treat\w*|cbt[ -]?i|kontrol\w*\s+stimulus\w*)\b|\b(?:zdrav\w*\s+san|odsustvo\s+(?:poremec\w*|bolest\w*)|bez\s+(?:poremec\w*|bolest\w*))\b/iu;
-const CAUSAL = /\b(?:uzroku\w+|izaziv\w*|prouzrok\w*|remeti\w*|dovodi\s+do|causes?|caused\s+by|doprin\w*\s+(?:los\w*|problem\w*|teskoc\w*|nesanic\w*|san\w*|spav\w*)|uzrok\s+(?:tvog|tvoj\w*|problema|teskoc\w*|los\w*\s+sna))\b/iu;
-const GUARANTEE = /\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b.{0,60}\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b|\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b.{0,60}\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b|\b(?:guarantee\w*|will\s+(?:improve|fix|cure|solve)|dokaz\w*|potvrdju\w*)\b/iu;
+const CAUSAL = /\b(?:uzroku\w+|izaziv\w*|prouzrok\w*|remeti\w*|dovodi\s+do|causes?|caused\s+by|doprin\w*\s+(?:los\w*|problem\w*|teskoc\w*|nesanic\w*|san\w*|spav\w*)|uzrok\s+(?:tvog|tvoj\w*|problema|teskoc\w*|los\w*\s+sna)|zbog\s+toga|zbog\s+(?:aktivn\w*\s+)?misl\w*)\b/iu;
+const GUARANTEE = /\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b.{0,60}\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b|\b(?:san\w*|spav\w*|problem\w*|teskoc\w*)\b.{0,60}\b(?:sigurn\w*|definitivn\w*|garantovan\w*|poboljs\w*|poprav\w*|izlec\w*|regulis\w*|res\w*|uklon\w*)\b|\b(?:guarantee\w*|will\s+(?:improve|fix|cure|solve))\b/iu;
+const PROOF_ASSERTION = /\b(?:dokaz\w*|potvrdju\w*)\b/iu;
+const NEGATED_CAUSAL_CAVEAT = /\bne\s+dokazuj(?:e|u)\s+uzrok\b/gu;
+const OBJECTIVE_MEASUREMENT = /\b(?:objektiv\w*\s+(?:izmer\w*|mer\w*|dokaz\w*|utvrd\w*|zabele\w*|prover\w*)|objectiv\w*\s+(?:measur\w*|record\w*|establish\w*|verif\w*))\b/iu;
+const UNSUPPORTED_COOCCURRENCE = /\b(?:aktivn\w*\s+misl\w*|tesk\w*\s+uspavljivanj\w*|budjenj\w*|dnevni\s+umor)\b.{0,70}\b(?:javljaju\s+se|pojavljuju\s+se)\s+(?:u\s+)?(?:istim\s+nocima|iste\s+noci|istim\s+danima|istog\s+dana)\b/iu;
+const SCIENCE_COPY = /\b(?:nauka|naucn\w*|istrazivanj\w*|studij\w*|smernic\w*|dnevnik\s+sna|dnevnick\w*\s+zapis|laboratorijsk\w*|scientific|research|studies|guidelines|sleep\s+diary)\b/iu;
+const ENGLISH_PLACEHOLDER = /\b(?:begin|start)\s+the\s+allocated\s+plan\b|\ballocated\s+plan\b|\bno\s+additional\s+action\b|\byour\s+assigned\s+step\b|\b(?:begin|start|keep|track|notice|observe|compare)\b.{0,50}\b(?:your|sleep|step|plan|night|morning)\b/iu;
 const BIBLIOGRAPHIC = /(?:https?:\/\/|www\.|doi\b|10\.\d{4,9}\/\S+|\b(?:19|20)\d{2}\b|\b(?:pubmed|pmid|isbn|issn|et\s+al|bibliograf\w*|citiran\w*)\b|\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\])/iu;
 const AUTHORITY = /\b(?:studij\w*|istrazivanj\w*|naucn\w*|smernic\w*|studies|research|scientific|guidelines|aasm|nhlbi|nih|univerzitet\w*|university)\b/iu;
 const ORDINARY_INVESTIGATION = /\bbez\s+istrazivanj\w*\s+tokom\s+noci\b|\bistrazivanj\w*\s+sopstven\w*\s+utisaka\b/gu;
@@ -70,41 +76,42 @@ function briefContext(brief) {
     calm: brief.profile === "MIRNA NOĆ" };
 }
 
-function makeSchema(brief, ctx) {
+function makeSchema(brief, ctx, { includeDerivedProvenance = false } = {}) {
   const minInsights = ctx.calm ? 1 : Math.min(2, ctx.insights.length);
   const maxInsights = ctx.insights.length;
   const ids = (allowed, max = allowed.length, min = 0) => array(min, max, enumeration(allowed));
-  return object({
+  const properties = {
     version: { type: "integer", enum: [SLEEP_PREMIUM_MASTER_VERSION] },
     profile: enumeration([brief.profile]),
-    priority: object({ area: enumeration([brief.priority.area]), explanation: text(700), first_step: text(200, "Begin the allocated plan; no additional action.") }),
-    intro: text(700),
+    priority: object({ area: enumeration([brief.priority.area]), explanation: text(420), first_step: text(150, "Počni već odobreni plan; ne dodaj novu radnju.") }),
+    intro: text(300),
     insights: array(minInsights, maxInsights, object({
-      insight_id: enumeration(ctx.insights), title: text(100), text: text(650),
+      insight_id: enumeration(ctx.insights), title: text(90), text: text(520),
       // Despite the legacy-shaped name, these are selected CLAIM IDs, never EV/source IDs.
       evidence_ids: ids(ctx.evidence, 3), device_id: nullable(enumeration(ctx.devices)),
     })),
-    tracking: array(0, ctx.calm || brief.best_next_question === null ? 0 : 2, text(200)),
+    tracking: array(0, ctx.calm || brief.best_next_question === null ? 0 : 2, text(130)),
     // Homogeneous seven-item schema is intentionally manageable for strict AI
     // output. Runtime enforces order and exact day themes; eligible technique
     // IDs alone cannot prove that an action respects the brief's restrictions.
-    plan7: array(7, 7, object({ day: dayNumber, action: text(200), observe: text(150),
+    plan7: array(7, 7, object({ day: dayNumber, action: text(160), observe: text(120),
       technique_id: nullable(enumeration(ctx.techniques)), theme_ids: ids(ctx.themes, ctx.themes.length, 1) })),
     alternatives: array(0, ctx.calm || !ctx.alternativeThemes.length ? 0 : 2, object({
-      text: text(300), technique_id: nullable(enumeration(ctx.techniques)),
+      text: text(220), technique_id: nullable(enumeration(ctx.techniques)),
       theme_ids: ids(ctx.alternativeThemes, ctx.alternativeThemes.length, 1),
     })),
-    uncertainty: object({ question: brief.best_next_question === null ? { type: "null" } : nullable(text(300)),
+    uncertainty: object({ question: brief.best_next_question === null ? { type: "null" } : nullable(text(220)),
       anchor_fact_ids: ids(brief.best_next_question?.fact_ids ?? [], brief.best_next_question?.fact_ids.length ?? 0) }),
     supporting_content: object({
-      insights: array(minInsights, maxInsights, object({ insight_id: enumeration(ctx.insights), context: text(500, "Expand only this anchored insight; no independent profile, priority or advice.") })),
-      days: array(7, 7, object({ day: dayNumber, rationale: text(250, "Explain only the existing action; do not introduce another action."), reflection: nullable(text(200)) })),
-      closing: text(350),
+      insights: array(minInsights, maxInsights, object({ insight_id: enumeration(ctx.insights), context: text(360, "Dopuni samo ovaj uvid; ne dodaj profil, prioritet ili savet.") })),
+      days: array(7, 7, object({ day: dayNumber, rationale: text(150, "Ukratko objasni postojeću radnju; ne dodaj novu."), reflection: nullable(text(120)) })),
+      closing: text(180),
     }),
-    provenance: object({ primary_insight_id: enumeration([brief.primary_insight.insight_id]),
-      evidence_ids: ids(ctx.evidence), technique_ids: ids(ctx.techniques), device_ids: ids(ctx.devices) }),
     compliance: object({ no_diagnosis: { type: "boolean", enum: [true] }, no_causation: { type: "boolean", enum: [true] }, no_guarantee: { type: "boolean", enum: [true] } }),
-  });
+  };
+  if (includeDerivedProvenance) properties.provenance = object({ primary_insight_id: enumeration([brief.primary_insight.insight_id]),
+    evidence_ids: ids(ctx.evidence), technique_ids: ids(ctx.techniques), device_ids: ids(ctx.devices) });
+  return object(properties);
 }
 
 /** Standalone INTERNAL v1, not public report v2. No existing generator uses it.
@@ -116,7 +123,8 @@ export function buildSleepPremiumMasterJsonSchema(brief) {
     schema: makeSchema(brief, briefContext(brief)) };
 }
 
-const invalid = (field, reason) => ({ valid: false, reason, diagnostic: { field } });
+const invalid = (field, reason, category) => ({ valid: false, reason,
+  diagnostic: { field, ...(category ? { category } : {}) } });
 
 // Walk precisely the emitted schema so type/key/length constraints cannot drift.
 function shapeError(value, schema, path = "$") {
@@ -150,14 +158,14 @@ function shapeError(value, schema, path = "$") {
 
 function copyFields(master) {
   const fields = [];
-  const add = (field, value, science = false) => { if (value !== null) fields.push({ field, value, science }); };
+  const add = (field, value, evidenceIds = []) => { if (value !== null) fields.push({ field, value, evidenceIds }); };
   add("intro", master.intro);
   add("priority.explanation", master.priority.explanation);
   add("priority.first_step", master.priority.first_step);
   master.insights.forEach((entry, index) => {
     add(`insights[${index}].title`, entry.title);
-    add(`insights[${index}].text`, entry.text, entry.evidence_ids.length > 0);
-    add(`supporting_content.insights[${index}].context`, master.supporting_content.insights[index].context, entry.evidence_ids.length > 0);
+    add(`insights[${index}].text`, entry.text, entry.evidence_ids);
+    add(`supporting_content.insights[${index}].context`, master.supporting_content.insights[index].context, entry.evidence_ids);
   });
   master.tracking.forEach((value, index) => add(`tracking[${index}]`, value));
   master.plan7.forEach((entry, index) => {
@@ -180,7 +188,8 @@ function copyFields(master) {
 export function validateSleepPremiumMaster(candidate, brief) {
   let ctx;
   try { ctx = briefContext(brief); } catch { return invalid("brief", "Invalid canonical Premium writer brief."); }
-  const error = shapeError(candidate, makeSchema(brief, ctx));
+  const hasDerivedProvenance = Boolean(candidate && Object.hasOwn(candidate, "provenance"));
+  const error = shapeError(candidate, makeSchema(brief, ctx, { includeDerivedProvenance: hasDerivedProvenance }));
   if (error) return error;
   const insightIds = candidate.insights.map(({ insight_id }) => insight_id);
   if (insightIds[0] !== brief.primary_insight.insight_id || unique(insightIds).length !== insightIds.length ||
@@ -200,12 +209,14 @@ export function validateSleepPremiumMaster(candidate, brief) {
   const uncertainty = candidate.uncertainty;
   if ((uncertainty.question === null && uncertainty.anchor_fact_ids.length) ||
     (uncertainty.question !== null && !uncertainty.anchor_fact_ids.length)) return invalid("uncertainty", "Question requires nonempty best-question fact subset; null requires empty anchors.");
-  for (const [key, used] of [
-    ["evidence_ids", unique(candidate.insights.flatMap((entry) => entry.evidence_ids))],
-    ["technique_ids", unique([...candidate.plan7, ...candidate.alternatives].map((entry) => entry.technique_id).filter((id) => id !== null))],
-    ["device_ids", unique(candidate.insights.map((entry) => entry.device_id).filter((id) => id !== null))],
-  ]) {
-    if (!sameSet(candidate.provenance[key], used)) return invalid(`provenance.${key}`, "Provenance must equal the exact distinct union of used references.");
+  if (hasDerivedProvenance) {
+    for (const [key, used] of [
+      ["evidence_ids", unique(candidate.insights.flatMap((entry) => entry.evidence_ids))],
+      ["technique_ids", unique([...candidate.plan7, ...candidate.alternatives].map((entry) => entry.technique_id).filter((id) => id !== null))],
+      ["device_ids", unique(candidate.insights.map((entry) => entry.device_id).filter((id) => id !== null))],
+    ]) {
+      if (!sameSet(candidate.provenance[key], used)) return invalid(`provenance.${key}`, "Provenance must equal the exact distinct union of used references.", "provenance_mismatch");
+    }
   }
   const forbiddenIds = unique([...ctx.insights, ...ctx.evidence, ...ctx.techniques, ...ctx.devices, ...ctx.facts,
     ...ctx.themes, ...brief.approved_science.flatMap((entry) => [entry.evidence_id, ...entry.source_ref]), ...(brief.unknown ?? [])])
@@ -215,16 +226,43 @@ export function validateSleepPremiumMaster(candidate, brief) {
       // "snage". This is not a safety exemption; every other rule still runs.
       return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, "u");
     });
-  for (const { field, value, science } of copyFields(candidate)) {
+  for (const { field, value, evidenceIds } of copyFields(candidate)) {
     const copy = normalize(value);
     // Permit only narrow explicit negative sleep-reduction instructions. Never
     // erase an entire sentence: unsafe advice later in it must still be checked.
     const reductionCopy = copy.replace(/\b(?:ne|nemoj)\s+(?:skracuj\w*|skracivati|skrati|spavati\s+manje)\s+(?:san|sna|spavanje)\b/gu, " ");
-    if (SENSITIVE.test(copy) || INTERNAL.test(copy) || forbiddenIds.some((id) => id.test(copy)) || hasHiddenCharacters(value)) return invalid(field, "Sensitive or internal metadata in generated copy.");
+    if (SENSITIVE.test(copy)) return invalid(field, "Sensitive or internal metadata in generated copy.", "sensitive_string");
+    if (forbiddenIds.some((id) => id.test(copy))) return invalid(field, "Sensitive or internal metadata in generated copy.", "machine_id");
+    if (INTERNAL.test(copy)) return invalid(field, "Sensitive or internal metadata in generated copy.", "internal_vocabulary");
+    if (hasHiddenCharacters(value)) return invalid(field, "Sensitive or internal metadata in generated copy.", "hidden_character");
+    if (ENGLISH_PLACEHOLDER.test(copy)) return invalid(field, "English placeholder/action copy is not customer-facing Serbian.", "english_placeholder");
     if (BIBLIOGRAPHIC.test(copy)) return invalid(field, "Bibliography must be resolved by the server, never generated in copy.");
-    if (MEDICAL.test(copy) || CAUSAL.test(copy) || GUARANTEE.test(copy) || REDUCTION.test(reductionCopy)) return invalid(field, "Unsafe diagnosis, prescription, causal, guarantee or sleep-reduction copy.");
-    if (AUTHORITY.test(copy.replace(ORDINARY_INVESTIGATION, " ")) && !science) return invalid(field, "Scientific authority is only allowed in an insight text/context with matching selected evidence references.");
+    if (OBJECTIVE_MEASUREMENT.test(copy)) return invalid(field, "Subjective observations cannot be presented as objective measurements.", "objective_measurement");
+    if (UNSUPPORTED_COOCCURRENCE.test(copy)) return invalid(field, "Answers do not establish that separate experiences occurred together.", "unsupported_cooccurrence");
+    const proofCopy = copy.replace(NEGATED_CAUSAL_CAVEAT, " ");
+    if (MEDICAL.test(copy) || CAUSAL.test(copy) || GUARANTEE.test(copy) || PROOF_ASSERTION.test(proofCopy) || REDUCTION.test(reductionCopy)) {
+      return invalid(field, "Unsafe diagnosis, prescription, causal, guarantee or sleep-reduction copy.",
+        CAUSAL.test(copy) ? "unsupported_causality" : PROOF_ASSERTION.test(proofCopy) ? "unsupported_proof_claim" : "unsafe_claim");
+    }
+    const scienceCopy = copy.replace(ORDINARY_INVESTIGATION, " ");
+    if ((AUTHORITY.test(scienceCopy) || SCIENCE_COPY.test(scienceCopy)) && !evidenceIds.length) {
+      return invalid(field, "Scientific content requires an allowed evidence reference on this insight.", "missing_evidence_reference");
+    }
   }
   return { valid: true, master: candidate, reason: "ok", review_only: true, release_allowed: false,
     semantic_review_required: true };
+}
+
+/** Derive redundant root provenance only after content references have passed
+ * per-insight/per-allocation validation. Never repair a missing content cite. */
+export function deriveSleepPremiumMasterProvenance(master, brief) {
+  if (!master || !Array.isArray(master.insights) || !Array.isArray(master.plan7) || !Array.isArray(master.alternatives)) {
+    throw new TypeError("Cannot derive provenance before validating Premium master content.");
+  }
+  return {
+    primary_insight_id: brief.primary_insight.insight_id,
+    evidence_ids: unique(master.insights.flatMap(({ evidence_ids }) => evidence_ids)),
+    technique_ids: unique([...master.plan7, ...master.alternatives].map(({ technique_id }) => technique_id).filter((id) => id !== null)),
+    device_ids: unique(master.insights.map(({ device_id }) => device_id).filter((id) => id !== null)),
+  };
 }

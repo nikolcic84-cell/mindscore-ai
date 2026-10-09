@@ -21,7 +21,7 @@ function assertFrozen(value) {
 }
 
 function assertProjection(brief, projected) {
-  assert.equal(projected.version, "premium-writer-transport.v2");
+  assert.equal(projected.version, "premium-writer-transport.v2.2");
   assert.equal(projected.profile, brief.profile);
   assert.deepEqual(projected.priority, brief.priority);
   assert.equal(projected.review_only, true);
@@ -61,8 +61,8 @@ function assertProjection(brief, projected) {
     assert.deepEqual(day.fact_ids, original.fact_ids);
     assert.equal(day.technique_id, original.technique_id);
     assert.equal(projected.action_catalog[day.action_ref], original.action);
-    assert.equal(day.observe, original.observe);
-    assert.deepEqual(day.restrictions, original.restrictions);
+    assert.equal(projected.observe_catalog[day.observe_ref], original.observe);
+    assert.deepEqual(day.restriction_refs.map((ref) => projected.boundary_catalog[ref]), original.restrictions);
     assert.equal(day.mode, original.mode);
     if (Object.hasOwn(original, "differentActionFromDay2And3"))
       assert.equal(day.differentActionFromDay2And3, original.differentActionFromDay2And3);
@@ -80,8 +80,9 @@ function assertProjection(brief, projected) {
     brief.eligible_techniques.filter(({ technique_id }) => allocatedIds.has(technique_id)).map(({ technique_id }) => technique_id));
   for (const technique of projected.techniques) {
     const canonical = brief.eligible_techniques.find(({ technique_id }) => technique_id === technique.technique_id);
-    for (const key of ["mode", "claim_ids", "contextual_claim_ids", "approved_actions", "observe", "burden", "limits"])
+    for (const key of ["mode", "claim_ids", "contextual_claim_ids", "approved_actions", "observe", "burden"])
       assert.deepEqual(technique[key], canonical[key]);
+    assert.deepEqual(technique.boundary_refs.map((ref) => projected.boundary_catalog[ref]), canonical.limits);
   }
   const citedClaims = new Set([
     ...selected(brief).flatMap(({ evidence_claim_ids }) => evidence_claim_ids),
@@ -90,8 +91,9 @@ function assertProjection(brief, projected) {
   assert.ok(projected.science.every(({ claim_id }) => citedClaims.has(claim_id)));
   for (const claim of projected.science) {
     const canonical = brief.approved_science.find(({ claim_id }) => claim_id === claim.claim_id);
-    for (const key of ["plain_serbian", "evidence_type", "strength", "directness", "limits"])
+    for (const key of ["plain_serbian", "evidence_type", "strength", "directness"])
       assert.deepEqual(claim[key], canonical[key]);
+    assert.deepEqual(claim.boundary_refs.map((ref) => projected.boundary_catalog[ref]), canonical.limits);
     for (const forbidden of ["source_ref", "evidence_id", "concept", "approved_claim", "action_eligible", "clinical_review_status", "release_allowed"])
       assert.ok(!Object.hasOwn(claim, forbidden), `science metadata omitted: ${forbidden}`);
   }
@@ -102,23 +104,21 @@ function assertProjection(brief, projected) {
     const canonical = brief.explanation_devices.find(({ device_id }) => device_id === device.device_id);
     assert.deepEqual(device.fact_ids, canonical.fact_ids);
     assert.equal(device.explanation, canonical.explanation);
-    assert.deepEqual(device.does_not_imply, canonical.does_not_imply);
+    assert.deepEqual(device.boundary_refs.map((ref) => projected.boundary_catalog[ref]), canonical.does_not_imply);
   }
 
   const localLimits = new Set([
-    ...projected.science.flatMap(({ limits }) => limits),
-    ...projected.techniques.flatMap(({ limits }) => limits),
-    ...projected.explanation_devices.flatMap(({ does_not_imply }) => does_not_imply),
+    ...projected.science.flatMap(({ boundary_refs }) => boundary_refs.map((ref) => projected.boundary_catalog[ref])),
+    ...projected.techniques.flatMap(({ boundary_refs }) => boundary_refs.map((ref) => projected.boundary_catalog[ref])),
+    ...projected.explanation_devices.flatMap(({ boundary_refs }) => boundary_refs.map((ref) => projected.boundary_catalog[ref])),
     ...canonicalDays.flatMap(({ restrictions }) => restrictions),
   ]);
-  const expectedBoundaries = unique([
+  const expectedGlobalBoundaries = unique([
     ...brief.prohibited_conclusions,
     ...brief.contrasts.flatMap(({ does_not_establish }) => does_not_establish),
-  ]).filter((boundary) => !localLimits.has(boundary));
-  assert.deepEqual(projected.boundaries, expectedBoundaries);
-  assert.ok(projected.boundaries.every((boundary) => !localLimits.has(boundary)), "global boundaries do not repeat local limits");
-  assert.deepEqual(new Set([...projected.boundaries, ...localLimits]),
-    new Set([...brief.prohibited_conclusions, ...brief.contrasts.flatMap(({ does_not_establish }) => does_not_establish), ...localLimits]));
+  ]);
+  assert.deepEqual(projected.global_boundary_refs.map((ref) => projected.boundary_catalog[ref]), expectedGlobalBoundaries);
+  assert.deepEqual(new Set(projected.boundary_catalog), new Set([...expectedGlobalBoundaries, ...localLimits]));
 
   const forbiddenKeys = new Set(["rejected_or_lower_value_candidates", "candidate_insights", "question_candidates", "specificity_check",
     "source_ref", "evidence_id", "doi", "bibliography", "internal_utility_score"]);
@@ -133,13 +133,13 @@ function assertProjection(brief, projected) {
   assertFrozen(projected);
 }
 
-test("projects all six benchmark briefs into materially smaller frozen v2 transport records", () => {
+test("projects all six benchmark briefs into materially smaller frozen v2.2 transport records", () => {
   for (const [index, brief] of canonicalBriefs.entries()) {
     assertProjection(brief, projections[index]);
     assert.ok(sizes[index].projected < sizes[index].canonical,
       `fixture ${benchmarkFixtures[index].id}: ${sizes[index].projected} < ${sizes[index].canonical}`);
   }
-  console.log("Phase2.1 transport size measurements:", JSON.stringify(benchmarkFixtures.map(({ id }, index) => ({
+  console.log("Phase2.2 transport size measurements:", JSON.stringify(benchmarkFixtures.map(({ id }, index) => ({
     fixture: id,
     canonicalCharacters: sizes[index].canonical,
     transportCharacters: sizes[index].projected,
@@ -163,5 +163,5 @@ test("preserves projected invariants across deterministic property-style answer 
 });
 
 test("rejects non-canonical inputs rather than silently projecting arbitrary objects", () => {
-  assert.throws(() => projectSleepPremiumWriterBrief({ version: "premium-writer-transport.v2" }), TypeError);
+  assert.throws(() => projectSleepPremiumWriterBrief({ version: "premium-writer-transport.v2.2" }), TypeError);
 });

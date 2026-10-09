@@ -254,33 +254,48 @@ export function projectSleepPremiumWriterBrief(brief) {
     ...selected.flatMap(({ evidence_claim_ids }) => evidence_claim_ids),
     ...techniques.flatMap(({ claim_ids, contextual_claim_ids }) => [...claim_ids, ...contextual_claim_ids]),
   ]);
-  const science = brief.approved_science.filter(({ claim_id }) => referencedClaimIds.has(claim_id)).map((entry) => ({
+  const scienceEntries = brief.approved_science.filter(({ claim_id }) => referencedClaimIds.has(claim_id));
+  const explanationEntries = brief.explanation_devices.filter(({ fact_ids }) =>
+    fact_ids.some((id) => selectedFactIds.has(id)));
+  const globalBoundaries = unique([
+    ...brief.prohibited_conclusions,
+    ...brief.contrasts.flatMap(({ does_not_establish }) => does_not_establish),
+  ]);
+  const boundaryCatalog = unique([
+    ...globalBoundaries,
+    ...scienceEntries.flatMap(({ limits }) => limits),
+    ...techniques.flatMap(({ limits }) => limits),
+    ...explanationEntries.flatMap(({ does_not_imply }) => does_not_imply),
+    ...brief.experiment7.flatMap(({ restrictions }) => restrictions),
+  ]);
+  const boundaryRefs = (entries) => entries.map((boundary) => boundaryCatalog.indexOf(boundary));
+  const science = scienceEntries.map((entry) => ({
     claim_id: entry.claim_id,
     plain_serbian: entry.plain_serbian,
     evidence_type: entry.evidence_type,
     strength: entry.strength,
     directness: entry.directness,
-    limits: entry.limits,
+    boundary_refs: boundaryRefs(entry.limits),
   }));
 
   // Keep only explanation devices that actually share a selected insight fact.
-  const selectedDevices = brief.explanation_devices.filter(({ fact_ids }) =>
-    fact_ids.some((id) => selectedFactIds.has(id))).map((entry) => ({
+  const selectedDevices = explanationEntries.map((entry) => ({
     device_id: entry.device_id,
     fact_ids: entry.fact_ids,
     explanation: entry.explanation,
-    does_not_imply: entry.does_not_imply,
+    boundary_refs: boundaryRefs(entry.does_not_imply),
   }));
 
   const action_catalog = [...new Set(brief.experiment7.map(({ action }) => action))];
+  const observe_catalog = [...new Set(brief.experiment7.map(({ observe }) => observe))];
   const days = brief.experiment7.map((entry) => ({
     day: entry.day,
     themeIds: entry.themeIds,
     fact_ids: entry.fact_ids,
     technique_id: entry.technique_id,
     action_ref: action_catalog.indexOf(entry.action),
-    observe: entry.observe,
-    restrictions: entry.restrictions,
+    observe_ref: observe_catalog.indexOf(entry.observe),
+    restriction_refs: boundaryRefs(entry.restrictions),
     mode: entry.mode,
     ...(Object.hasOwn(entry, "differentActionFromDay2And3")
       ? { differentActionFromDay2And3: entry.differentActionFromDay2And3 } : {}),
@@ -308,19 +323,8 @@ export function projectSleepPremiumWriterBrief(brief) {
     qualifiers: fact.qualifiers,
   }));
 
-  const localLimits = new Set([
-    ...science.flatMap(({ limits }) => limits),
-    ...techniques.flatMap(({ limits }) => limits),
-    ...selectedDevices.flatMap(({ does_not_imply }) => does_not_imply),
-    ...brief.experiment7.flatMap(({ restrictions }) => restrictions),
-  ]);
-  const boundaries = unique([
-    ...brief.prohibited_conclusions,
-    ...brief.contrasts.flatMap(({ does_not_establish }) => does_not_establish),
-  ]).filter((boundary) => !localLimits.has(boundary));
-
   return deepFreeze(structuredClone({
-    version: "premium-writer-transport.v2",
+    version: "premium-writer-transport.v2.2",
     profile: brief.profile,
     priority: { area: brief.priority.area, title: brief.priority.title },
     facts,
@@ -373,12 +377,14 @@ export function projectSleepPremiumWriterBrief(brief) {
       approved_actions: entry.approved_actions,
       observe: entry.observe,
       burden: entry.burden,
-      limits: entry.limits,
+      boundary_refs: boundaryRefs(entry.limits),
     })),
     explanation_devices: selectedDevices,
     action_catalog,
+    observe_catalog,
     days,
-    boundaries,
+    boundary_catalog: boundaryCatalog,
+    global_boundary_refs: boundaryRefs(globalBoundaries),
     review_only: true,
     release_allowed: false,
   }));

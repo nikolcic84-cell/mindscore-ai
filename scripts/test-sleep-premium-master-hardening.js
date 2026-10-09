@@ -14,7 +14,7 @@ const selected = [brief.primary_insight, ...brief.secondary_insights];
 
 function decodeWriterTransport(serialized) {
   const envelope = JSON.parse(serialized);
-  assert.equal(envelope.encoding, "tables-and-text.v2");
+  assert.equal(envelope.encoding, "tables-and-text.v2.2");
   const decode = (value) => {
     if (Array.isArray(value)) return value.map(decode);
     if (value && typeof value === "object") {
@@ -97,6 +97,53 @@ test("ordinary investigation exception does not hide a mixed scientific-authorit
     "supporting_content.days[1].rationale");
 });
 
+test("negated proof language is allowed but proof claims and mixed guarantees still fail", () => {
+  const cautious = draftFromBrief();
+  cautious.intro = "Ova opažanja ne dokazuju uzrok.";
+  assert.equal(validateSleepPremiumMaster(cautious, brief).valid, true);
+
+  const affirmative = draftFromBrief();
+  affirmative.intro = "Ova opažanja dokazuju uzrok.";
+  const affirmativeResult = validateSleepPremiumMaster(affirmative, brief);
+  assert.equal(affirmativeResult.valid, false);
+  assert.equal(affirmativeResult.diagnostic.category, "unsupported_proof_claim");
+
+  const mixed = draftFromBrief();
+  mixed.intro = "Ova opažanja ne dokazuju uzrok, ali sigurno popravljaju san.";
+  const mixedResult = validateSleepPremiumMaster(mixed, brief);
+  assert.equal(mixedResult.valid, false);
+  assert.equal(mixedResult.diagnostic.category, "unsafe_claim");
+});
+
+test("rejects objective diary claims and unsupported causal/co-occurrence wording", () => {
+  for (const [phrase, category] of [
+    ["Kratki dnevnički zapisi objektivno zabeleže razlike.", "objective_measurement"],
+    ["Teško zaspiš zbog toga što ti misli ne staju.", "unsupported_causality"],
+    ["Aktivne misli i teško uspavljivanje javljaju se iste noći.", "unsupported_cooccurrence"],
+  ]) {
+    const candidate = draftFromBrief();
+    candidate.intro = phrase;
+    const result = validateSleepPremiumMaster(candidate, brief);
+    assert.equal(result.valid, false, phrase);
+    assert.equal(result.diagnostic.category, category);
+  }
+
+  const uncertain = draftFromBrief();
+  uncertain.intro = "Oba iskustva su u odgovorima, ali ne znamo da li se javljaju zajedno niti da li jedno objašnjava drugo.";
+  assert.equal(validateSleepPremiumMaster(uncertain, brief).valid, true);
+});
+
+test("scientific phrasing requires an allowed reference attached to that insight", () => {
+  const candidate = draftFromBrief();
+  candidate.insights[0].evidence_ids = [];
+  candidate.provenance.evidence_ids = unique(candidate.insights.flatMap(({ evidence_ids }) => evidence_ids));
+  candidate.insights[0].text = "Naučno istraživanje potvrđuje ovaj obrazac.";
+  const result = validateSleepPremiumMaster(candidate, brief);
+  assert.equal(result.valid, false);
+  assert.equal(result.diagnostic.field, "insights[0].text");
+  assert.equal(result.diagnostic.category, "missing_evidence_reference");
+});
+
 test("internal analytical/editorial vocabulary is rejected from generated prose", () => {
   const master = draftFromBrief();
   for (const phrase of ["Urednički pregled.", "Analitički okvir.", "Ovo je kandidat.", "Anchor insight.",
@@ -107,27 +154,43 @@ test("internal analytical/editorial vocabulary is rejected from generated prose"
   }
 });
 
+test("privacy-safe diagnostics identify categories without retaining matched copy", () => {
+  for (const [phrase, category] of [
+    ["FACT_Q3", "machine_id"],
+    ["api_key=synthetic-marker", "sensitive_string"],
+    ["Ovo je classifier.", "internal_vocabulary"],
+    ["Skriven znak: \u200b", "hidden_character"],
+    ["Begin the allocated plan; no additional action.", "english_placeholder"],
+  ]) {
+    const candidate = draftFromBrief();
+    candidate.intro = phrase;
+    const result = validateSleepPremiumMaster(candidate, brief);
+    assert.equal(result.valid, false, phrase);
+    assert.equal(result.diagnostic.category, category);
+    assert.deepEqual(Object.keys(result.diagnostic).sort(), ["category", "field"]);
+    assert.ok(!JSON.stringify(result.diagnostic).includes(phrase));
+  }
+});
+
 test("evidence provenance must be the exact distinct union: extra and missing claims reject", () => {
   const baseline = draftFromBrief();
   assert.equal(validateSleepPremiumMaster(baseline, brief).valid, true);
   const unused = brief.approved_science.map(({ claim_id }) => claim_id)
     .find((claimId) => !baseline.provenance.evidence_ids.includes(claimId));
   assert.ok(unused, "fixture F must contain an approved but unused claim for the extra-ID regression");
+  const noRootCopy = structuredClone(baseline);
+  delete noRootCopy.provenance;
+  assert.equal(validateSleepPremiumMaster(noRootCopy, brief).valid, true,
+    "writer schema should not require a duplicated model-authored root union");
 
-  const extra = structuredClone(baseline);
-  extra.provenance.evidence_ids.push(unused);
-  const extraResult = validateSleepPremiumMaster(extra, brief);
-  assert.equal(extraResult.valid, false);
-  assert.equal(extraResult.diagnostic.field, "provenance.evidence_ids");
-
-  const missing = structuredClone(baseline);
-  missing.provenance.evidence_ids.pop();
-  const missingResult = validateSleepPremiumMaster(missing, brief);
-  assert.equal(missingResult.valid, false);
-  assert.equal(missingResult.diagnostic.field, "provenance.evidence_ids");
+  const staleRoot = structuredClone(baseline);
+  staleRoot.provenance.evidence_ids.push(unused);
+  const staleResult = validateSleepPremiumMaster(staleRoot, brief);
+  assert.equal(staleResult.valid, false);
+  assert.equal(staleResult.diagnostic.field, "provenance.evidence_ids");
 });
 
-test("writer rejects fixture F's unused provenance ID before preview adaptation", async (t) => {
+test("writer derives root provenance without inventing uncited claims", async (t) => {
   const previous = { branch: process.env.RENDER_GIT_BRANCH, enabled: process.env.ENABLE_PREMIUM_AI_PREVIEW };
   process.env.RENDER_GIT_BRANCH = "premium-ai-staging";
   process.env.ENABLE_PREMIUM_AI_PREVIEW = "true";
@@ -139,10 +202,10 @@ test("writer rejects fixture F's unused provenance ID before preview adaptation"
   });
 
   const candidate = draftFromBrief();
-  const unused = brief.approved_science.map(({ claim_id }) => claim_id)
-    .find((claimId) => !candidate.provenance.evidence_ids.includes(claimId));
-  assert.ok(unused);
-  candidate.provenance.evidence_ids.push(unused);
+  const cited = unique(candidate.insights.flatMap(({ evidence_ids }) => evidence_ids));
+  const uncited = brief.approved_science.map(({ claim_id }) => claim_id).find((claimId) => !cited.includes(claimId));
+  assert.ok(uncited);
+  delete candidate.provenance;
   const calls = [];
   const result = await generateSleepPremiumMaster({ input, apiKeyAvailable: true, internalBenchmark: true,
     includePreview: false, includeRejectedDraft: true, logUsage: () => {},
@@ -156,10 +219,9 @@ test("writer rejects fixture F's unused provenance ID before preview adaptation"
     } } },
   });
   assert.equal(calls.length, 1);
-  assert.equal(result.source, "fallback");
-  assert.equal(result.failureType, "schema_validation_failure");
-  assert.equal(result.validation.diagnostic.field, "provenance.evidence_ids");
-  assert.equal(result.master, null);
+  assert.equal(result.source, "ai");
+  assert.deepEqual(result.master.provenance.evidence_ids, cited);
+  assert.ok(!result.master.provenance.evidence_ids.includes(uncited));
 });
 
 test("authority exception does not loosen medical, causal, or sleep-reduction safety", () => {
