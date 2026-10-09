@@ -1,20 +1,43 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 import { calculateDimensions } from "./psychology/dimensions";
+import { SLEEP_ANSWER_OPTIONS, SLEEP_QUESTIONS } from "./psychology/sleepAssessmentContent";
 import { calculateSleepScore } from "./psychology/sleepScoring";
+import { buildFreeModuleView } from "./psychology/sleepFreeModuleView";
 import { getSleepFreeResultPresentation } from "./psychology/sleepFreeResult";
+import sleepContentLibrary from "./psychology/sleep_content_library_44.json";
+import { selectSleepContentModules } from "./psychology/sleepContentModuleSelector";
 import { formatConfiguredEurPrice, getSleepPremiumBenefits } from "./psychology/sleepPremiumOffer";
 import { calculateSleepSignature } from "./psychology/sleepSignature";
+import PremiumResult, { parsePremiumModuleText } from "./components/PremiumResult";
 import "./App.css";
 
 const BACKEND_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const API_BASE = "/api";
 const LEGAL_LAST_UPDATED = "July 24, 2026";
-const PREMIUM_PRICE_EUR = "4.99";
+const PREMIUM_PRICE_EUR = "9.99";
+const SLEEP_PREMIUM_DISPLAY_PRICE_EUR = "9.99";
 const DRAFT_KEY = "mindscore_assessment_draft_v2";
 const COMPLETED_ASSESSMENT_KEY = "mindscore_completed_assessment_v1";
 
 const apiUrl = (path) => (/^https?:\/\//i.test(path) ? path : `${BACKEND_URL}${path}`);
+
+async function beginSleepContentCheckout(customerEmail, answers) {
+  const response = await fetch(apiUrl(`${API_BASE}/create-checkout-session`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerEmail,
+      assessmentType: "sleep",
+      purchaseType: "sleep-content-unlock",
+      testName: "Sleep Quality",
+      answers,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.url) throw new Error(data.error || "Plaćanje trenutno nije moguće. Pokušaj ponovo.");
+  window.location.assign(data.url);
+}
 
 const tests = {
   mental: {
@@ -65,20 +88,7 @@ const tests = {
     icon: "Q",
     category: "Recovery",
     minutes: "2-3 min",
-    questions: [
-      "Kada se probudiš ujutru, kako se najčešće osećaš?",
-      "Legneš u krevet i ugasiš svetlo. Šta se obično desi?",
-      "Šta se najčešće dešava tokom noći?",
-      "Alarm zvoni. Kako izgleda tvoje ustajanje?",
-      "Koliko sna obično imaš tokom jedne noći?",
-      "Kako izgleda poslednjih 30 minuta pre spavanja?",
-      "Kada legneš, koliko je tvoja glava „budna“?",
-      "Kako izgleda tvoja energija tokom dana?",
-      "Kada imaš slobodan dan i nema alarma, šta se događa?",
-      "Koliko su ti vreme odlaska u krevet i vreme ustajanja predvidivi?",
-      "Posle loše prospavane noći, šta najviše primetiš sledećeg dana?",
-      "Kada razmisliš o svojim poslednjim noćima, koja rečenica ti je najbliža?",
-    ],
+    questions: SLEEP_QUESTIONS,
   },
   leadership: {
     title: "Personal Strengths",
@@ -111,135 +121,15 @@ const answers = [
   { text: "Not true for me", points: 1 },
 ];
 
-const sleepAnswerOptions = [
-  [
-    { text: "Odmorno — spreman sam za dan", points: 5 },
-    { text: "Uglavnom dobro, ali bih mogao još malo da spavam", points: 4 },
-    { text: "Ni odmorno ni posebno umorno", points: 3 },
-    { text: "Umorno — teško mi je da ustanem", points: 2 },
-    { text: "Kao da nisam ni spavao", points: 1 },
-  ],
-  [
-    { text: "Zaspim vrlo brzo", points: 5 },
-    { text: "Treba mi malo vremena", points: 4 },
-    { text: "Često mi treba dosta vremena da zaspim", points: 3 },
-    { text: "Misli mi ne daju da se isključim", points: 2 },
-    { text: "Imam osećaj da se borim sa snom", points: 1 },
-  ],
-  [
-    { text: "Uglavnom spavam bez buđenja", points: 5 },
-    { text: "Probudim se jednom i brzo nastavim da spavam", points: 4 },
-    { text: "Budim se nekoliko puta", points: 3 },
-    { text: "Kada se probudim, teško ponovo zaspim", points: 2 },
-    { text: "Noć mi često deluje isprekidano", points: 1 },
-  ],
-  [
-    { text: "Ustanem bez problema", points: 5 },
-    { text: "Treba mi nekoliko minuta", points: 4 },
-    { text: "Odložim alarm jednom", points: 3 },
-    { text: "Odlažem ga više puta", points: 2 },
-    { text: "Jedva se nateram da ustanem", points: 1 },
-  ],
-  [
-    { text: "7–9 sati", points: 5 },
-    { text: "6–7 sati", points: 4 },
-    { text: "5–6 sati", points: 3 },
-    { text: "Manje od 5 sati", points: 2 },
-    { text: "Više od 9 sati, a ipak često nisam odmoran", points: 1 },
-  ],
-  [
-    { text: "Uglavnom se smirim bez ekrana", points: 5 },
-    { text: "Imam svoju mirnu večernju rutinu", points: 4 },
-    { text: "Gledam TV ili neki sadržaj", points: 3 },
-    { text: "Telefon mi je često u ruci", points: 2 },
-    { text: "Skrolujem dok ne postanem potpuno pospan", points: 1 },
-  ],
-  [
-    { text: "Lako se isključim", points: 5 },
-    { text: "Razmišljam malo, pa se smirim", points: 4 },
-    { text: "Vrtim događaje iz tog dana", points: 3 },
-    { text: "Planiram, analiziram i razmišljam o problemima", points: 2 },
-    { text: "Telo je umorno, ali mozak kao da ne želi da stane", points: 1 },
-  ],
-  [
-    { text: "Uglavnom je stabilna", points: 5 },
-    { text: "Povremeno osetim umor", points: 4 },
-    { text: "Često mi treba kafa ili pauza", points: 3 },
-    { text: "Imam periode kada jedva držim oči otvorene", points: 2 },
-    { text: "Veći deo dana osećam da mi nedostaje energije", points: 1 },
-  ],
-  [
-    { text: "Budim se približno u isto vreme", points: 5 },
-    { text: "Spavam malo duže", points: 4 },
-    { text: "Spavam znatno duže", points: 3 },
-    { text: "Mogao bih da ostanem u krevetu pola dana", points: 2 },
-    { text: "Vreme spavanja i buđenja mi se stalno menja", points: 1 },
-  ],
-  [
-    { text: "Skoro uvek su slični", points: 5 },
-    { text: "Većinom imam isti ritam", points: 4 },
-    { text: "Razlikuju se po nekoliko sati", points: 3 },
-    { text: "Često nemam nikakav raspored", points: 2 },
-    { text: "Svaki dan može izgledati potpuno drugačije", points: 1 },
-  ],
-  [
-    { text: "Malo toga — uglavnom funkcionišem normalno", points: 5 },
-    { text: "Više sam umoran", points: 4 },
-    { text: "Teže se koncentrišem", points: 3 },
-    { text: "Umorniji sam i raspoloženje mi se promeni", points: 2 },
-    { text: "Imam osećaj da samo pokušavam da preguram dan", points: 1 },
-  ],
-  [
-    { text: "Zadovoljan sam svojim snom", points: 5 },
-    { text: "Uglavnom spavam dobro, uz poneku lošu noć", points: 4 },
-    { text: "Moj san bi mogao biti bolji", points: 3 },
-    { text: "Često imam osećaj da mi san nije dovoljan", points: 2 },
-    { text: "Spavanje mi je postalo nešto sa čim se redovno borim", points: 1 },
-  ],
-];
-
-const faqItems = [
-  {
-    question: "Are the assessments free?",
-    answer:
-      "Yes. Every assessment includes a free score with useful insight. The Premium Report is an optional one-time purchase.",
-  },
-  {
-    question: "What is included in the Premium Report?",
-    answer:
-      "You receive a personalized AI profile, detailed score interpretation, strengths and risk patterns, practical recommendations, and a clear action plan in a downloadable PDF sent to your email.",
-  },
-  {
-    question: "Is this a medical diagnosis?",
-    answer:
-      "No. MindScore AI provides educational and informational self-assessment content and does not provide diagnosis, treatment or emergency care.",
-  },
-  {
-    question: "How is my payment processed?",
-    answer:
-      "Payments are processed securely through Stripe. MindScore AI does not store your card details.",
-  },
-  {
-    question: "When will I receive my report?",
-    answer:
-      "In most cases your Premium PDF is available immediately after payment verification and a copy is sent to your email.",
-  },
-  {
-    question: "What happens if the PDF does not arrive?",
-    answer:
-      "Use the download button on your success page first. If email delivery fails or there is any issue, contact support and include your payment email.",
-  },
-  {
-    question: "Can I request deletion of my data?",
-    answer:
-      "Yes. You can request access, correction or deletion by emailing support.",
-  },
-  {
-    question: "How do I contact support?",
-    answer:
-      "Email aimindscore@gmail.com and include a short description of your issue and the email used during checkout.",
-  },
-];
+const sleepAnswerOptions = SLEEP_ANSWER_OPTIONS;
+const toSleepAnswerOptions = (pointsAnswers) => {
+  if (!Array.isArray(pointsAnswers) || pointsAnswers.length !== SLEEP_ANSWER_OPTIONS.length) return null;
+  const options = pointsAnswers.map((points, index) =>
+    SLEEP_ANSWER_OPTIONS[index].findIndex((option) => option.points === points) + 1);
+  return options.every((option) => option > 0) ? options : null;
+};
+const isValidSleepAnswers = (values) => Array.isArray(values) && values.length === SLEEP_ANSWER_OPTIONS.length &&
+  values.every((points) => Number.isInteger(points) && points >= 1 && points <= 5);
 
 function SeoHead({ title, description }) {
   useEffect(() => {
@@ -445,6 +335,10 @@ function SupportPage() {
 }
 
 function PaymentSuccessPage() {
+  const { userAnswers: savedSleepAnswers } = useSavedSleepAssessment();
+  const sleepModuleAnswers = useMemo(() => toSleepAnswerOptions(savedSleepAnswers), [savedSleepAnswers]);
+  const [showContentResult, setShowContentResult] = useState(false);
+  const accessToken = new URLSearchParams(window.location.search).get("unlock") || "";
   const [state, setState] = useState({
     loading: true,
     status: "PAYMENT_VERIFIED",
@@ -459,6 +353,12 @@ function PaymentSuccessPage() {
     resendMessage: "",
     emailSent: false,
     emailError: "",
+    acceptedAnalysis: null,
+    contentPurchase: Boolean(new URLSearchParams(window.location.search).get("unlock")),
+    contentUnlocked: false,
+    contentAnswers: null,
+    premiumLoading: false,
+    premiumError: "",
     attempts: 0,
     error: "",
   });
@@ -468,6 +368,7 @@ function PaymentSuccessPage() {
   useEffect(() => {
     let cancelled = false;
     let timerId = null;
+    let verificationAttempts = 0;
 
     const verify = async () => {
       if (!sessionId) {
@@ -481,9 +382,11 @@ function PaymentSuccessPage() {
 
       try {
         const verifySessionUrl = `${API_BASE}/payment-session/${encodeURIComponent(sessionId)}/verify`;
-        const response = await fetch(apiUrl(verifySessionUrl));
+        const url = accessToken ? `${verifySessionUrl}?unlock=${encodeURIComponent(accessToken)}` : verifySessionUrl;
+        const response = await fetch(apiUrl(url), { cache: "no-store" });
         const rawBody = await response.text();
         const data = rawBody ? JSON.parse(rawBody) : {};
+        verificationAttempts += 1;
 
         if (!response.ok) {
           throw new Error(data.error || "Payment verification failed.");
@@ -493,6 +396,7 @@ function PaymentSuccessPage() {
 
         const reportStatus = data.reportStatus || "unknown";
         const generationFailed = data.status === "FAILED" || reportStatus === "FAILED";
+        const contentPurchase = data.purchaseType === "sleep-content-unlock";
 
         setState((previous) => ({
           ...previous,
@@ -500,6 +404,9 @@ function PaymentSuccessPage() {
           status: data.status || previous.status,
           assessmentType: data.assessmentType || previous.assessmentType,
           paid: Boolean(data.paid),
+          contentPurchase: previous.contentPurchase || contentPurchase,
+          contentUnlocked: Boolean(data.contentUnlocked),
+          contentAnswers: Array.isArray(data.answers) ? data.answers : null,
           ready: Boolean(data.ready),
           reportStatus,
           customerEmail: data.customerEmail || "",
@@ -510,7 +417,8 @@ function PaymentSuccessPage() {
           error: generationFailed ? data.error || "Report generation failed." : "",
         }));
 
-        if (data.paid && !generationFailed && (!data.ready || (!data.emailSent && !data.emailError))) {
+        if (data.paid && !data.contentUnlocked && !generationFailed && verificationAttempts < 12 &&
+          (!data.ready || (!data.emailSent && !data.emailError))) {
           timerId = window.setTimeout(verify, 1000);
         }
       } catch (error) {
@@ -634,46 +542,85 @@ function PaymentSuccessPage() {
   const sleepReportFailed = state.reportStatus === "FAILED" || state.status === "FAILED";
   const sleepEmailFailed = state.ready && !state.emailSent && Boolean(state.emailError);
 
+  if (state.contentPurchase) {
+    if (state.contentUnlocked && isSleepPurchase && state.contentAnswers?.length === 12) {
+      if (showContentResult) {
+        return <PremiumResult
+          answers={toSleepAnswerOptions(state.contentAnswers)}
+          onHome={() => window.location.assign("/")}
+        />;
+      }
+      return (
+        <main className="sleep-payment-page">
+          <section className="sleep-payment-card sleep-content-unlocked-card" aria-live="polite">
+            <h1>Plaćanje je uspešno.</h1>
+            <p>Tvoja kompletna priča o snu je otključana.</p>
+            <button className="sleep-payment-primary" type="button" onClick={() => setShowContentResult(true)}>
+              OTVORI KOMPLETAN REZULTAT →
+            </button>
+          </section>
+        </main>
+      );
+    }
+    return (
+      <main className="sleep-payment-page">
+        <section className="sleep-payment-card sleep-content-unlocked-card" aria-live="polite">
+          <h1>{state.loading ? "Proveravamo uplatu" : state.paid ? "Uplata je evidentirana" : "Plaćanje još nije potvrđeno"}</h1>
+          <p>{state.loading
+            ? "Proveravamo Stripe sesiju i vezu sa tvojim rezultatom."
+            : state.paid
+              ? "Nismo uspeli da potvrdimo pristup rezultatu. Proveri povratni link ili pokušaj ponovo."
+              : "Premium rezultat se otključava tek nakon potvrde uplate od strane Stripe-a."}</p>
+          {state.error && <p className="sleep-payment-error" role="alert">Proveru trenutno nije moguće završiti. Pokušaj ponovo da otvoriš Stripe povratni link.</p>}
+          <a className="sleep-payment-secondary" href="/">Nazad na moj rezultat</a>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <>
       <SeoHead
-        title={isSleepPurchase ? "Tvoja priča o snu je otključana | MindScore AI" : "Payment Success | MindScore AI"}
+        title={isSleepPurchase ? "Tvoja priča o snu" : "Payment Success | MindScore AI"}
         description={isSleepPurchase
           ? "Proveri status pripreme i dostave svog personalizovanog izveštaja o snu."
           : "Verify payment, generate your premium report, and download your PDF securely."}
       />
-      <main className={isSleepPurchase ? "sleep-payment-page" : "page payment-page"}>
+      <main className={isSleepPurchase
+        ? `sleep-payment-page${state.acceptedAnalysis ? " premium-v2-payment-page" : ""}`
+        : "page payment-page"}>
         {isSleepPurchase ? (
-          <section className="sleep-payment-card" aria-live="polite">
-            <header className="sleep-experience-brand" aria-label="MindScore AI">
-              <span className="sleep-brand-mark" aria-hidden="true">M</span>
-              <span>MindScore AI</span>
-            </header>
-            <p className="sleep-payment-kicker">
-              {state.paid ? "UPLATA JE USPEŠNA" : state.loading ? "PROVERAVAMO UPLATU" : "STATUS UPLATE"}
-            </p>
-            <h1>
-              {sleepReportFailed
-                ? "Uplata je potvrđena"
-                : state.ready
-                ? "TVOJA PRIČA O SNU JE OTKLJUČANA"
-                : state.paid
-                ? "TVOJA PRIČA O SNU JE OTKLJUČANA"
-                : "Proveravamo uplatu"}
-            </h1>
-            <p className="sleep-payment-subtitle">
-              {state.emailSent
-                ? "Izveštaj je poslat na tvoj email."
-                : state.ready
-                ? "PDF izveštaj je spreman. Slanje emaila još nije potvrđeno."
-                : sleepReportFailed
-                ? "Uplata je evidentirana, ali priprema izveštaja trenutno nije uspela. Kontaktiraj podršku za pomoć."
-                : state.paid
-                ? "Hvala ti. Tvoj personalizovani izveštaj se priprema."
-                : "Sačekaj trenutak dok proverimo status tvoje uplate."}
-            </p>
+          <section className={`sleep-payment-card${state.acceptedAnalysis ? " sleep-payment-card-report premium-v2-payment-card" : ""}`} aria-live="polite">
+            {!state.acceptedAnalysis && <>
+              <header className="sleep-experience-brand" aria-label="Payment status">
+                <span className="sleep-brand-mark" aria-hidden="true">✦</span>
+                <span>PLAĆENI REZULTAT</span>
+              </header>
+              <p className="sleep-payment-kicker">
+                {state.paid ? "UPLATA JE USPEŠNA" : state.loading ? "PROVERAVAMO UPLATU" : "STATUS UPLATE"}
+              </p>
+              <h1>
+                {sleepReportFailed
+                  ? "Uplata je potvrđena"
+                  : state.ready
+                  ? "TVOJA PRIČA O SNU JE OTKLJUČANA"
+                  : state.paid
+                  ? "TVOJA PRIČA O SNU JE OTKLJUČANA"
+                  : "Proveravamo uplatu"}
+              </h1>
+              <p className="sleep-payment-subtitle">
+                {state.emailSent
+                  ? "Izveštaj je poslat na tvoj email."
+                  : state.ready
+                  ? "Tvoj rezultat je spreman."
+                  : sleepReportFailed
+                  ? "Uplata je evidentirana, ali priprema rezultata trenutno nije uspela. Kontaktiraj podršku za pomoć."
+                  : state.paid
+                  ? "Hvala ti. Tvoj rezultat se priprema."
+                  : "Sačekaj trenutak dok proverimo status tvoje uplate."}
+              </p>
 
-            <div className="sleep-payment-steps">
+              <div className="sleep-payment-steps">
               <div className={`sleep-payment-step ${state.paid ? "is-done" : state.loading ? "is-active" : ""}`}>
                 <span aria-hidden="true">{state.paid ? "✓" : state.loading ? "·" : "!"}</span>
                 <p>{state.paid ? "Uplata uspešno izvršena" : "Proveravamo uplatu"}</p>
@@ -692,19 +639,18 @@ function PaymentSuccessPage() {
                   ? "PDF izveštaj je poslat na tvoj email"
                   : "PDF izveštaj šaljemo na tvoj email"}</p>
               </div>
-            </div>
+              </div>
 
-            {state.paid && !state.ready && !sleepReportFailed && (
-              <p className="sleep-payment-processing" role="status">Pripremamo tvoj izveštaj...</p>
-            )}
-            {state.ready && (
-              <p className="sleep-payment-spam-note">Proveri i Spam/Neželjenu poštu ako poruka ne stigne u Inbox.</p>
-            )}
-            {state.ready && state.emailError && (
-              <p className="sleep-payment-delivery-warning">Email nije potvrđen, ali je PDF dostupan za preuzimanje.</p>
-            )}
+              {state.paid && !state.ready && !sleepReportFailed && (
+                <p className="sleep-payment-processing" role="status">Pripremamo tvoj rezultat...</p>
+              )}
+              {state.ready && <p className="sleep-payment-spam-note">Proveri i Spam/Neželjenu poštu ako poruka ne stigne u Inbox.</p>}
+              {state.ready && state.emailError && <p className="sleep-payment-delivery-warning">Email nije potvrđen.</p>}
+              {state.premiumLoading && <p className="sleep-premium-report-status" role="status">Otvaramo tvoju priču o snu…</p>}
+              {state.premiumError && <p className="sleep-payment-error" role="alert">{state.premiumError}</p>}
+            </>}
 
-            {state.ready && (
+            {state.ready && !state.acceptedAnalysis && (
               <div className="sleep-payment-actions">
                 <button className="sleep-payment-primary" onClick={handleDownloadPdf} disabled={state.isDownloading}>
                   {state.isDownloading ? "Preuzimanje..." : "Preuzmi PDF izveštaj ↓"}
@@ -717,13 +663,36 @@ function PaymentSuccessPage() {
               </div>
             )}
 
-            {state.resendMessage && !state.emailSent && <p className="sleep-payment-note">{state.resendMessage}</p>}
-            {showRecoverableError && (
+            {state.acceptedAnalysis && (
+              <PremiumResult
+                answers={sleepModuleAnswers}
+                acceptedAnalysis={state.acceptedAnalysis}
+                onHome={() => window.location.assign("/")}
+              />
+            )}
+
+            {state.ready && state.acceptedAnalysis && (
+              <div className="premium-v2-existing-file-actions">
+                <p>PDF izveštaj je dostupan i dalje možeš ga preuzeti.</p>
+                <button className="sleep-payment-primary" onClick={handleDownloadPdf} disabled={state.isDownloading}>
+                  {state.isDownloading ? "Preuzimanje..." : "Preuzmi PDF izveštaj ↓"}
+                </button>
+                {!state.emailSent && (
+                  <button className="sleep-payment-secondary" onClick={handleResendEmail} disabled={state.isResendingEmail}>
+                    {state.isResendingEmail ? "Šaljemo..." : "Pokušaj ponovo da pošalješ email"}
+                  </button>
+                )}
+                {state.resendMessage && !state.emailSent && <p>{state.resendMessage}</p>}
+              </div>
+            )}
+
+            {state.resendMessage && !state.emailSent && !state.acceptedAnalysis && <p className="sleep-payment-note">{state.resendMessage}</p>}
+            {showRecoverableError && !state.acceptedAnalysis && (
               <p className="sleep-payment-error" role="alert">
                 Nismo uspeli da potvrdimo uplatu ili pripremimo izveštaj. Osveži stranicu ili kontaktiraj podršku.
               </p>
             )}
-            {delayed && <p className="sleep-payment-note">Priprema traje duže nego obično. Ova stranica će se sama ažurirati.</p>}
+            {delayed && !state.acceptedAnalysis && <p className="sleep-payment-note">Priprema traje duže nego obično. Ova stranica će se sama ažurirati.</p>}
           </section>
         ) : (
         <section className="content-panel payment-panel">
@@ -910,6 +879,7 @@ function PaymentSuccessPage() {
 
 function PaymentCancelledPage() {
   const returnToSleepCheckout = new URLSearchParams(window.location.search).get("return_to") === "/sleep-checkout";
+  const contentUnlock = new URLSearchParams(window.location.search).get("unlock");
 
   return (
     <>
@@ -922,7 +892,9 @@ function PaymentCancelledPage() {
           <div className="badge">Checkout update</div>
           <h1>Payment was cancelled</h1>
           <p>No charge was made. You can return to your assessment and continue whenever you are ready.</p>
-          <a className="primary-btn" href={returnToSleepCheckout ? "/sleep-checkout" : "/"}>
+          <a className="primary-btn" href={contentUnlock
+            ? `/?checkout=cancelled&unlock=${encodeURIComponent(contentUnlock)}`
+            : returnToSleepCheckout ? "/sleep-checkout" : "/"}>
             {returnToSleepCheckout ? "Nazad na plaćanje" : "Return to Home"}
           </a>
         </section>
@@ -1045,16 +1017,16 @@ function Homepage({ onStartAssessment }) {
   return (
     <>
       <SeoHead
-        title="Sleep Assessment | MindScore AI"
-        description="Discover what your sleep is telling you in just 2 minutes using AI-powered sleep analysis."
+        title="Tvoja priča o snu"
+        description="Za dva minuta odgovori na 12 pitanja i upoznaj svoj obrazac sna."
       />
       <header className={`site-header ${isScrolled ? "header-scrolled" : ""}`}>
         <div className="brand-wrap">
-          <a href="/" className="brand-link" aria-label="MindScore AI Home">
+          <a href="/" className="brand-link" aria-label="Tvoja priča o snu">
             <span className="brand-mark" aria-hidden="true">
-              M
+              T
             </span>
-            <span>MindScore AI</span>
+            <span>Tvoja priča o snu</span>
           </a>
         </div>
       </header>
@@ -1083,21 +1055,50 @@ function Homepage({ onStartAssessment }) {
   );
 }
 
-function SleepSignatureResultPage({ signatureResult }) {
-  const presentation = getSleepFreeResultPresentation(signatureResult);
+function SleepSignatureResultPage({ signatureResult, answerPoints, onRestart, onCheckout, checkoutCancelled = false }) {
+  const presentation = getSleepFreeResultPresentation(signatureResult, answerPoints);
+  const answerOptions = toSleepAnswerOptions(answerPoints);
+  const moduleSelection = answerOptions ? selectSleepContentModules(answerOptions, sleepContentLibrary) : null;
+  const selectedModules = moduleSelection?.profile === signatureResult?.signature ? moduleSelection.modules : [];
+  const freeModuleView = buildFreeModuleView(selectedModules, parsePremiumModuleText);
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+
+  const handleContentUnlock = async () => {
+    setEmailError("");
+    setCheckoutError("");
+    const trimmedEmail = customerEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(trimmedEmail)) {
+      setEmailError("Unesi ispravnu email adresu.");
+      return;
+    }
+    if (!Array.isArray(answerPoints) || answerPoints.length !== 12 || typeof onCheckout !== "function") {
+      setCheckoutError("Odgovori nisu dostupni. Ponovi test pa pokušaj ponovo.");
+      return;
+    }
+
+    setIsCheckoutLoading(true);
+    try {
+      await onCheckout(trimmedEmail);
+    } catch (error) {
+      setCheckoutError(error.message || "Plaćanje trenutno nije moguće. Pokušaj ponovo.");
+      setIsCheckoutLoading(false);
+    }
+  };
 
   return (
     <>
       <SeoHead
-        title="Tvoja priča o snu | MindScore AI"
+        title="Tvoja priča o snu"
         description="Pogledaj svoj lični potpis sna i šta se najviše izdvaja iz tvojih odgovora."
       />
       <main className="sleep-experience-page sleep-result-page">
         <div className="sleep-experience-overlay" aria-hidden="true" />
         <div className="sleep-experience-shell">
-          <header className="sleep-experience-brand sleep-result-brand" aria-label="MindScore AI">
-            <span className="sleep-brand-mark" aria-hidden="true">M</span>
-            <span>MindScore AI</span>
+          <header className="sleep-experience-brand sleep-result-brand" aria-label="Tvoja priča o snu">
+            <span>Tvoja priča o snu</span>
             <a
               className="sleep-result-home-link"
               href="/"
@@ -1112,41 +1113,95 @@ function SleepSignatureResultPage({ signatureResult }) {
 
           <section className="sleep-result-intro" aria-labelledby="sleep-result-page-title">
             <h1 id="sleep-result-page-title">TVOJA PRIČA O SNU JE SPREMNA</h1>
-            <span className="sleep-result-divider" aria-hidden="true"><span /></span>
-            <p>TVOJ POTPIS SNA</p>
           </section>
 
           {signatureResult ? (
             <article className="sleep-signature-card">
               <div className="sleep-signature-copy">
-                <h2>{signatureResult.signature}</h2>
+                <p className="sleep-card-eyebrow">TVOJ PROFIL SNA</p>
+                <h2 className="sleep-result-profile-name">{signatureResult.signature}</h2>
                 <p className="sleep-signature-description">{presentation?.profileDescription}</p>
               </div>
 
-              {presentation && (
-                <section className="sleep-result-personalized" aria-labelledby="sleep-personalized-title">
-                  <h3 id="sleep-personalized-title">ŠTA SE IZDVAJA U TVOJIM ODGOVORIMA</h3>
-                  <p>{presentation.insight}</p>
-                </section>
-              )}
+              {freeModuleView.primary && (() => {
+                const { module, copy } = freeModuleView.primary;
+                return (
+                  <section className="sleep-free-module sleep-free-module-primary" aria-labelledby="free-module-primary-title">
+                    <p className="sleep-free-module-kicker">01 · TVOJ NAJVAŽNIJI SIGNAL</p>
+                    <h2 id="free-module-primary-title">{module.title}</h2>
+                    {copy.mainText && <p>{copy.mainText}</p>}
+                    {copy.steps.length > 0 && (
+                      <div className="sleep-free-module-steps">
+                        <h3>PROBAJ</h3>
+                        <ol>{copy.steps.map((step, stepIndex) => <li key={`${module.id}-step-${stepIndex}`}>{step}</li>)}</ol>
+                      </div>
+                    )}
+                    {copy.alternative && <p className="sleep-free-module-alternative"><strong>Ako ti ovo ne odgovara</strong><br />{copy.alternative}</p>}
+                    {copy.track && <p className="sleep-free-module-track"><strong>Obrati pažnju</strong><br />{copy.track}</p>}
+                  </section>
+                );
+              })()}
 
-              <section className="sleep-locked-teaser" aria-labelledby="sleep-locked-teaser-title">
-                <span className="sleep-lock-icon" aria-hidden="true">🔒</span>
-                <div className="sleep-locked-teaser-copy">
-                  <h3 id="sleep-locked-teaser-title">OVO JE SAMO DEO TVOJE SLIKE</h3>
-                  <p>Detaljnija analiza povezuje tvoje odgovore i pokazuje šta podržava tvoj san, šta ga remeti i gde se krije najveći prostor za promenu.</p>
-                </div>
+              {freeModuleView.preview && (() => {
+                const { title, excerpt } = freeModuleView.preview;
+                return (
+                  <section className="sleep-free-module sleep-free-module-preview" aria-labelledby="free-module-preview-title">
+                    <p className="sleep-free-module-kicker">02 · JOŠ JEDNA STVAR SE IZDVAJA</p>
+                    <h2 id="free-module-preview-title">{title}</h2>
+                    {excerpt && <div className="sleep-free-preview-fade" aria-hidden="true"><p>{excerpt}</p></div>}
+                    <p className="sleep-free-preview-hint">Ostatak ovog poglavlja je deo kompletnog rezultata.</p>
+                  </section>
+                );
+              })()}
+
+              <section className="sleep-free-paywall" aria-labelledby="sleep-free-paywall-title">
+                <p className="sleep-free-paywall-kicker">🔒 KOMPLETAN REZULTAT</p>
+                <h2 id="sleep-free-paywall-title">OTKLJUČAJ OSTATAK TVOJE PRIČE O SNU</h2>
+                <p>Na osnovu tvojih 12 odgovora izdvojili smo šta kod tvog sna ima najviše smisla da razumeš i probaš sledeće.</p>
+                {checkoutCancelled && <p className="sleep-free-checkout-cancelled" role="status">Plaćanje nije završeno. Možeš pokušati ponovo.</p>}
+                <h3>Dobijaš:</h3>
+                <ul>
+                  <li>Tvoj prioritet #1</li>
+                  <li>Ostale signale koje smo pronašli</li>
+                  <li>Konkretne sledeće korake</li>
+                  <li>Šta trenutno ne moraš da menjaš</li>
+                  <li>Šta probati ako prvi korak ne pomogne</li>
+                  <li>Lični plan za 7 dana</li>
+                </ul>
+                <p className="sleep-free-price">9,99 €</p>
+                <p className="sleep-free-price-note">Jednokratno plaćanje · Bez pretplate</p>
+                <label className="sleep-free-email-label" htmlFor="sleep-free-email">EMAIL ZA TVOJ REZULTAT</label>
+                <input
+                  className="sleep-free-email-input"
+                  id="sleep-free-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="tvoj@email.com"
+                  value={customerEmail}
+                  aria-invalid={Boolean(emailError)}
+                  aria-describedby={emailError ? "sleep-free-email-error" : undefined}
+                  onChange={(event) => { setCustomerEmail(event.target.value); setEmailError(""); }}
+                />
+                <p className="sleep-free-email-help">Email povezuje tvoje odgovore, Stripe potvrdu i otključan rezultat.</p>
+                {emailError && <p className="sleep-free-form-error" id="sleep-free-email-error" role="alert">{emailError}</p>}
+                {checkoutError && <p className="sleep-free-form-error" role="alert">{checkoutError}</p>}
+                <button className="sleep-free-paywall-cta" type="button" onClick={handleContentUnlock} disabled={isCheckoutLoading}>
+                  {isCheckoutLoading ? "OTVARAM SIGURNO PLAĆANJE…" : "OTKLJUČAJ MOJU PRIČU — 9,99 € →"}
+                </button>
+                <p className="sleep-free-paywall-footnote">🔒 Sigurno plaćanje · Jednokratno · Bez pretplate</p>
+                <p className="sleep-free-paywall-answers-note">Rezultat je sastavljen na osnovu tvojih odgovora na 12 pitanja.</p>
               </section>
-
-              <a className="sleep-discovery-cta" href="/sleep-premium">
-                <span>OTKRIJ CELU PRIČU O SVOM SNU <span aria-hidden="true">→</span></span>
-              </a>
             </article>
           ) : (
             <article className="sleep-signature-card sleep-result-unavailable">
               <p>Nismo uspeli da pripremimo tvoj rezultat. Pokušaj ponovo da završiš upitnik.</p>
               <a className="sleep-discovery-cta" href="/">Vrati se na upitnik</a>
             </article>
+          )}
+          {signatureResult && (
+            <button className="sleep-result-restart" type="button" onClick={onRestart}>
+              Ponovi test
+            </button>
           )}
         </div>
       </main>
@@ -1183,6 +1238,121 @@ function useSavedSleepAssessment() {
   return savedAssessment;
 }
 
+const SLEEP_V2_FIXTURES = Object.freeze([
+  ["mirna-noc", "MIRNA NOĆ"],
+  ["umoran", "UMORAN SAN"],
+  ["budan-um", "BUDAN UM"],
+  ["isprekidan-a", "ISPREKIDAN SAN — A"],
+  ["isprekidan-f", "ISPREKIDAN SAN — F"],
+]);
+
+function SleepPremiumV2FixturePage() {
+  const initial = new URLSearchParams(window.location.search).get("fixture");
+  const [fixture, setFixture] = useState(SLEEP_V2_FIXTURES.some(([key]) => key === initial) ? initial : "mirna-noc");
+  const [acceptedAnalysis, setAcceptedAnalysis] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    setAcceptedAnalysis(null);
+    fetch(apiUrl(`${API_BASE}/dev/sleep-premium-v2-fixture?fixture=${encodeURIComponent(fixture)}`), { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.acceptedAnalysis?.version !== "sleep-premium-deterministic-report.v2") {
+          throw new Error(data.error || "Local V2 fixture is unavailable.");
+        }
+        return data.acceptedAnalysis;
+      })
+      .then((analysis) => setAcceptedAnalysis(analysis))
+      .catch((failure) => {
+        if (failure.name !== "AbortError") setError(failure.message || "Local V2 fixture is unavailable.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [fixture]);
+
+  return (
+    <main className="sleep-experience-page premium-v2-preview-page">
+      <div className="sleep-experience-overlay" aria-hidden="true" />
+      <section className="premium-v2-preview-controls" aria-label="Development fixture selector">
+        <label htmlFor="premium-v2-fixture">Local fixture preview</label>
+        <select id="premium-v2-fixture" value={fixture} onChange={(event) => setFixture(event.target.value)}>
+          {SLEEP_V2_FIXTURES.map(([key, label]) => <option value={key} key={key}>{label}</option>)}
+        </select>
+      </section>
+      {loading && <p className="premium-v2-preview-status" role="status">Loading deterministic fixture…</p>}
+      {error && <p className="premium-v2-preview-status" role="alert">{error}</p>}
+      {acceptedAnalysis && <PremiumResult acceptedAnalysis={acceptedAnalysis} />}
+    </main>
+  );
+}
+
+function PremiumAiPreviewReport({ report, source, fallbackDiagnostic }) {
+  return (
+    <section className="premium-staging-preview-report" aria-label="Staging Premium AI report preview">
+      <div className="premium-staging-preview-banner">
+        <strong>STAGING PREVIEW</strong>
+        <span>{source === "fallback" ? "FALLBACK" : "AI_GENERATED"}</span>
+      </div>
+      {source === "fallback" && fallbackDiagnostic?.reason && (
+        <p className="premium-staging-preview-reason">{fallbackDiagnostic.reason}</p>
+      )}
+      <header className="premium-preview-profile-header">
+        <span className="premium-preview-eyebrow">Tvoj profil sna</span>
+        <p className="premium-preview-profile">{report.profile}</p>
+        <p>{report.profile_explanation}</p>
+      </header>
+      <section className="premium-preview-priority">
+        <h3>TVOJ PRIORITET #1</h3>
+        <p className="premium-preview-priority-area">{report.priority.area}</p>
+        <p>{report.priority.explanation}</p>
+      </section>
+      <section>
+        <h3>KAKO SE TVOJIH 12 ODGOVORA POVEZUJE</h3>
+        <ul>{report.connections.map((connection, index) => <li key={`connection-${index}`}>{connection.text}</li>)}</ul>
+      </section>
+      <section>
+        <h3>ŠTA JOŠ VREDI DA PRATIŠ</h3>
+        <ul>{report.stable_or_tracking.items.map((item, index) => <li key={`mode-${index}`}>{item}</li>)}</ul>
+      </section>
+      <section>
+        <h3>TVOJ LIČNI PLAN ZA 7 DANA</h3>
+        <ol className="premium-preview-plan">
+          {report.seven_day_plan.map((day) => (
+            <li key={day.day}>
+              <strong className="premium-preview-day">Dan {day.day}</strong>
+              <dl>
+                <div><dt>Šta da probaš</dt><dd>{day.action}</dd></div>
+                <div><dt>Šta da primetiš</dt><dd>{day.observe}</dd></div>
+              </dl>
+            </li>
+          ))}
+        </ol>
+        <details className="premium-preview-review">
+          <summary>Osvrt posle 7 dana</summary>
+          <ol>{report.review_questions.map((item, index) => <li key={`question-${index}`}>{item}</li>)}</ol>
+          <p>{report.after_seven_days}</p>
+        </details>
+      </section>
+      <section>
+        <h3>AKO TI PRVI KORAK NE ODGOVARA</h3>
+        <ul>{report.alternatives.map((item, index) => <li key={`alternative-${index}`}>{item}</li>)}</ul>
+      </section>
+      <section className="premium-preview-pdf">
+        <h3>TVOJ PDF PLAN</h3>
+        <p className="premium-preview-pdf-status">PDF nije dostupan u staging pregledu.</p>
+        <p>Ovaj pregled ne pravi niti preuzima PDF. Budući PDF treba da koristi iste prihvaćene podatke ovog izveštaja, bez nove analize ili izmene plana.</p>
+      </section>
+      <footer className="premium-preview-closing"><p>{report.closing}</p></footer>
+    </section>
+  );
+}
+
 function SleepPremiumDiscoveryPage() {
   const { signatureResult, userAnswers } = useSavedSleepAssessment();
   const premiumBenefits = getSleepPremiumBenefits(signatureResult);
@@ -1190,7 +1360,47 @@ function SleepPremiumDiscoveryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
+  const [premiumPreviewEnabled, setPremiumPreviewEnabled] = useState(false);
+  const [isPreviewGenerating, setIsPreviewGenerating] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [previewResult, setPreviewResult] = useState(null);
   const submitLock = useRef(false);
+
+  useEffect(() => {
+    if (!Array.isArray(userAnswers) || userAnswers.length !== 12) return undefined;
+    const controller = new AbortController();
+    fetch(apiUrl(`${API_BASE}/dev/premium-ai-preview/config`), { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((config) => setPremiumPreviewEnabled(config?.enabled === true))
+      .catch(() => setPremiumPreviewEnabled(false));
+    return () => controller.abort();
+  }, [userAnswers]);
+
+  const handlePremiumPreview = async () => {
+    if (!premiumPreviewEnabled || isPreviewGenerating || userAnswers?.length !== 12) return;
+    setIsPreviewGenerating(true);
+    setPreviewError("");
+    setPreviewResult(null);
+    try {
+      const response = await fetch(apiUrl(`${API_BASE}/dev/premium-ai-preview`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: userAnswers }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.report) throw new Error("preview_unavailable");
+      if (
+        !signatureResult?.signature ||
+        data.deterministicProfile !== signatureResult.signature ||
+        data.report.profile !== signatureResult.signature
+      ) throw new Error("profile_mismatch");
+      setPreviewResult(data);
+    } catch {
+      setPreviewError("Nismo uspeli da pripremimo staging pregled. Proveri da li su tvoji odgovori dostupni i pokušaj ponovo.");
+    } finally {
+      setIsPreviewGenerating(false);
+    }
+  };
 
   const handleCheckoutSubmit = async (event) => {
     event.preventDefault();
@@ -1274,9 +1484,9 @@ function SleepPremiumDiscoveryPage() {
           </section>
 
           <section className="sleep-premium-purchase" aria-label="Kupovina kompletnog izveštaja">
-            <p className="sleep-discovery-hook">Ne moraš da menjaš sve. Važno je da znaš odakle da počneš.</p>
+            <p className="sleep-discovery-hook">Ne moraš da menjaš sve.<br />Važno je da znaš šta prvo ima smisla da probaš.</p>
             <section className="sleep-discovery-price" aria-label="Cena">
-              <strong>{formatConfiguredEurPrice(PREMIUM_PRICE_EUR)}</strong>
+              <strong>{formatConfiguredEurPrice(SLEEP_PREMIUM_DISPLAY_PRICE_EUR)}</strong>
               <span>Jednokratno · Bez pretplate</span>
             </section>
 
@@ -1300,7 +1510,29 @@ function SleepPremiumDiscoveryPage() {
               <button className="sleep-discovery-cta" type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Otvaramo sigurno plaćanje..." : "OTKLJUČAJ MOJ DETALJNI REZULTAT →"}
               </button>
-              <p className="sleep-premium-includes">Lično objašnjenje · konkretni koraci · plan za 7 dana · PDF za čuvanje</p>
+              <p className="sleep-premium-includes">Lično objašnjenje · prioritet #1 · plan za 7 dana · PDF za čuvanje</p>
+              {premiumPreviewEnabled && (
+                <div className="premium-staging-preview-control">
+                  <span>Developer alat · nije kupovina</span>
+                  <button
+                    className="premium-staging-preview-button"
+                    type="button"
+                    onClick={handlePremiumPreview}
+                    disabled={isPreviewGenerating}
+                  >
+                    {isPreviewGenerating ? "PRIPREMAM STAGING PREGLED…" : "STAGING: TESTIRAJ PREMIUM AI"}
+                  </button>
+                  {previewError && <p className="sleep-checkout-error" role="alert">{previewError}</p>}
+                  {previewResult && (
+                    <PremiumAiPreviewReport
+                      report={previewResult.report}
+                      source={previewResult.source}
+                      deterministicProfile={previewResult.deterministicProfile}
+                      fallbackDiagnostic={previewResult.fallbackDiagnostic}
+                    />
+                  )}
+                </div>
+              )}
             </form>
 
             <p className="sleep-checkout-trust">🔒 Sigurno plaćanje putem Stripe-a</p>
@@ -1322,6 +1554,8 @@ function AssessmentApp() {
   const [isAnswering, setIsAnswering] = useState(false);
   const [userAnswers, setUserAnswers] = useState([]);
   const [_completedAssessment, setCompletedAssessment] = useState(null);
+  const [checkoutCancelled, setCheckoutCancelled] = useState(() =>
+    new URLSearchParams(window.location.search).get("checkout") === "cancelled");
 
   const test = selectedTest ? tests[selectedTest] : null;
 
@@ -1343,6 +1577,33 @@ function AssessmentApp() {
     } catch {
       window.localStorage.removeItem(COMPLETED_ASSESSMENT_KEY);
     }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const unlock = params.get("unlock");
+    if (params.get("checkout") !== "cancelled" || !unlock) return undefined;
+    let cancelled = false;
+    fetch(apiUrl(`${API_BASE}/sleep-content/free-result?unlock=${encodeURIComponent(unlock)}`), { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.selectedTest !== "sleep" || !isValidSleepAnswers(data.answers)) {
+          throw new Error("Saved free sleep result unavailable.");
+        }
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setSelectedTest("sleep");
+        setCurrentQuestion(SLEEP_QUESTIONS.length);
+        setUserAnswers(data.answers);
+        setCheckoutCancelled(true);
+        const restored = { selectedTest: "sleep", currentQuestion: SLEEP_QUESTIONS.length, userAnswers: data.answers, email: "" };
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(restored));
+        window.localStorage.setItem(COMPLETED_ASSESSMENT_KEY, JSON.stringify({ ...restored, completedAt: new Date().toISOString() }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -1429,6 +1690,8 @@ function AssessmentApp() {
   }, [selectedTest, userAnswers]);
 
   const startTest = (key) => {
+    window.localStorage.removeItem(DRAFT_KEY);
+    window.localStorage.removeItem(COMPLETED_ASSESSMENT_KEY);
     setSelectedTest(key);
     setCurrentQuestion(0);
     setEmail("");
@@ -1436,7 +1699,11 @@ function AssessmentApp() {
     setIsCheckoutRedirecting(false);
     setIsAnswering(false);
     setUserAnswers([]);
+    setCheckoutCancelled(false);
+    window.history.replaceState(null, "", window.location.pathname);
   };
+
+  const handleSleepContentCheckout = (customerEmail) => beginSleepContentCheckout(customerEmail, userAnswers);
 
   const restart = () => {
     setSelectedTest(null);
@@ -1571,7 +1838,13 @@ function AssessmentApp() {
   }
 
   if (currentQuestion === test.questions.length && selectedTest === "sleep") {
-    return <SleepSignatureResultPage signatureResult={sleepSignatureResult} />;
+    return <SleepSignatureResultPage
+      signatureResult={sleepSignatureResult}
+      answerPoints={userAnswers}
+      onRestart={() => startTest("sleep")}
+      onCheckout={handleSleepContentCheckout}
+      checkoutCancelled={checkoutCancelled}
+    />;
   }
 
   if (currentQuestion === test.questions.length) {
@@ -1696,7 +1969,7 @@ function AssessmentApp() {
   return (
     <>
       <SeoHead
-        title={`${test.title} Assessment | MindScore AI`}
+        title={selectedTest === "sleep" ? "Tvoja priča o snu" : `${test.title} Assessment | MindScore AI`}
         description="Complete your assessment with a clear, mobile-friendly questionnaire and progress tracking."
       />
       <main className="page assessment-page quiz-active">
@@ -1711,9 +1984,9 @@ function AssessmentApp() {
             >
               Nazad
             </button>
-            <div className="quiz-branding" aria-label="MindScore AI sleep story">
-              <span className="quiz-brand-name">MindScore AI</span>
-              <span className="quiz-brand-subtitle">Tvoja priča o snu</span>
+            <div className="quiz-branding" aria-label="Tvoja priča o snu">
+              <span className="quiz-brand-name">Tvoja priča o snu</span>
+              <span className="quiz-brand-subtitle">12 pitanja o snu</span>
             </div>
             <button type="button" className="quiz-nav-btn quiz-nav-home" onClick={restart}>
               Početna
@@ -1804,14 +2077,6 @@ function App() {
 
   if (pathname === "/payment-cancelled") {
     return <PaymentCancelledPage />;
-  }
-
-  if (pathname === "/sleep-premium") {
-    return <SleepPremiumDiscoveryPage />;
-  }
-
-  if (pathname === "/sleep-checkout") {
-    return <SleepPremiumDiscoveryPage />;
   }
 
   return <AssessmentApp />;

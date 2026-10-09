@@ -12,6 +12,7 @@ import { fileURLToPath } from "url";
 import { buildPremiumPdf } from "../src/premiumPdfGenerator.js";
 import { calculateDimensions } from "../src/psychology/dimensions.js";
 import { calculateSleepScore, calculateSleepResult } from "../src/psychology/sleepScoring.js";
+import { isOwnerLiveCheckoutAuthorized, validateStripeConfiguration } from "./stripeConfiguration.js";
 
 dotenv.config();
 
@@ -106,9 +107,28 @@ if (!FRONTEND_BASE_URL) {
 console.log("[startup] Storage directory", DATA_DIR);
 
 const _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2025-06-30.basil",
-});
+const stripeSecretKey = typeof process.env.STRIPE_SECRET_KEY === "string" ? process.env.STRIPE_SECRET_KEY.trim() : "";
+let stripeMode;
+try {
+  stripeMode = validateStripeConfiguration({ mode: process.env.STRIPE_MODE, secretKey: stripeSecretKey });
+} catch {
+  console.error("[startup] Stripe configuration rejected. Check STRIPE_MODE and the Stripe key mode.");
+  process.exit(1);
+}
+const stripeTestApiHost = stripeMode === "test" && process.env.NODE_ENV !== "production"
+  ? (typeof process.env.STRIPE_TEST_API_HOST === "string" ? process.env.STRIPE_TEST_API_HOST.trim() : "")
+  : "";
+const stripe = stripeSecretKey
+  ? new Stripe(stripeSecretKey, {
+    apiVersion: "2025-06-30.basil",
+    ...(stripeTestApiHost ? {
+      host: stripeTestApiHost,
+      port: Number(process.env.STRIPE_TEST_API_PORT || 12111),
+      protocol: "http",
+    } : {}),
+  })
+  : null;
+const STRIPE_CONFIGURATION_ERROR = "Payment processing is not configured on this service.";
 
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecure = process.env.SMTP_SECURE === "true";
@@ -227,6 +247,22 @@ const withStoreMutation = async (mutate) => {
 };
 
 const makeAssessmentId = () => `asm_${crypto.randomUUID()}`;
+const SLEEP_CONTENT_PURCHASE_TYPE = "sleep-content-unlock";
+const SLEEP_CONTENT_UNIT_AMOUNT = 999;
+const createSleepContentAccessToken = (assessmentId) =>
+  `${assessmentId}.${crypto.randomBytes(32).toString("base64url")}`;
+const sleepContentAccessAssessmentId = (token) => {
+  if (typeof token !== "string") return null;
+  const match = /^(asm_[0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/iu.exec(token);
+  return match?.[1] ?? null;
+};
+const hashSleepContentAccessToken = (token) => crypto.createHash("sha256").update(token).digest();
+const matchesSleepContentAccessToken = (token, expectedHash) => {
+  if (!sleepContentAccessAssessmentId(token) || typeof expectedHash !== "string") return false;
+  const actual = hashSleepContentAccessToken(token);
+  const expected = Buffer.from(expectedHash, "hex");
+  return expected.length === actual.length && crypto.timingSafeEqual(actual, expected);
+};
 
 const getTokenSecret = () => {
   return (
@@ -597,6 +633,7 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
         sessionId,
         assessmentId,
         assessmentType: toSafeText(metadata.assessmentType, "MindScore Assessment"),
+        purchaseType: toSafeText(metadata.purchaseType, "premium-pdf"),
         customerEmail: toSafeText(session.customer_details?.email) || toSafeText(metadata.customerEmail),
         createdAt: new Date().toISOString(),
       };
@@ -604,6 +641,38 @@ const fulfillCheckoutSessionInternal = async (session, eventId = "") => {
       pendingPurchase.reportStatus = REPORT_STATUS.PENDING_PAYMENT;
       nextStore.purchases[sessionId] = pendingPurchase;
     });
+    return;
+  }
+
+  if (metadata.purchaseType === SLEEP_CONTENT_PURCHASE_TYPE) {
+    const assessment = store.assessments[assessmentId];
+    const purchase = existingPurchase;
+    if (session.mode !== "payment" || session.currency !== "eur" ||
+      session.amount_total !== SLEEP_CONTENT_UNIT_AMOUNT ||
+      session.livemode !== (stripeMode === "live") || !assessment ||
+      assessment.assessmentType !== "sleep" || assessment.purchaseType !== SLEEP_CONTENT_PURCHASE_TYPE ||
+      !assessment.sleepContentAccessTokenHash ||
+      (purchase && (purchase.purchaseType !== SLEEP_CONTENT_PURCHASE_TYPE || purchase.assessmentId !== assessmentId))) {
+      throw new Error("Sleep content purchase verification failed.");
+    }
+
+    await withStoreMutation(async (nextStore) => {
+      const confirmedPurchase = nextStore.purchases[sessionId] || {
+        sessionId,
+        assessmentId,
+        assessmentType: "sleep",
+        purchaseType: SLEEP_CONTENT_PURCHASE_TYPE,
+        customerEmail: toSafeText(session.customer_details?.email) || toSafeText(session.customer_email) || assessment.customerEmail,
+        createdAt: new Date().toISOString(),
+      };
+      confirmedPurchase.paymentStatus = "paid";
+      confirmedPurchase.paidAt = confirmedPurchase.paidAt || new Date().toISOString();
+      confirmedPurchase.reportStatus = REPORT_STATUS.PAYMENT_VERIFIED;
+      confirmedPurchase.contentUnlockedAt = confirmedPurchase.contentUnlockedAt || new Date().toISOString();
+      nextStore.purchases[sessionId] = confirmedPurchase;
+      nextStore.processedEventIds[eventKey] = new Date().toISOString();
+    });
+    logEvent("sleep_content_unlocked", { sessionId, assessmentId });
     return;
   }
 
@@ -708,6 +777,7 @@ app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
   async (req, res) => {
+    if (!stripe) return res.status(503).json({ error: STRIPE_CONFIGURATION_ERROR });
     const signature = req.headers["stripe-signature"];
     if (!signature) {
       return res.status(400).send("Missing Stripe signature");
@@ -791,8 +861,37 @@ app.post("/api/admin/premium-report/:assessmentId/regenerate", async (req, res) 
   }
 });
 
+app.get("/api/sleep-content/free-result", rateLimit(60_000, 20), async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  const accessToken = toSafeText(req.query.unlock);
+  const assessmentId = sleepContentAccessAssessmentId(accessToken);
+  if (!assessmentId) return res.status(401).json({ error: "Invalid or expired sleep result access." });
+
+  try {
+    const store = await readStore();
+    const assessment = store.assessments[assessmentId];
+    if (!assessment || assessment.assessmentType !== "sleep" ||
+      assessment.purchaseType !== SLEEP_CONTENT_PURCHASE_TYPE ||
+      !matchesSleepContentAccessToken(accessToken, assessment.sleepContentAccessTokenHash) ||
+      !isValidAnswersPayload(assessment.answers)) {
+      return res.status(404).json({ error: "Sleep result access is unavailable." });
+    }
+    return res.json({ selectedTest: "sleep", answers: assessment.answers, checkoutCancelled: true });
+  } catch (error) {
+    console.error("[sleep-content] free result recovery failed", { assessmentId, message: error.message });
+    return res.status(503).json({ error: "Unable to restore the free sleep result right now." });
+  }
+});
+
 app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res) => {
   try {
+    if (!stripe) return res.status(503).json({ error: STRIPE_CONFIGURATION_ERROR });
+    if (stripeMode === "live" && !isOwnerLiveCheckoutAuthorized({
+      configuredToken: process.env.STRIPE_OWNER_TEST_TOKEN,
+      suppliedToken: req.get("x-stripe-owner-test-token"),
+    })) {
+      return res.status(403).json({ error: "Checkout is temporarily unavailable." });
+    }
     if (!FRONTEND_BASE_URL) {
       return res.status(500).json({
         error: "Server configuration error: FRONTEND_BASE_URL is not set.",
@@ -800,6 +899,8 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
     }
 
     const { customerEmail, assessmentType, testName, answers } = req.body || {};
+    const requestedPurchaseType = toSafeText(req.body?.purchaseType, "premium-pdf");
+    const contentOnlyPurchase = requestedPurchaseType === SLEEP_CONTENT_PURCHASE_TYPE;
 
     if (!isValidEmail(customerEmail)) {
       return res.status(400).json({ error: "Valid customerEmail is required." });
@@ -808,17 +909,27 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
     // Score, dimensions and AI profile/subtype/confidence are NEVER trusted
     // from the client — only the raw answers are, and everything else is
     // recalculated server-side below.
-    if (!testName || !isValidAnswersPayload(answers)) {
+    if (!testName || !isValidAnswersPayload(answers) ||
+      !["premium-pdf", SLEEP_CONTENT_PURCHASE_TYPE].includes(requestedPurchaseType)) {
       return res.status(400).json({ error: "Missing or invalid assessment answers." });
     }
 
     const safeAssessmentType = toSafeText(assessmentType, testName);
+    if (contentOnlyPurchase && safeAssessmentType !== "sleep") {
+      return res.status(400).json({ error: "Sleep content checkout requires the sleep assessment." });
+    }
     const recalculated = recalculateAssessment(answers, safeAssessmentType);
-    const checkoutCancelUrl = safeAssessmentType === "sleep"
+    const assessmentId = makeAssessmentId();
+    const sleepContentAccessToken = contentOnlyPurchase ? createSleepContentAccessToken(assessmentId) : null;
+    const checkoutSuccessUrl = contentOnlyPurchase
+      ? `${CHECKOUT_SUCCESS_URL}&unlock=${encodeURIComponent(sleepContentAccessToken)}`
+      : CHECKOUT_SUCCESS_URL;
+    const checkoutCancelUrl = contentOnlyPurchase
+      ? `${FRONTEND_BASE_URL}/?checkout=cancelled&unlock=${encodeURIComponent(sleepContentAccessToken)}`
+      : safeAssessmentType === "sleep"
       ? `${CHECKOUT_CANCEL_URL}?return_to=%2Fsleep-checkout`
       : CHECKOUT_CANCEL_URL;
 
-    const assessmentId = makeAssessmentId();
     const now = new Date();
 
     await withStoreMutation(async (store) => {
@@ -826,6 +937,10 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
         assessmentId,
         customerEmail,
         assessmentType: safeAssessmentType,
+        purchaseType: requestedPurchaseType,
+        ...(sleepContentAccessToken ? {
+          sleepContentAccessTokenHash: hashSleepContentAccessToken(sleepContentAccessToken).toString("hex"),
+        } : {}),
         testName: toSafeText(testName, "MindScore Assessment"),
         score: recalculated.score,
         answers,
@@ -853,23 +968,28 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
           price_data: {
             currency: "eur",
             product_data: {
-              name: safeAssessmentType === "sleep"
+              name: contentOnlyPurchase
+                ? "Tvoja priča o snu — kompletan rezultat"
+                : safeAssessmentType === "sleep"
                 ? "MindScore AI Premium Sleep Report"
                 : "MindScore AI Premium Psychological Report",
-              description: safeAssessmentType === "sleep"
+              description: contentOnlyPurchase
+                ? "Kompletan personalizovani rezultat na osnovu 12 odgovora"
+                : safeAssessmentType === "sleep"
                 ? "Personalized sleep analysis and practical PDF report"
                 : "Personalized premium PDF psychological assessment",
             },
-            unit_amount: 499,
+            unit_amount: contentOnlyPurchase ? SLEEP_CONTENT_UNIT_AMOUNT : 499,
           },
           quantity: 1,
         },
       ],
-      success_url: CHECKOUT_SUCCESS_URL,
+      success_url: checkoutSuccessUrl,
       cancel_url: checkoutCancelUrl,
       metadata: {
         assessmentId,
         assessmentType: safeAssessmentType,
+        purchaseType: requestedPurchaseType,
         customerEmail,
       },
     });
@@ -879,6 +999,7 @@ app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res)
         sessionId: checkoutSession.id,
         assessmentId,
         assessmentType: safeAssessmentType,
+        purchaseType: requestedPurchaseType,
         customerEmail,
         paymentStatus: "pending",
         reportStatus: REPORT_STATUS.PENDING_PAYMENT,
@@ -913,6 +1034,7 @@ const derivePublicStatus = (paid, reportStatus) => {
 
 app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (req, res) => {
   try {
+    if (!stripe) return res.status(503).json({ status: "PAYMENT_FAILED", error: STRIPE_CONFIGURATION_ERROR });
     const verifyStartedAt = Date.now();
     const sessionId = toSafeText(req.params.sessionId);
     if (!sessionId) return res.status(400).json({ status: "PAYMENT_FAILED", error: "Missing session id." });
@@ -933,15 +1055,17 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
     const store = await readStore();
     const purchase = store.purchases[sessionId];
     const paid = session.payment_status === "paid";
+    const isSleepContentPurchase = purchase?.purchaseType === SLEEP_CONTENT_PURCHASE_TYPE ||
+      session.metadata?.purchaseType === SLEEP_CONTENT_PURCHASE_TYPE;
 
-    const shouldReconcileFulfillment =
-      paid &&
-      (!purchase ||
+    const shouldReconcileFulfillment = paid && (isSleepContentPurchase
+      ? !purchase.contentUnlockedAt
+      : (!purchase ||
         purchase.reportStatus === REPORT_STATUS.PENDING_PAYMENT ||
         purchase.reportStatus === REPORT_STATUS.PAYMENT_VERIFIED ||
         purchase.reportStatus === REPORT_STATUS.FAILED ||
         !hasCurrentPremiumPdf(purchase) ||
-        !purchase.reportStatus);
+        !purchase.reportStatus));
 
     if (shouldReconcileFulfillment) {
       try {
@@ -964,6 +1088,18 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
       toSafeText(refreshedPurchase?.customerEmail);
 
     const reportStatus = refreshedPurchase?.reportStatus || "unknown";
+    const purchaseAssessment = refreshedPurchase?.assessmentId
+      ? refreshedStore.assessments[refreshedPurchase.assessmentId]
+      : null;
+    const unlockAuthorized = isSleepContentPurchase &&
+      refreshedPurchase?.purchaseType === SLEEP_CONTENT_PURCHASE_TYPE &&
+      purchaseAssessment?.assessmentType === "sleep" &&
+      purchaseAssessment?.purchaseType === SLEEP_CONTENT_PURCHASE_TYPE &&
+      matchesSleepContentAccessToken(toSafeText(req.query.unlock), purchaseAssessment.sleepContentAccessTokenHash);
+    const contentUnlocked = Boolean(paid && session.mode === "payment" && session.currency === "eur" &&
+      session.amount_total === SLEEP_CONTENT_UNIT_AMOUNT && session.livemode === (stripeMode === "live") &&
+      refreshedPurchase?.contentUnlockedAt && refreshedPurchase.paymentStatus === "paid" && unlockAuthorized &&
+      refreshedPurchase.assessmentId === session.metadata?.assessmentId);
     const ready =
       (reportStatus === REPORT_STATUS.REPORT_READY || reportStatus === REPORT_STATUS.COMPLETED) &&
       hasCurrentPremiumPdf(refreshedPurchase);
@@ -974,8 +1110,14 @@ app.get("/api/payment-session/:sessionId/verify", rateLimit(60_000, 30), async (
     return res.json({
       sessionId,
       assessmentType: toSafeText(refreshedPurchase?.assessmentType),
+      purchaseType: toSafeText(refreshedPurchase?.purchaseType),
       status,
       paid,
+      contentPurchase: isSleepContentPurchase,
+      contentUnlocked,
+      ...(contentUnlocked && isValidAnswersPayload(purchaseAssessment?.answers)
+        ? { answers: purchaseAssessment.answers }
+        : {}),
       ready,
       customerEmail,
       reportStatus,
