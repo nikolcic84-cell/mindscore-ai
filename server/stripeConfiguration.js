@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 export const resolveStripeMode = (modeValue) => {
   const configuredMode = typeof modeValue === "string" ? modeValue.trim().toLowerCase() : "";
   const mode = configuredMode || "test";
@@ -25,12 +23,4 @@ export const validateStripeConfiguration = ({ mode: modeValue, secretKey }) => {
   }
 
   return mode;
-};
-
-export const isOwnerLiveCheckoutAuthorized = ({ configuredToken, suppliedToken }) => {
-  if (typeof configuredToken !== "string" || typeof suppliedToken !== "string" ||
-    !configuredToken || !suppliedToken) return false;
-  const expected = Buffer.from(configuredToken, "utf8");
-  const actual = Buffer.from(suppliedToken, "utf8");
-  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 };

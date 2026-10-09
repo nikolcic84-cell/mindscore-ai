@@ -12,7 +12,7 @@ import { fileURLToPath } from "url";
 import { buildPremiumPdf } from "../src/premiumPdfGenerator.js";
 import { calculateDimensions } from "../src/psychology/dimensions.js";
 import { calculateSleepScore, calculateSleepResult } from "../src/psychology/sleepScoring.js";
-import { isOwnerLiveCheckoutAuthorized, validateStripeConfiguration } from "./stripeConfiguration.js";
+import { validateStripeConfiguration } from "./stripeConfiguration.js";
 
 dotenv.config();
 
@@ -886,12 +886,6 @@ app.get("/api/sleep-content/free-result", rateLimit(60_000, 20), async (req, res
 app.post("/api/create-checkout-session", rateLimit(60_000, 10), async (req, res) => {
   try {
     if (!stripe) return res.status(503).json({ error: STRIPE_CONFIGURATION_ERROR });
-    if (stripeMode === "live" && !isOwnerLiveCheckoutAuthorized({
-      configuredToken: process.env.STRIPE_OWNER_TEST_TOKEN,
-      suppliedToken: req.get("x-stripe-owner-test-token"),
-    })) {
-      return res.status(403).json({ error: "Checkout is temporarily unavailable." });
-    }
     if (!FRONTEND_BASE_URL) {
       return res.status(500).json({
         error: "Server configuration error: FRONTEND_BASE_URL is not set.",

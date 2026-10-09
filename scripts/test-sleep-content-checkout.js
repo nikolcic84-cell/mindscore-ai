@@ -5,11 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import {
-  isOwnerLiveCheckoutAuthorized,
-  resolveStripeMode,
-  validateStripeConfiguration,
-} from "../server/stripeConfiguration.js";
+import { resolveStripeMode, validateStripeConfiguration } from "../server/stripeConfiguration.js";
 
 const answers = [5,1,1,5,5,1,1,5,1,1,5,1];
 const email = "sleep-test@example.invalid";
@@ -65,7 +61,7 @@ const listen = (server) => new Promise((resolve, reject) => {
   });
 });
 const close = (server) => new Promise((resolve) => server.close(resolve));
-const startBackend = async ({ port, dataDir, stripePort = 12111, stripeSecretKey = "sk_test_local_mock_only", stripeMode = "test", ownerTestToken = "" }) => {
+const startBackend = async ({ port, dataDir, stripePort = 12111, stripeSecretKey = "sk_test_local_mock_only", stripeMode = "test" }) => {
   const env = {
     ...process.env,
     NODE_ENV: "test",
@@ -74,7 +70,6 @@ const startBackend = async ({ port, dataDir, stripePort = 12111, stripeSecretKey
     FRONTEND_BASE_URL: "http://localhost:5173",
     STRIPE_MODE: stripeMode,
     STRIPE_SECRET_KEY: stripeSecretKey,
-    STRIPE_OWNER_TEST_TOKEN: ownerTestToken,
     STRIPE_TEST_API_HOST: "127.0.0.1",
     STRIPE_TEST_API_PORT: String(stripePort),
     STRIPE_WEBHOOK_SECRET: "whsec_local_test_placeholder",
@@ -116,21 +111,15 @@ test("Stripe mode defaults safely to TEST when STRIPE_MODE is omitted", () => {
   assert.equal(validateStripeConfiguration({ secretKey: "sk_test_default_mode_test_only" }), "test");
 });
 
-test("MAIN release excludes the staging-only accepted-analysis route and keeps the backend-only LIVE gate", async () => {
+test("MAIN release excludes the staging-only accepted-analysis route and owner-only checkout gate", async () => {
   const source = await readFile(new URL("../server/server.js", import.meta.url), "utf8");
   const registrations = [...source.matchAll(/app\.get\("\/api\/premium-report\/accepted-analysis"/gu)];
   assert.equal(registrations.length, 0, "MAIN had no accepted-analysis handler; staging-only duplicates are not carried into the release");
   assert.doesNotMatch(await readFile(new URL("../src/App.jsx", import.meta.url), "utf8"), /premium-report\/accepted-analysis/u);
-  assert.match(source, /stripeMode === "live" && !isOwnerLiveCheckoutAuthorized/u);
-  assert.match(source, /configuredToken: process\.env\.STRIPE_OWNER_TEST_TOKEN/u);
-  assert.match(source, /req\.get\("x-stripe-owner-test-token"\)/u);
-});
-
-test("LIVE checkout owner token authorizes only an exact constant-time match", () => {
-  assert.equal(isOwnerLiveCheckoutAuthorized({ configuredToken: "owner-test-token", suppliedToken: "owner-test-token" }), true);
-  assert.equal(isOwnerLiveCheckoutAuthorized({ configuredToken: "owner-test-token", suppliedToken: "wrong-token" }), false);
-  assert.equal(isOwnerLiveCheckoutAuthorized({ configuredToken: "owner-test-token", suppliedToken: "" }), false);
-  assert.equal(isOwnerLiveCheckoutAuthorized({ configuredToken: "", suppliedToken: "owner-test-token" }), false);
+  assert.doesNotMatch(source, /STRIPE_OWNER_TEST_TOKEN|x-stripe-owner-test-token|isOwnerLiveCheckoutAuthorized/u);
+  const checkoutRoute = source.slice(source.indexOf('app.post("/api/create-checkout-session"'));
+  assert.ok(checkoutRoute.indexOf("stripe.checkout.sessions.create") > checkoutRoute.indexOf("if (!stripe)"),
+    "configured public callers proceed to the existing Stripe Checkout creation path");
 });
 
 test("TEST mode accepts a TEST key and checkout unlocks only from a paid verified session", async (t) => {
@@ -283,34 +272,6 @@ test("LIVE mode accepts a LIVE key without making any Stripe requests", async (t
   const response = await fetch(`${baseUrl}/health`);
   assert.equal(response.status, 200);
   assert.deepEqual(sessions.size, 0, "startup and health checks do not contact Stripe or create a charge");
-});
-
-test("LIVE checkout is denied to public callers before any Stripe request", async (t) => {
-  sessions.clear();
-  const dataDir = await mkdtemp(path.join(tmpdir(), "mindscore-live-public-block-") );
-  const port = 34_000 + Math.floor(Math.random() * 15_000);
-  const { child, baseUrl } = await startBackend({
-    port,
-    dataDir,
-    stripeMode: "live",
-    stripeSecretKey: "sk_live_owner_gate_test_only",
-    ownerTestToken: "owner-token-test-only",
-  });
-  t.after(async () => {
-    await stopBackend(child);
-    await rm(dataDir, { recursive: true, force: true });
-  });
-
-  const response = await postJson(`${baseUrl}/api/create-checkout-session`, {
-    customerEmail: email,
-    assessmentType: "sleep",
-    testName: "Sleep Quality",
-    purchaseType: "sleep-content-unlock",
-    answers,
-  });
-  assert.equal(response.status, 403);
-  assert.equal((await response.json()).error, "Checkout is temporarily unavailable.");
-  assert.equal(sessions.size, 0, "public LIVE request cannot contact Stripe or create a session");
 });
 
 test("LIVE mode rejects a TEST key at backend startup", async () => {

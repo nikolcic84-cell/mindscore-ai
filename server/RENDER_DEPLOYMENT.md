@@ -28,7 +28,6 @@ Do not commit real values. Configure these in Render:
 - STRIPE_MODE (`test` or `live`; defaults to `test` when omitted)
 - STRIPE_SECRET_KEY
 - STRIPE_WEBHOOK_SECRET
-- STRIPE_OWNER_TEST_TOKEN (temporary LIVE owner checkout authorization; keep private and remove after the controlled test)
 - SMTP_HOST
 - SMTP_PORT
 - SMTP_SECURE
@@ -51,7 +50,6 @@ Do not commit real values. Configure these in Render:
 
 - The backend listens on process.env.PORT and host 0.0.0.0.
 - `STRIPE_MODE` and the `STRIPE_SECRET_KEY` prefix must match. TEST accepts only `sk_test_...`; LIVE accepts only `sk_live_...`. A mismatch or unsupported key prefix stops backend startup. With no key, the server starts but checkout returns a generic 503 configuration error.
-- In LIVE mode, `/api/create-checkout-session` denies normal public checkout unless the request includes the private `x-stripe-owner-test-token` header matching `STRIPE_OWNER_TEST_TOKEN`. Leave this token unset to block all LIVE checkout; this temporary gate exists until the complete Premium product is ready.
 - The test API host override (`STRIPE_TEST_API_HOST`/`STRIPE_TEST_API_PORT`) is applied only when `STRIPE_MODE=test` and `NODE_ENV` is not `production`; it cannot redirect LIVE-mode API calls.
 - BACKEND_BASE_URL should be set to your deployed Render URL, for example:
   https://mindscore-ai-backend.onrender.com
