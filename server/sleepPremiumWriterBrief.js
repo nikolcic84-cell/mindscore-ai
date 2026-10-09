@@ -235,3 +235,151 @@ export function buildSleepPremiumWriterBrief(input, options = {}) {
     evidence_library_version: library.version,
   }));
 }
+
+/**
+ * Lossless-for-writing transport view of the canonical brief. The canonical
+ * v1 object above remains the validation/adapter contract; this v2 view is a
+ * separate, frozen envelope intended for a future writer serializer.
+ */
+export function projectSleepPremiumWriterBrief(brief) {
+  if (brief?.version !== "premium-writer-brief.v1" || brief.review_only !== true || brief.release_allowed !== false) {
+    throw new TypeError("Projection requires the canonical review-only Premium writer brief.");
+  }
+
+  const selected = [brief.primary_insight, ...brief.secondary_insights];
+  const selectedFactIds = new Set(selected.flatMap(({ fact_ids }) => fact_ids));
+  const allocatedTechniqueIds = new Set(brief.experiment7.map(({ technique_id }) => technique_id).filter(Boolean));
+  const techniques = brief.eligible_techniques.filter(({ technique_id }) => allocatedTechniqueIds.has(technique_id));
+  const referencedClaimIds = new Set([
+    ...selected.flatMap(({ evidence_claim_ids }) => evidence_claim_ids),
+    ...techniques.flatMap(({ claim_ids, contextual_claim_ids }) => [...claim_ids, ...contextual_claim_ids]),
+  ]);
+  const science = brief.approved_science.filter(({ claim_id }) => referencedClaimIds.has(claim_id)).map((entry) => ({
+    claim_id: entry.claim_id,
+    plain_serbian: entry.plain_serbian,
+    evidence_type: entry.evidence_type,
+    strength: entry.strength,
+    directness: entry.directness,
+    limits: entry.limits,
+  }));
+
+  // Keep only explanation devices that actually share a selected insight fact.
+  const selectedDevices = brief.explanation_devices.filter(({ fact_ids }) =>
+    fact_ids.some((id) => selectedFactIds.has(id))).map((entry) => ({
+    device_id: entry.device_id,
+    fact_ids: entry.fact_ids,
+    explanation: entry.explanation,
+    does_not_imply: entry.does_not_imply,
+  }));
+
+  const action_catalog = [...new Set(brief.experiment7.map(({ action }) => action))];
+  const days = brief.experiment7.map((entry) => ({
+    day: entry.day,
+    themeIds: entry.themeIds,
+    fact_ids: entry.fact_ids,
+    technique_id: entry.technique_id,
+    action_ref: action_catalog.indexOf(entry.action),
+    observe: entry.observe,
+    restrictions: entry.restrictions,
+    mode: entry.mode,
+    ...(Object.hasOwn(entry, "differentActionFromDay2And3")
+      ? { differentActionFromDay2And3: entry.differentActionFromDay2And3 } : {}),
+  }));
+
+  const rivalFactIds = brief.rivals.flatMap(({ supporting_fact_ids, limiting_fact_ids, comparison_groups }) =>
+    [...supporting_fact_ids, ...limiting_fact_ids, ...comparison_groups.flat()]);
+  const question = brief.best_next_question;
+  const factIds = new Set([
+    ...selected.flatMap(({ fact_ids }) => fact_ids),
+    ...rivalFactIds,
+    ...(question?.fact_ids ?? []),
+    ...brief.do_not_target_first.flatMap(({ fact_ids }) => fact_ids),
+    ...brief.supported_positives.map(({ fact_id }) => fact_id),
+    ...brief.experiment7.flatMap(({ fact_ids }) => fact_ids),
+    ...selectedDevices.flatMap(({ fact_ids }) => fact_ids),
+    ...brief.contrasts.flatMap(({ fact_ids }) => fact_ids),
+  ]);
+  const facts = brief.supporting_facts.filter(({ fact_id }) => factIds.has(fact_id)).map((fact) => ({
+    fact_id: fact.fact_id,
+    questionId: fact.questionId,
+    description: fact.description,
+    frequency: fact.frequency,
+    uncertainty: fact.uncertainty,
+    qualifiers: fact.qualifiers,
+  }));
+
+  const localLimits = new Set([
+    ...science.flatMap(({ limits }) => limits),
+    ...techniques.flatMap(({ limits }) => limits),
+    ...selectedDevices.flatMap(({ does_not_imply }) => does_not_imply),
+    ...brief.experiment7.flatMap(({ restrictions }) => restrictions),
+  ]);
+  const boundaries = unique([
+    ...brief.prohibited_conclusions,
+    ...brief.contrasts.flatMap(({ does_not_establish }) => does_not_establish),
+  ]).filter((boundary) => !localLimits.has(boundary));
+
+  return deepFreeze(structuredClone({
+    version: "premium-writer-transport.v2",
+    profile: brief.profile,
+    priority: { area: brief.priority.area, title: brief.priority.title },
+    facts,
+    primary_insight: {
+      insight_id: brief.primary_insight.insight_id,
+      fact_ids: brief.primary_insight.fact_ids,
+      relationship: brief.primary_insight.relationship,
+      why_it_matters: brief.primary_insight.why_it_matters,
+      interpretation_status: brief.primary_insight.interpretation_status,
+      uncertainty: brief.primary_insight.uncertainty,
+      genericity_flags: brief.primary_insight.genericity_flags,
+      allowed_claim_ids: brief.primary_insight.evidence_claim_ids,
+    },
+    secondary_insights: brief.secondary_insights.map((entry) => ({
+      insight_id: entry.insight_id,
+      fact_ids: entry.fact_ids,
+      relationship: entry.relationship,
+      why_it_matters: entry.why_it_matters,
+      interpretation_status: entry.interpretation_status,
+      uncertainty: entry.uncertainty,
+      genericity_flags: entry.genericity_flags,
+      allowed_claim_ids: entry.evidence_claim_ids,
+    })),
+    rivals: brief.rivals.map((entry) => ({
+      interpretation: entry.interpretation,
+      supporting_fact_ids: entry.supporting_fact_ids,
+      limiting_fact_ids: entry.limiting_fact_ids,
+      missing_information: entry.missing_information,
+      discriminating_observation: entry.discriminating_observation,
+      prohibited_causal_conclusion: entry.prohibited_causal_conclusion,
+      interpretation_status: entry.interpretation_status,
+      comparison_groups: entry.comparison_groups,
+    })),
+    best_next_question: question && {
+      question: question.question,
+      why_it_matters: question.why_it_matters,
+      what_different_answers_would_clarify: question.what_different_answers_would_clarify,
+      fact_ids: question.fact_ids,
+      unknown_ids: question.unknown_ids,
+    },
+    do_not_target_first: brief.do_not_target_first,
+    supported_positives: brief.supported_positives,
+    unknown: brief.unknown,
+    science,
+    techniques: techniques.map((entry) => ({
+      technique_id: entry.technique_id,
+      mode: entry.mode,
+      claim_ids: entry.claim_ids,
+      contextual_claim_ids: entry.contextual_claim_ids,
+      approved_actions: entry.approved_actions,
+      observe: entry.observe,
+      burden: entry.burden,
+      limits: entry.limits,
+    })),
+    explanation_devices: selectedDevices,
+    action_catalog,
+    days,
+    boundaries,
+    review_only: true,
+    release_allowed: false,
+  }));
+}

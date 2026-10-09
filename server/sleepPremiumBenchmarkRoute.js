@@ -1,10 +1,12 @@
 import express from "express";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
-const PATH = "/api/dev/premium-writer-benchmark";
+const V1_PATH = "/api/dev/premium-writer-benchmark";
+const V2_PATH = "/api/dev/premium-writer-benchmark-v2";
 const HOST = "mindscore-premium-staging.onrender.com";
-const VERSION = "phase2bench.v1";
+const V1_VERSION = "phase2bench.v1";
+const V2_VERSION = "phase2bench.v2";
 const FIXTURES = Object.freeze(["A", "B", "C", "D", "E", "F"]);
 const MAX_JSON_BYTES = 256 * 1024;
 // Shared by every registration/cache directory in this process, not per app.
@@ -34,15 +36,11 @@ async function dependencies() {
  * storage/redeploys can reset it. Use one stable cache directory per service;
  * process-wide concurrency is not a distributed multi-instance lock.
  */
-export function registerSleepPremiumBenchmarkRoute(app, {
-  openaiClient, apiKeyAvailable, cacheDir, env = process.env,
-} = {}) {
-  if (!enabled(env)) return false;
-  const directory = typeof cacheDir === "string" && isAbsolute(cacheDir) ? resolve(cacheDir) : null;
+function registerNamespace(app, { path, version, directory, generationEnabled, openaiClient, apiKeyAvailable, env }) {
   const reply = (res, code, body) => res.status(code).json(body);
   const error = (res, code, name, fixture) => reply(res, code, {
-    version: VERSION, error: name,
-    ...(fixture ? { fixture, retryGet: `${PATH}?fixture=${fixture}` } : {}),
+    version, error: name,
+    ...(fixture ? { fixture, retryGet: `${path}?fixture=${fixture}` } : {}),
   });
   const gate = (req, res, next) => {
     res.set({ "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
@@ -67,7 +65,7 @@ export function registerSleepPremiumBenchmarkRoute(app, {
       const stat = lstatSync(resultPath);
       if (!reserved || !stat.isFile() || stat.isSymbolicLink() || stat.size >= MAX_JSON_BYTES) throw new Error("Unavailable");
       const payload = JSON.parse(readFileSync(resultPath, "utf8"));
-      if (payload.version !== VERSION || payload.fixture !== fixture || payload.review_only !== true ||
+      if (payload.version !== version || payload.fixture !== fixture || payload.review_only !== true ||
         payload.release_allowed !== false || !["completed", "failed"].includes(payload.status)) throw new Error("Unavailable");
       return { status: payload.status, payload };
     }
@@ -89,7 +87,7 @@ export function registerSleepPremiumBenchmarkRoute(app, {
     renameSync(temp, join(directory, `${fixture}.json`));
   };
 
-  app.get(PATH, gate, (req, res) => {
+  app.get(path, gate, (req, res) => {
     let fixture;
     try { fixture = queryFixture(req); } catch { return error(res, 400, "invalid_query"); }
     try {
@@ -100,14 +98,21 @@ export function registerSleepPremiumBenchmarkRoute(app, {
         return error(res, state.status === "unused" ? 404 : 409, state.status, fixture);
       }
       const fixtures = Object.fromEntries(FIXTURES.map((id) => [id, readState(id).status]));
-      return reply(res, 200, { version: VERSION, commit: commit(env), enabled: enabled(env),
+      return reply(res, 200, { version, commit: commit(env), enabled: enabled(env),
         completed: Object.values(fixtures).filter((state) => state === "completed").length, fixtures });
     } catch { return error(res, 503, "cache_unavailable"); }
   });
 
+  // v1 remains available for status and historical cache reads only. Its
+  // POST is retired deliberately, even for cached fixtures; use GET to read.
+  if (!generationEnabled) {
+    app.post(path, gate, (_req, res) => error(res, 410, "generation_retired"));
+    return;
+  }
+
   // Works with or without an existing parent JSON parser. The route-local
   // error handler never echoes malformed bodies or parser/SDK/filesystem errors.
-  app.post(PATH, gate, express.json({ limit: 1024, strict: false }), async (req, res) => {
+  app.post(path, gate, express.json({ limit: 1024, strict: false }), async (req, res) => {
     const body = req.body;
     let query;
     try { query = queryFixture(req); } catch { return error(res, 400, "invalid_query"); }
@@ -151,7 +156,7 @@ export function registerSleepPremiumBenchmarkRoute(app, {
       const result = await api.generateSleepPremiumMaster({ input, openaiClient, apiKeyAvailable: true,
         internalBenchmark: true, includeRejectedDraft: true, includePreview: true });
       const review = JSON.parse(api.formatBenchmark(result, { fixtureId: fixture, format: "json" }));
-      const payload = { version: VERSION, commit: commit(env), fixture,
+      const payload = { version, commit: commit(env), fixture,
         profile: result.brief.profile, priority: result.brief.priority.area,
         latencyMilliseconds: Math.round(performance.now() - started),
         status: result.source === "ai" && result.validation?.valid === true ? "completed" : "failed",
@@ -174,5 +179,27 @@ export function registerSleepPremiumBenchmarkRoute(app, {
     if (!failure) return next();
     return error(res, failure.type === "entity.too.large" ? 413 : 400, "invalid_payload");
   });
+}
+
+/** Staging-only benchmark route pair. v1 keeps historical status/cache GETs;
+ * only v2 can reserve fixtures or invoke the writer. Both registrations share
+ * the module-level lock and preserve the same exact exposure gates and budgets.
+ */
+export function registerSleepPremiumBenchmarkRoute(app, {
+  openaiClient, apiKeyAvailable, cacheDir, env = process.env,
+} = {}) {
+  if (!enabled(env)) return false;
+  const directory = typeof cacheDir === "string" && isAbsolute(cacheDir) ? resolve(cacheDir) : null;
+  // server.js owns the stable v1 path. Derive a sibling v2 namespace without
+  // migrating, deleting, or modifying any historical v1 cache/reservation.
+  const v2Directory = directory
+    ? basename(directory).endsWith("-v1")
+      ? join(dirname(directory), `${basename(directory).slice(0, -3)}-v2`)
+      : join(directory, "premium-writer-benchmark-v2")
+    : null;
+  registerNamespace(app, { path: V1_PATH, version: V1_VERSION, directory,
+    generationEnabled: false, openaiClient, apiKeyAvailable, env });
+  registerNamespace(app, { path: V2_PATH, version: V2_VERSION, directory: v2Directory,
+    generationEnabled: true, openaiClient, apiKeyAvailable, env });
   return true;
 }

@@ -1,0 +1,261 @@
+{
+  "fixture": "A",
+  "commit": "d089299fcbd9acecb5e0b43ba79ab139590f4996",
+  "profile": "ISPREKIDAN SAN",
+  "priority": "Tok noći",
+  "latencyMilliseconds": 36646,
+  "status": "completed",
+  "validation": {
+    "valid": true,
+    "semantic_review_required": true
+  },
+  "failure": null,
+  "source": "ai",
+  "requestCount": 1,
+  "usage": {
+    "model": "gpt-5-mini",
+    "input_tokens": 7737,
+    "output_tokens": 5855,
+    "total_tokens": 13592,
+    "cached_input_tokens": 0,
+    "reasoning_tokens": 3200,
+    "response_status": "completed",
+    "source": "AI_GENERATED"
+  },
+  "primary": "continuity_daytime_relation",
+  "master": {
+    "version": 1,
+    "profile": "ISPREKIDAN SAN",
+    "priority": {
+      "area": "Tok noći",
+      "explanation": "Prvo poređenje vredi usmeriti na jutra i dane posle noći sa više ili manje prekida, umesto automatski na duže spavanje ili brže početno uspavljivanje.",
+      "first_step": "Ujutru kratko zabeleži približno vreme spavanja, ustajanje, da li se sećaš buđenja i svoj ukupan utisak."
+    },
+    "intro": "Ovde je kraći urednički pregled: fokus je na razlikama između trajanja sna, prekida tokom noći i kako se to odražava ujutru i tokom dana. Ovo nije klinička procena već predlog posmatranja koji čuva granice izveštaja.",
+    "insights": [
+      {
+        "insight_id": "continuity_daytime_relation",
+        "title": "Trajanje, prekidi i dnevna energija",
+        "text": "Prijavljenih 7–9 sati, težak povratak u san i teškoća tokom dana ili jutra opisuju različite delove iskustva. Sam raspon sati ne opisuje nastavak sna ni energiju. Trajanje može zvučati mirnije dok se povratak u san i dan izdvajaju; ne znamo da li se izdvajaju istih dana. Ovo je urednička hipoteza za poređenje odgovora, ne utvrđena povezanost, uzrok ili dijagnoza.",
+        "evidence_ids": [
+          "SLEEP_MULTIDIMENSIONAL",
+          "DIARY_CORE_OBSERVATION"
+        ],
+        "device_id": "one_variable_comparison"
+      },
+      {
+        "insight_id": "rested_morning_daytime_difficulty",
+        "title": "Mirno jutro i umor tokom dana",
+        "text": "Kratak jutarnji utisak da se osećaš dobro ne isključuje pojavu potrebe za kafom ili pauzom kasnije. Vredi razdvojiti kako izgleda početak dana od toga kako se osećaš tokom dana, umesto automatski ciljanja samo jutarnjeg dojma.",
+        "evidence_ids": [
+          "SLEEP_MULTIDIMENSIONAL",
+          "DIARY_CORE_OBSERVATION"
+        ],
+        "device_id": null
+      },
+      {
+        "insight_id": "easy_onset_difficult_return",
+        "title": "Lako zaspivanje, teže vraćanje u san",
+        "text": "Vrlo brz početak sna i teško ponovni ulazak u san posle buđenja opisuju različite situacije u toku iste noći. Lako uspavljivanje nije isto što i lako nastavljanje sna; stoga poređenje treba da se odnosi na kontinuitet noći, ne na dodatno ubrzavanje početka.",
+        "evidence_ids": [
+          "SLEEP_MULTIDIMENSIONAL",
+          "DIARY_CORE_OBSERVATION"
+        ],
+        "device_id": null
+      }
+    ],
+    "tracking": [
+      "Uporedi jutra posle noći sa više prekida i posle mirnijih noći — zabeleži ukupan utisak i potrebu za pauzom tokom dana.",
+      "Preskoči beleženje ako povećava zabrinutost ili opterećenje."
+    ],
+    "plan7": [
+      {
+        "day": 1,
+        "action": "Ako želiš, primeti svoj utisak o dodeljenom delu sna, bez promene rutine, proveravanja sata ili namernog buđenja.",
+        "observe": "Da li se opisani utisci javljaju zajedno ili se razlikuju?",
+        "technique_id": null,
+        "theme_ids": [
+          "RECOVERY_DURATION",
+          "NIGHT_CONTINUITY",
+          "RHYTHM_WAKE"
+        ]
+      },
+      {
+        "day": 2,
+        "action": "Ujutru kratko zabeleži približno vreme spavanja i ustajanja, da li se sećaš buđenja i svoj ukupan utisak. Ne proveravaj sat tokom noći i ne postavljaj alarm radi praćenja.",
+        "observe": "Da li se buđenja i ukupan utisak menjaju zajedno ili se razlikuju?",
+        "technique_id": "SELF_OBSERVATION",
+        "theme_ids": [
+          "NIGHT_CONTINUITY"
+        ]
+      },
+      {
+        "day": 3,
+        "action": "Ako želiš, primeti svoj utisak o dodeljenom delu sna, bez promene rutine, proveravanja sata ili namernog buđenja.",
+        "observe": "Da li se prijavljeno trajanje, jutarnji osećaj i doživljaj dana menjaju zajedno ili razlikuju?",
+        "technique_id": null,
+        "theme_ids": [
+          "RECOVERY_DURATION"
+        ]
+      },
+      {
+        "day": 4,
+        "action": "Ako želiš, uporedi dosadašnje utiske, bez nove promene ili namernog buđenja.",
+        "observe": "Da li se opisani utisci javljaju zajedno ili se razlikuju?",
+        "technique_id": null,
+        "theme_ids": [
+          "NIGHT_CONTINUITY",
+          "RECOVERY_DURATION"
+        ]
+      },
+      {
+        "day": 5,
+        "action": "Ako želiš, primeti svoj utisak o dodeljenom delu sna, bez promene rutine, proveravanja sata ili namernog buđenja.",
+        "observe": "Da li je ustajanje drugačije uz alarm i bez njega, i šta o rasporedu još nije jasno?",
+        "technique_id": null,
+        "theme_ids": [
+          "RHYTHM_WAKE"
+        ]
+      },
+      {
+        "day": 6,
+        "action": "Ujutru kratko zabeleži približno vreme spavanja i ustajanja, da li se sećaš buđenja i svoj ukupan utisak. Ne proveravaj sat tokom noći i ne postavljaj alarm radi praćenja.",
+        "observe": "Da li se buđenja i ukupan utisak menjaju zajedno ili se razlikuju?",
+        "technique_id": "SELF_OBSERVATION",
+        "theme_ids": [
+          "NIGHT_CONTINUITY",
+          "RECOVERY_DURATION",
+          "RHYTHM_WAKE"
+        ]
+      },
+      {
+        "day": 7,
+        "action": "Osvrni se na utiske i izaberi šta ti je bilo izvodljivo; nije potrebno nastaviti praćenje.",
+        "observe": "Da li se opisani utisci javljaju zajedno ili se razlikuju?",
+        "technique_id": null,
+        "theme_ids": [
+          "RECOVERY_DURATION",
+          "NIGHT_CONTINUITY",
+          "RHYTHM_WAKE"
+        ]
+      }
+    ],
+    "alternatives": [
+      {
+        "text": "Ako želiš, primeti svoj utisak o dodeljenom delu sna, bez promene rutine, proveravanja sata ili namernog buđenja.",
+        "technique_id": null,
+        "theme_ids": [
+          "RECOVERY_DURATION"
+        ]
+      }
+    ],
+    "uncertainty": {
+      "question": "Da li su jutarnji osećaj i energija tokom dana drugačiji posle noći sa više ili manje prekida, uz slično prijavljeno trajanje sna?",
+      "anchor_fact_ids": [
+        "FACT_Q5",
+        "FACT_Q3",
+        "FACT_Q8"
+      ]
+    },
+    "supporting_content": {
+      "insights": [
+        {
+          "insight_id": "continuity_daytime_relation",
+          "context": "Imaš prijavljen raspon od 7–9 sati, ali takođe navodiš teškoće u ponovnom uspavljivanju i potrebu za kafom ili pauzom tokom dana. Zanimljiva razlika je da broj sati sam po sebi ne govori da li je san kontinuiran ili kako ćeš se osećati kasnije — zato predlog posmatranja stavlja naglasak na poređenje noći sa više i manje prekida uz isti prijavljen broj sati."
+        },
+        {
+          "insight_id": "rested_morning_daytime_difficulty",
+          "context": "Navedeno je da se ujutru često osećaš prilično dobro, a ipak pominješ pad energije ili potrebu za pauzom tokom dana. To znači da 'dobro jutro' i dnevna energija mogu da idu odvojeno; korisno je posmatrati obe mere zajedno da bismo videli da li se menjaju u paru."
+        },
+        {
+          "insight_id": "easy_onset_difficult_return",
+          "context": "Opisuješ brzo zaspivanje po gašenju svetla a istovremeno teškoće s ponovnim uspavljivanjem. To sugeriše dve različite faze noći — početak i kontinuitet — i zato poređenje treba da se usmeri na nastavak sna, ne na dalje ubrzavanje početnog uspavljivanja."
+        }
+      ],
+      "days": [
+        {
+          "day": 1,
+          "rationale": "Neupadljivo jutarnje zabeležavanje služi kao baza bez menjanja rutine; cilj je primetiti postojeće utiske.",
+          "reflection": null
+        },
+        {
+          "day": 2,
+          "rationale": "Kratki jutarnji zapis kroz tehniku posmatranja daje informaciju o buđenjima i jutarnjem utisku, bez upotrebe alarma ili gledanja sata.",
+          "reflection": null
+        },
+        {
+          "day": 3,
+          "rationale": "Fokus na prijavljeno trajanje i odnos između jutra i dana omogućava test uredničke hipoteze bez dodatnih promena navika.",
+          "reflection": null
+        },
+        {
+          "day": 4,
+          "rationale": "Povremeno usporedno razmatranje utisaka pomaže sagledavanju razlika između noćne kontinuiteta i ukupnog trajanja sna.",
+          "reflection": null
+        },
+        {
+          "day": 5,
+          "rationale": "Posmatranje ustajanja s alarmom i bez njega osvetljava element ritma buđenja, bez namernog menjanja rasporeda.",
+          "reflection": null
+        },
+        {
+          "day": 6,
+          "rationale": "Opcija ponovnog kratkog zapisivanja daje dodatne podatke ako želiš da proveriš doslednost zapažanja.",
+          "reflection": null
+        },
+        {
+          "day": 7,
+          "rationale": "Kratak pregled iskustava pomaže da izabereš šta ti je bilo izvodljivo; nema pritiska da nastaviš dalje.",
+          "reflection": null
+        }
+      ],
+      "closing": "Klinički pregled je u toku; ovo je nacrt za lično posmatranje i razmišljanje, ne zamena za medicinski savet."
+    },
+    "provenance": {
+      "primary_insight_id": "continuity_daytime_relation",
+      "evidence_ids": [
+        "SLEEP_MULTIDIMENSIONAL",
+        "DIARY_CORE_OBSERVATION"
+      ],
+      "technique_ids": [
+        "SELF_OBSERVATION"
+      ],
+      "device_ids": [
+        "one_variable_comparison"
+      ]
+    },
+    "compliance": {
+      "no_diagnosis": true,
+      "no_causation": true,
+      "no_guarantee": true
+    }
+  },
+  "rejectedDraft": null,
+  "withheld": false,
+  "incomplete": null,
+  "quality": {
+    "requires_human_review": true,
+    "evaluation": "Structural observations only; lexical validation is not semantic approval.",
+    "word_count": 786,
+    "insight_words": 300,
+    "advice_labeled_words": 387,
+    "advice_labeled_word_ratio": 0.492,
+    "advice_ratio_definition": "Words in first step/tracking/actions/observations/alternatives/day support divided by all generated prose words; not a claim classifier.",
+    "structural_flags": {
+      "primary_anchor_first": true,
+      "exact_day_technique_and_theme_anchors": true,
+      "selected_question_kept": true,
+      "distinct_science_claims": 2,
+      "distinct_devices": 1
+    },
+    "review_questions": [
+      "Does the primary relationship actually carry the report, rather than just appearing as an ID?",
+      "Are all personal statements entailed by scoped facts, without questionnaire recitation or invented co-occurrence?",
+      "Are rival interpretations and missing information genuinely retained, not converted into a cause?",
+      "Does every paraphrased action retain optionality, stop rules and limits, without extra tasks?",
+      "Do science/device explanations stay within the exact selected claims and their limitations?",
+      "Is the Serbian natural, calm and restrained, with preservation rather than invented problems for MIRNA NOĆ?",
+      "Does the report explain more than it advises? Inspect the word ratio, not just the counts."
+    ]
+  }
+}

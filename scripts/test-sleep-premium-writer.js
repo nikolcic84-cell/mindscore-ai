@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import test, { after } from "node:test";
 import { buildSleepPremiumInput } from "../server/sleepPremiumInput.js";
 import { buildSleepPremiumStoryMaterial } from "../server/sleepPremiumStoryMaterial.js";
-import { buildSleepPremiumWriterBrief } from "../server/sleepPremiumWriterBrief.js";
+import { buildSleepPremiumWriterBrief, projectSleepPremiumWriterBrief } from "../server/sleepPremiumWriterBrief.js";
 import { buildSleepPremiumMasterJsonSchema, validateSleepPremiumMaster } from "../server/sleepPremiumMasterSchema.js";
 import { adaptSleepPremiumMasterForPreview } from "../server/sleepPremiumMasterAdapter.js";
 import { loadSleepEvidenceLibrary, resolveSleepEvidenceCitation } from "../server/sleepEvidenceLibrary.js";
@@ -53,13 +53,16 @@ function assertFrozen(value) {
 function decodeBrief(serialized) {
   const envelope = JSON.parse(serialized);
   assert.deepEqual(Object.keys(envelope), ["encoding", "shared_text", "brief"]);
-  assert.equal(envelope.encoding, "shared-text.v1");
+  assert.equal(envelope.encoding, "tables-and-text.v2");
   const decode = (value) => {
     if (Array.isArray(value)) return value.map(decode);
     if (value && typeof value === "object") {
       if (Object.keys(value).length === 1 && Object.hasOwn(value, "$text")) {
         assert.ok(Number.isInteger(value.$text) && value.$text >= 0 && value.$text < envelope.shared_text.length);
         return envelope.shared_text[value.$text];
+      }
+      if (Object.keys(value).length === 2 && Array.isArray(value.columns) && Array.isArray(value.rows)) {
+        return value.rows.map((row) => Object.fromEntries(value.columns.map((key, index) => [key, decode(row[index])])));
       }
       return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, decode(child)]));
     }
@@ -192,7 +195,7 @@ function assertBriefContract(input, brief) {
   assert.equal(brief.review_only, true);
   assert.equal(brief.release_allowed, false);
   assertFrozen(brief);
-  assert.deepEqual(decodeBrief(serializeSleepPremiumWriterBrief(brief)), brief, "lossless compact prompt, including every local limit");
+  assert.deepEqual(decodeBrief(serializeSleepPremiumWriterBrief(brief)), projectSleepPremiumWriterBrief(brief), "lossless transport encoding, including every local limit");
   assert.ok(serializeSleepPremiumWriterBrief(brief).length < JSON.stringify(base).length, "not the complete pre-AI audit dump");
 }
 
@@ -530,13 +533,21 @@ test("writer mock success: one gpt-5-mini/8000 call, serialized brief only, no r
   assert.equal(request.input[0].content, SLEEP_PREMIUM_WRITER_INSTRUCTIONS);
   assert.match(request.input[0].content, /Ne radi novu analizu, rangiranje, profilisanje ili izbor prioriteta/u);
   assert.equal(request.input[1].content, serializeSleepPremiumWriterBrief(briefs[0]));
-  assert.deepEqual(decodeBrief(request.input[1].content), briefs[0]);
+  assert.deepEqual(decodeBrief(request.input[1].content), projectSleepPremiumWriterBrief(briefs[0]));
+  assert.deepEqual(request.reasoning, { effort: "low" });
+  assert.equal(request.text.verbosity, "low");
   assert.equal(result.serializedBriefCharacters, request.input[1].content.length);
   assert.equal(result.usage.input_tokens, 12);
   assert.equal(result.usage.output_tokens, 34);
   assert.equal(result.usage.cached_input_tokens, 2);
   assert.equal(result.usage.reasoning_tokens, 3);
   assert.equal(result.usage.source, "AI_GENERATED");
+  assert.ok(Number.isSafeInteger(result.requestLatencyMilliseconds) && result.requestLatencyMilliseconds >= 0);
+  assert.equal(result.inputMetrics.encoding, "tables-and-text.v2");
+  assert.equal(result.inputMetrics.briefCharacters, result.serializedBriefCharacters);
+  assert.equal(result.inputMetrics.briefEstimatedTokens, Math.ceil(result.serializedBriefCharacters / 4));
+  assert.equal(result.providerMetadata.reasoningEffort, "low");
+  assert.equal(result.providerMetadata.timeoutMs, 60000);
   assert.equal(diagnostics.length, 1);
   assert.equal(diagnostics[0][0], "[PREMIUM_AI_USAGE]");
   assert.deepEqual(JSON.parse(diagnostics[0][1]), result.usage);
@@ -561,7 +572,13 @@ for (const [name, response, type] of [
     assert.equal(mock.calls.length, 1);
     assert.equal(mock.calls[0].options.maxRetries, 0);
     assert.doesNotMatch(JSON.stringify({ result, diagnostics }), /Synthetic private provider detail/u);
-    if (type === "timeout") assert.equal(mock.calls[0].options.signal.aborted, true);
+    if (type === "timeout") {
+      assert.equal(mock.calls[0].options.signal.aborted, true);
+      assert.equal(result.executionDiagnostics.timeoutLayer, "writer_deadline");
+      assert.equal(result.executionDiagnostics.timeoutMs, 10);
+      assert.equal(result.executionDiagnostics.abortRequested, true);
+      assert.equal(result.executionDiagnostics.providerCompletionUnknown, true);
+    }
   });
 }
 

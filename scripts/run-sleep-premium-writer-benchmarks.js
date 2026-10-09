@@ -137,6 +137,10 @@ export function formatBenchmark(result, { fixtureId = "unspecified", format = "t
     rejected_draft: result.rejectedDraft ? reviewerDraft(result.rejectedDraft) : null,
     rejected_draft_withheld: result.rejectedDraftWithheld ?? false,
     incomplete_diagnostics: result.incompleteDiagnostics ?? null,
+    execution_diagnostics: result.executionDiagnostics ?? null,
+    provider_metadata: result.providerMetadata ?? null,
+    input_metrics: result.inputMetrics ?? null,
+    request_latency_milliseconds: result.requestLatencyMilliseconds ?? null,
   };
   if (format === "json") return JSON.stringify(report, null, 2);
   return [BANNER, `FIXTURE: ${fixtureId} | ${report.status} | source=${result.source}`,

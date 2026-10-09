@@ -1,0 +1,47 @@
+{
+  "fixture": "E",
+  "commit": "d089299fcbd9acecb5e0b43ba79ab139590f4996",
+  "profile": "MIRNA NOĆ",
+  "priority": "Tvoj san u celini",
+  "latencyMilliseconds": 1287,
+  "status": "failed",
+  "validation": {
+    "valid": false,
+    "reason": "Master was not accepted."
+  },
+  "failure": "incomplete_response",
+  "source": "fallback",
+  "requestCount": 1,
+  "usage": {
+    "model": "gpt-5-mini",
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cached_input_tokens": 0,
+    "reasoning_tokens": 0,
+    "response_status": "incomplete",
+    "source": "FALLBACK"
+  },
+  "primary": "preserve_calm_features",
+  "master": null,
+  "rejectedDraft": null,
+  "withheld": false,
+  "incomplete": {
+    "status": "incomplete",
+    "incomplete_details": {
+      "reason": "max_output_tokens"
+    },
+    "outputTextExists": true,
+    "outputTextCharacterLength": 0,
+    "outputItemCount": 0,
+    "outputItemTypes": [],
+    "outputItemMetadata": [],
+    "configuredModel": "gpt-5-mini",
+    "max_output_tokens": 8000,
+    "internalReason": "response.status !== \"completed\" OR Boolean(response.incomplete_details) === true -> AI response was incomplete."
+  },
+  "quality": {
+    "requires_human_review": true,
+    "evaluation": "No accepted AI master; no quality success claimed."
+  }
+}

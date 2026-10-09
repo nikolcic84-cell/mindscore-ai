@@ -1,0 +1,223 @@
+{
+  "fixture": "B",
+  "commit": "d089299fcbd9acecb5e0b43ba79ab139590f4996",
+  "profile": "BUDAN UM",
+  "priority": "Period pre sna",
+  "latencyMilliseconds": 42117,
+  "status": "failed",
+  "validation": {
+    "valid": false,
+    "reason": "Scientific authority is only allowed in an insight text/context with matching selected evidence references.",
+    "diagnostic": {
+      "field": "supporting_content.days[1].rationale"
+    }
+  },
+  "failure": "schema_validation_failure",
+  "source": "fallback",
+  "requestCount": 1,
+  "usage": {
+    "model": "gpt-5-mini",
+    "input_tokens": 7928,
+    "output_tokens": 7190,
+    "total_tokens": 15118,
+    "cached_input_tokens": 0,
+    "reasoning_tokens": 4864,
+    "response_status": "completed",
+    "source": "FALLBACK"
+  },
+  "primary": "calm_routine_active_thoughts",
+  "master": null,
+  "rejectedDraft": {
+    "accepted": false,
+    "review_only": true,
+    "release_allowed": false,
+    "candidate": {
+      "version": 1,
+      "profile": "BUDAN UM",
+      "priority": {
+        "area": "Period pre sna",
+        "explanation": "Unutar perioda pre sna vredi razdvojiti rutinu od iskustva kada legneš, a ne automatski dodavati pravila o ekranima.",
+        "first_step": "Ako želiš, primeti svoj utisak o dodeljenom delu sna, bez promene rutine, proveravanja sata ili namernog buđenja."
+      },
+      "intro": "Vidljivo je razlika između mirnog završetka večeri i osećaja aktivnih misli kad legneš. Ovo je urednička hipoteza za poređenje odgovora — nije utvrđena povezanost, uzrok ili dijagnoza. Cilj je kratko posmatranje kako bi se jasno videlo da li se ti doživljaji javljaju zajedno ili odvojeno.",
+      "insights": [
+        {
+          "insight_id": "[withheld: possible identifier/credential in unvalidated draft]",
+          "title": "Miran završetak večeri i aktivne misli pri ležanju",
+          "text": "Unutar perioda pre sna vredi razdvojiti rutinu od iskustva kada legneš, a ne automatski dodavati pravila o ekranima. Miran završetak večeri nije isto što i lako isključivanje misli u krevetu. Ovo je urednička hipoteza za poređenje odgovora, ne utvrđena povezanost, uzrok ili dijagnoza.",
+          "evidence_ids": [
+            "SLEEP_MULTIDIMENSIONAL",
+            "DIARY_CORE_OBSERVATION",
+            "TODO_WRITING_LAB"
+          ],
+          "device_id": "unfinished_tasks"
+        },
+        {
+          "insight_id": "[withheld: possible identifier/credential in unvalidated draft]",
+          "title": "Težak početak sna uz mirnu noć",
+          "text": "Teže uspavljivanje i aktivne misli mogu stajati uz prijavljenu uglavnom mirnu noć bez buđenja; početak i kasniji tok sna nisu isto iskustvo. Ovo je noncausal hipoteza koja ukazuje da početak sna zaslužuje pažnju odvojeno od opšte procene noći.",
+          "evidence_ids": [
+            "SLEEP_MULTIDIMENSIONAL",
+            "DIARY_CORE_OBSERVATION",
+            "TODO_WRITING_LAB"
+          ],
+          "device_id": null
+        }
+      ],
+      "tracking": [
+        "Da li se buđenja i ukupan utisak menjaju zajedno ili se razlikuju?",
+        "Prekini beleženje ako povećava zabrinutost ili opterećenje."
+      ],
+      "plan7": [
+        {
+          "day": 1,
+          "action": "Ako želiš, primeti svoj utisak o dodeljenom delu sna, bez promene rutine, proveravanja sata ili namernog buđenja.",
+          "observe": "Da li se tvoj utisak o poslednjem delu večeri razlikuje od iskustva uspavljivanja?",
+          "technique_id": null,
+          "theme_ids": [
+            "BEDTIME_TRANSITION"
+          ]
+        },
+        {
+          "day": 2,
+          "action": "Ujutru kratko zabeleži približno vreme spavanja i ustajanja, da li se sećaš buđenja i svoj ukupan utisak. Ne proveravaj sat tokom noći i ne postavljaj alarm radi praćenja.",
+          "observe": "Da li se buđenja i ukupan utisak menjaju zajedno ili se razlikuju?",
+          "technique_id": "SELF_OBSERVATION",
+          "theme_ids": [
+            "BEDTIME_TRANSITION"
+          ]
+        },
+        {
+          "day": 3,
+          "action": "Ako želiš, pred spavanje probaj do pet minuta da na papir zapišeš konkretne obaveze za naredne dane, pa zatvori listu. Nije potrebno dovršiti plan ili rešavati probleme; prekini ako ti ne prija.",
+          "observe": "Da li ti je lakše da ostaviš planiranje ili te zapis dodatno zaokuplja?",
+          "technique_id": "COGNITIVE_OFFLOAD",
+          "theme_ids": [
+            "BEDTIME_TRANSITION"
+          ]
+        },
+        {
+          "day": 4,
+          "action": "Ako želiš, uporedi dosadašnje utiske, bez nove promene ili namernog buđenja.",
+          "observe": "Da li se tvoj utisak o poslednjem delu večeri razlikuje od iskustva uspavljivanja?",
+          "technique_id": null,
+          "theme_ids": [
+            "BEDTIME_TRANSITION"
+          ]
+        },
+        {
+          "day": 5,
+          "action": "Ako želiš, primeti svoj utisak o dodeljenom delu sna, bez promene rutine, proveravanja sata ili namernog buđenja.",
+          "observe": "Da li se tvoj utisak o poslednjem delu večeri razlikuje od iskustva uspavljivanja?",
+          "technique_id": null,
+          "theme_ids": [
+            "BEDTIME_TRANSITION"
+          ]
+        },
+        {
+          "day": 6,
+          "action": "Ujutru kratko zabeleži približno vreme spavanja i ustajanja, da li se sećaš buđenja i svoj ukupan utisak. Ne proveravaj sat tokom noći i ne postavljaj alarm radi praćenja.",
+          "observe": "Da li se buđenja i ukupan utisak menjaju zajedno ili se razlikuju?",
+          "technique_id": "SELF_OBSERVATION",
+          "theme_ids": [
+            "BEDTIME_TRANSITION"
+          ]
+        },
+        {
+          "day": 7,
+          "action": "Osvrni se na utiske i izaberi šta ti je bilo izvodljivo; nije potrebno nastaviti praćenje.",
+          "observe": "Da li se tvoj utisak o poslednjem delu večeri razlikuje od iskustva uspavljivanja?",
+          "technique_id": null,
+          "theme_ids": [
+            "BEDTIME_TRANSITION"
+          ]
+        }
+      ],
+      "alternatives": [],
+      "uncertainty": {
+        "question": "Da li su misli aktivne i onih večeri kada ti mirna rutina prija, i da li je tada uspavljivanje drugačije?",
+        "anchor_fact_ids": [
+          "FACT_Q6",
+          "FACT_Q7",
+          "FACT_Q2"
+        ]
+      },
+      "supporting_content": {
+        "insights": [
+          {
+            "insight_id": "[withheld: possible identifier/credential in unvalidated draft]",
+            "context": "Prijavljuješ mirnu večernju rutinu u poslednjih 30 minuta pre spavanja, a istovremeno osećaš da ti misli ne staju kad legneš i opisuješ borbu sa uspavljivanjem. Važno je primetiti da mirna rutina ne uklanja izveštaj o aktivnim mislima — to su različiti opisi koji se mogu javljati zajedno ili odvojeno. Ne pretpostavljamo uzročnu vezu; ostaje otvoreno da li se ti utisci javljaju u istim noćima."
+          },
+          {
+            "insight_id": "[withheld: possible identifier/credential in unvalidated draft]",
+            "context": "Težak početak sna često ide uz sliku aktivnih misli, dok nastavljanje noći može ostati relativno mirno i bez buđenja. To znači da početak uspavljivanja zaslužuje odvojenu pažnju od opšte ocene toka noći. Ovo je zapažanje, ne klinički zaključak."
+          }
+        ],
+        "days": [
+          {
+            "day": 1,
+            "rationale": "Baseline: zabeleži utisak bez promene rutine da bi imao/la referencu za dalje posmatranje.",
+            "reflection": null
+          },
+          {
+            "day": 2,
+            "rationale": "Jutarnji, kratak dnevnik pomaže da se vidi da li se buđenja i jutarnji utisak pojavljuju zajedno ili ne, bez istraživanja tokom noći.",
+            "reflection": null
+          },
+          {
+            "day": 3,
+            "rationale": "Kratko pisanje obaveza pre spavanja je dobrovoljan pokušaj da se ponudi mesto za aktivne misli; prekini ako pojačava zabrinutost.",
+            "reflection": null
+          },
+          {
+            "day": 4,
+            "rationale": "Upoređivanje do sadašnjih utisaka pomaže da se vidi obrazac bez uvođenja novih koraka.",
+            "reflection": null
+          },
+          {
+            "day": 5,
+            "rationale": "Ponovljeno posmatranje utiska o poslednjem delu večeri daje dodatnu informaciju o stabilnosti iskustva.",
+            "reflection": null
+          },
+          {
+            "day": 6,
+            "rationale": "Još jedan kratak jutarnji zapis kao opcija za dodatno posmatranje promene ili postojanosti utisaka.",
+            "reflection": null
+          },
+          {
+            "day": 7,
+            "rationale": "Pregled: pogledaš šta ti je bilo izvodljivo i odlučiš da li nastaviti; nema obaveze za dalje praćenje.",
+            "reflection": null
+          }
+        ],
+        "closing": "Prekini beleženje ako povećava zabrinutost ili opterećenje. Ako teškoće traju, pogoršavaju se ili ometaju svakodnevno funkcionisanje, razgovaraj sa lekarom."
+      },
+      "provenance": {
+        "primary_insight_id": "[withheld: possible identifier/credential in unvalidated draft]",
+        "evidence_ids": [
+          "SLEEP_MULTIDIMENSIONAL",
+          "DIARY_CORE_OBSERVATION",
+          "TODO_WRITING_LAB"
+        ],
+        "technique_ids": [
+          "SELF_OBSERVATION",
+          "COGNITIVE_OFFLOAD"
+        ],
+        "device_ids": [
+          "unfinished_tasks"
+        ]
+      },
+      "compliance": {
+        "no_diagnosis": true,
+        "no_causation": true,
+        "no_guarantee": true
+      }
+    }
+  },
+  "withheld": false,
+  "incomplete": null,
+  "quality": {
+    "requires_human_review": true,
+    "evaluation": "No accepted AI master; no quality success claimed."
+  }
+}

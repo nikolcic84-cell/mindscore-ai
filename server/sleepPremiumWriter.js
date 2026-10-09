@@ -1,4 +1,4 @@
-import { buildSleepPremiumWriterBrief } from "./sleepPremiumWriterBrief.js";
+import { buildSleepPremiumWriterBrief, projectSleepPremiumWriterBrief } from "./sleepPremiumWriterBrief.js";
 import { buildSleepPremiumMasterJsonSchema, validateSleepPremiumMaster } from "./sleepPremiumMasterSchema.js";
 import { adaptSleepPremiumMasterForPreview } from "./sleepPremiumMasterAdapter.js";
 import { buildSleepPremiumFallback } from "./sleepPremiumFallback.js";
@@ -13,46 +13,54 @@ const same = (a, b) => a.length === b.length && a.every((value, index) => value 
 export const isSleepPremiumWriterEnabled = () => process.env.RENDER_GIT_BRANCH === "premium-ai-staging" &&
   process.env.ENABLE_PREMIUM_AI_PREVIEW === "true";
 
-/** Lossless compact projection of the canonical brief ONLY. Repeated long
- * strings become {$text:index}; shared_text holds their exact originals. This
- * never accepts the pre-AI debug dump, questionnaire or raw-answer payload.
- * Safety boundaries, qualifiers, all seven days and review flags survive.
+/** Compact writer transport; the full frozen canonical brief stays server-side
+ * for validation/adaptation. Shared strings and column tables are lossless
+ * within the selected transport, including qualifiers and local boundaries.
  */
 export function serializeSleepPremiumWriterBrief(brief) {
   buildSleepPremiumMasterJsonSchema(brief); // Check canonical contract first.
+  const transport = projectSleepPremiumWriterBrief(brief);
   const frequencies = new Map();
   const visit = (value) => {
     if (typeof value === "string" && value.length >= 48) frequencies.set(value, (frequencies.get(value) ?? 0) + 1);
     else if (Array.isArray(value)) value.forEach(visit);
     else if (value && typeof value === "object") Object.values(value).forEach(visit);
   };
-  visit(brief);
+  visit(transport);
   const shared = [...frequencies].filter(([value, n]) => (n - 1) * value.length > n * 16 + 8).map(([value]) => value);
   const indexes = new Map(shared.map((value, index) => [value, index]));
   const project = (value) => {
     if (typeof value === "string" && indexes.has(value)) return { $text: indexes.get(value) };
-    if (Array.isArray(value)) return value.map(project);
+    if (Array.isArray(value)) {
+      // Homogeneous records repeat their field names once, not once per row.
+      const columns = value.length >= 2 && value[0] && typeof value[0] === "object" && !Array.isArray(value[0])
+        ? Object.keys(value[0]) : null;
+      if (columns && value.every((row) => row && !Array.isArray(row) && same(Object.keys(row), columns))) {
+        return { columns, rows: value.map((row) => columns.map((key) => project(row[key]))) };
+      }
+      return value.map(project);
+    }
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, project(child)]));
     return value;
   };
-  return JSON.stringify({ encoding: "shared-text.v1", shared_text: shared, brief: project(brief) });
+  return JSON.stringify({ encoding: "tables-and-text.v2", shared_text: shared, brief: project(transport) });
 }
 
 // Independent Phase 2 editorial instructions. Existing v2 prompt/generator and
 // their private diagnostics are deliberately not imported or modified.
-export const SLEEP_PREMIUM_WRITER_INSTRUCTIONS = `Ti si urednik srpskog wellness izveštaja, ne analitičar, lekar niti novi klasifikator.
-Jedini materijal je deterministički writer brief. Kod encoding=shared-text.v1 svaki objekat {$text:n} znači tačan tekst shared_text[n]; razreši ga pre pisanja. To nisu opcione skraćene granice.
-Vrati samo JSON po zadatoj strict master šemi. Review je interni nacrt: klinički i semantički pregled su pending, nikada odobrenje za kupca.
-Ne radi novu analizu, rangiranje, profilisanje ili izbor prioriteta. profile i priority.area ostaju potpuno isti. primary_insight je jedina glavna nit; prvi insight i provenance.primary_insight_id moraju imati njegov tačan insight_id. Sekundarni su samo iz briefa, u postojećem redosledu, najviše dva, bez konkurentske glavne priče. supporting_content.insights prati baš te iste ID-jeve i redosled.
-Poveži više podržanih opažanja u jasnu priču: šta je zanimljiva razlika, zašto je važna za poređenje i šta još ne znamo. Ne prepričavaj svih dvanaest pitanja, ne citiraj izabrane odgovore redom i ne izmišljaj istovremeno javljanje. Opservacija, neuzročna hipoteza i mirnije osobine nisu ista vrsta zaključka. Sačuvaj frequency, uncertainty, qualifiers i genericity_flags; generički materijal nije otkriven lični odnos.
-Piši prirodan, gramatički dobar srpski, latinicom, mirno i sa merom, direktno osobi. Bez stručnog žargona, dramatizacije, motivacionih obećanja, recitovanja upitnika ili gomilanja saveta. MIRNA NOĆ traži očuvanje onoga što osoba već navodi, ne izmišljenu teškoću, tracking ili alternative.
-Ako postoji primenljiva nauka za izabrane insighte, koristi ukupno 1–3 različita claim_id iz approved_science, samo iz evidence_claim_ids baš tog insighta. Ako je nema, evidence_ids su prazni. evidence_ids sadrži claim_id, NIKADA evidence_id, source ID, DOI ili naziv rada. Naučno objašnjenje sme biti samo u text/context odgovarajućeg insighta; razlikuj smernicu, konceptualni okvir i ograničenu studiju. Svaki claim zadržava limits, strength i directness; izvor nije dokaz lične koristi ili uzroka. Nikakva bibliografija, autori, godine, URL ili DOI u generisanoj prozi: to server rešava odvojeno.
-Najviše dva različita explanation_devices, isključivo ponuđena, vezana za činjenice tog insighta, bez proširivanja analogije izvan does_not_imply. device_id=null je u redu; ne forsiraj uređaj. Svi mašinski ID-jevi ostaju isključivo u metapodacima, nikada u korisničkom tekstu.
-plan7 mora imati svih sedam dana u redosledu 1–7. Za svaki dan prepiši tačan technique_id (uključujući null) i themeIds kao theme_ids iz experiment7. Samo rediguj njegov postojeći action i observe unutar njihovih granica; ne biraj novu tehniku iz ukupne liste. Zadrži opcionalnost, uslove prekida, bez gledanja sata noću, bez obaveznog beleženja ili promene satnice kada su navedeni. Ne menjaj opservacioni fallback u intervenciju. Poštuj differentActionFromDay2And3 bez izmišljanja radnje. Rationale objašnjava baš tu radnju; reflection ne dodaje novi zadatak. first_step je kratak početak tog plana, ne drugi prioritet ili nova radnja.
-Alternativa nije dozvola za dodatni savet: samo već postojeći korak druge raspoložive teme iz experiment7, sa istim technique_id i granicama; nikada teme drugog dana. Može biti prazna. tracking je samo opcionalno poređenje odabranih iskustava, bez novog protokola. supported_positives i do_not_target_first sa qualification ograničavaju šta treba menjati.
-Ako best_next_question postoji, uncertainty.question sačuva njegov smisao i ne sme biti null; anchor_fact_ids su tačno svi njegovi fact_ids u istom redosledu. Ako ne postoji, question=null i anchor_fact_ids=[]. Sačuvaj rivals, twist, interpretation_status i unknown kao granice: ne biraj uzrok među rivalima. Nepoznati uzrast, trajanje teškoća, zdravstveni podaci, smene ili prilika za san nisu negativni nalazi.
-Bez dijagnoze, lečenja, medicinskog protokola, samostalnog CBT-I, restrikcije sna, ranijeg alarma, uskraćivanja sna, precizne doze svetla, novih vežbi disanja ili izmišljenih aktivnosti. Bez tvrdnje da navika izaziva problem ili da će korak popraviti san ili energiju. Poštuj svaki prohibited_conclusions i lokalni limits/restrictions.
-Provenance je tačan skup svih stvarno upotrebljenih claim_id, technique_id i device_id, bez duplikata ili nekorišćenih referenci. compliance=true izražava nameru, ne kliničko odobrenje. Poštuj sve dužinske granice šeme; kraći smislen tekst je bolji od popunjavanja limita.`;
+export const SLEEP_PREMIUM_WRITER_INSTRUCTIONS = `Analiza je već završena. Ne opisuj postupak: ispričaj osobi priču koju materijal sadrži, prirodnim srpskim, latinicom. Vrati samo JSON po šemi.
+Ne radi novu analizu, rangiranje, profilisanje ili izbor prioriteta. Opažanje + razlika + otvoreno pitanje + korisno naučno objašnjenje + mali pokušaj čine priču, ne niz odgovora iz upitnika.
+Ulaz tables-and-text.v2: {$text:n}=shared_text[n]; {columns,rows} je niz objekata sa tim kolonama; days.action_ref upućuje na action_catalog. Razreši reference, uključujući sve granice.
+profile i priority.area su fiksni. primary_insight ide prvi, sekundarni samo ponuđeni i u datom redosledu; supporting_content.insights prati iste ID-jeve. facts je jedino lično činjenično uporište. Sačuvaj učestalost, uslovnost, neizvesnost i genericity_flags. Ne izmišljaj iste noći/dane, uzrok niti neprijavljene navike.
+Piši direktno o spavanju, ne o sistemu. Nikad u prozi: urednički, analitički, hipoteza, kandidat, anchor, noncausal, validator, deterministički, model, ovaj izveštaj, interni/klinički pregled u toku ili mašinski ID. Umesto 'urednička hipoteza' napiši prirodno 'Još ne znamo da li se ove stvari kod tebe javljaju zajedno.' Ne ponavljaj pravne ograde; objasni jedno konkretno nepoznato. Intro 1–2 rečenice; insight i context se dopunjuju, ne prepisuju.
+Nauka samo u insight.text/context: lično opažanje → korisno pitanje → koncept iz science → njegova granica → nazad osobi. Razlikuj opštu smernicu, okvir i malu studiju. Samo allowed_claim_ids tog insighta; ukupno 1–3 kad relevantna nauka postoji, inače []. ID znači da si stvarno objasnio taj koncept, ne ukras. Bez autora, godina, naslova, DOI/URL ili ručnih citata; server ih rešava.
+Ponuđen koristan explanation_device stvarno objasni u prozi, kao kratko zamišljeno poređenje, pa se vrati osobi. Poštuj does_not_imply; nikad ga ne predstavi kao stvaran događaj. Ako ga nisi upotrebio, device_id=null. Ne forsiraj analogiju.
+Sedam dana je JEDAN mali pokušaj: 1 početni utisak; 2 glavno pitanje; 3 drugi već dodeljeni ugao; 4 poređenje; 5 postojeća druga radnja ako je dodeljena, inače drugi koristan pogled; 6 ponovi dodeljeno jednostavno opažanje; 7 šta se razlikovalo. Svaki action/observe je kratak i konkretan, ne 'dodeljeni deo sna'. Personalizuj unutar činjenica dana. Prepiši tačne technique_id i themeIds→theme_ids iz days; null ostaje opažanje, bez nove intervencije. action_catalog i restrictions određuju granice, ne rečenice za kopiranje. Ne dodaj korak da bi razbio ponavljanje; svrhovito ponavljanje jasno nazovi. Rationale jedna kratka rečenica; reflection=null osim korisnog osvrta bez novog zadatka. I bez razlike saznaješ nešto. first_step počinje taj plan.
+Sve je dobrovoljno; preskoči ako opterećuje. Nema noćnog gledanja sata, namernog buđenja, uskraćivanja sna, ranijeg alarma, nove satnice, disanja, terapije ili obećanja koristi. Poštuj boundaries i sve lokalne limits/restrictions. Unknown nije negativan nalaz. Ne biraj uzrok među rivals; do_not_target_first i positives čuvaju ono što ne treba menjati.
+Alternatives=[] ako nema zaista različitog postojećeg koraka druge teme; nikad kopija praćenja. Ako postoji, samo postojeća days radnja/technique_id/themeIds van teme dana 2. tracking najviše dva kratka opcionalna poređenja, ne protokol.
+MIRNA NOĆ: očuvaj stabilno; bez problema, prisilne nauke, rivala, obrta, praćenja ili intervencija. Sedam kratkih dana može biti nenametljivo očuvanje bez zapisa. Ne zahtevaj stalno posmatranje.
+uncertainty.question čuva smisao best_next_question, anchor_fact_ids tačno njegove fact_ids u istom redosledu; ako je null, question=null i anchors=[].
+Provenance izračunaj TEK iz napisanih referenci: evidence_ids=jedinstvena UNIJA insights[*].evidence_ids, NE lista dostupne science; technique_ids=unija nenultih plan7/alternatives.technique_id; device_ids=unija nenultih insights.device_id. primary_insight_id je tačan primary ID. Nekorišćen claim NE dodaj ni ovde ni u insight radi prolaza. Ne popravljaj prozu novim zaključkom. Proveri tačne unije i dužinske limite pre vraćanja; compliance=true nije odobrenje.`;
 
 function safeUsage(response, source) {
   const usage = response?.usage;
@@ -66,7 +74,9 @@ function safeUsage(response, source) {
   };
 }
 
-function incompleteMetadata(response) {
+const safeRequestId = (value) => typeof value === "string" && /^req_[a-zA-Z0-9]{8,100}$/u.test(value) ? value : null;
+
+function incompleteMetadata(response, latencyMilliseconds) {
   const token = (value, allowed) => typeof value !== "string" ? null : allowed.includes(value) ? value : "[withheld: unrecognized metadata]";
   const types = ["message", "reasoning", "output_text", "refusal", "function_call", "web_search_call", "file_search_call"];
   const finishReasons = ["stop", "length", "max_output_tokens", "content_filter", "tool_calls", "function_call"];
@@ -90,6 +100,12 @@ function incompleteMetadata(response) {
     outputItemCount: output.length, outputItemTypes: output.map((entry) => token(entry?.type, types)),
     outputItemMetadata: output.map((entry) => ({ ...item(entry), content: Array.isArray(entry?.content) ? entry.content.map(item) : [] })),
     configuredModel: SLEEP_PREMIUM_WRITER_MODEL, max_output_tokens: SLEEP_PREMIUM_WRITER_MAX_OUTPUT_TOKENS,
+    responseModel: typeof response?.model === "string" && /^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/u.test(response.model) ? response.model : null,
+    requestId: safeRequestId(response?._request_id),
+    errorPresent: response?.error != null,
+    usagePresent: response?.usage != null,
+    usage: safeUsage(response, "fallback"),
+    latencyMilliseconds,
     internalReason: `${checks.join(" OR ")} -> AI response was incomplete.`,
   };
 }
@@ -112,7 +128,9 @@ async function oneCall(client, request, timeoutMs) {
       Promise.resolve().then(() => client.responses.create(request, { signal: controller.signal, timeout: timeoutMs, maxRetries: 0 })),
       new Promise((_, reject) => {
         timer = setTimeout(() => {
-          reject(fail("timeout", "Premium writer request timed out."));
+          reject(fail("timeout", "Premium writer request timed out.", {
+            executionDiagnostics: { timeoutLayer: "writer_deadline", timeoutMs, abortRequested: true, providerCompletionUnknown: true },
+          }));
           controller.abort();
         }, timeoutMs);
       }),
@@ -163,6 +181,8 @@ export async function generateSleepPremiumMaster({
   let result;
   let requestCount = 0;
   let serializedBriefCharacters = null;
+  let requestStarted = null;
+  let requestLatencyMilliseconds = null;
   try {
     // Build from deterministic pre-AI through the canonical projection, never
     // accept a caller-supplied brief, prompt or analyzed debug blob.
@@ -174,13 +194,19 @@ export async function generateSleepPremiumMaster({
     const serialized = serializeSleepPremiumWriterBrief(brief);
     serializedBriefCharacters = serialized.length;
     requestCount = 1;
+    requestStarted = performance.now();
     response = await oneCall(openaiClient, {
       model: SLEEP_PREMIUM_WRITER_MODEL, max_output_tokens: SLEEP_PREMIUM_WRITER_MAX_OUTPUT_TOKENS,
-      store: false, text: { format: buildSleepPremiumMasterJsonSchema(brief) },
+      // v1 spent 55–68% of completed output on reasoning despite finished
+      // analysis. Low effort is supported by this model and leaves the same
+      // 8000 cap/strict schema/safety gate, with no extra call or timeout bump.
+      reasoning: { effort: "low" },
+      store: false, text: { verbosity: "low", format: buildSleepPremiumMasterJsonSchema(brief) },
       input: [{ role: "system", content: SLEEP_PREMIUM_WRITER_INSTRUCTIONS }, { role: "user", content: serialized }],
     }, timeoutMs);
+    requestLatencyMilliseconds = Math.round(performance.now() - requestStarted);
     if (response?.status !== "completed" || response.incomplete_details) {
-      const metadata = incompleteMetadata(response);
+      const metadata = incompleteMetadata(response, requestLatencyMilliseconds);
       observe((value) => console.warn("[PREMIUM_AI_INCOMPLETE_RESPONSE]", JSON.stringify(value)), metadata);
       observe(onIncompleteResponse, metadata);
       throw fail("incomplete_response", "AI response was incomplete.", { incompleteDiagnostics: metadata });
@@ -218,6 +244,10 @@ export async function generateSleepPremiumMaster({
       failureType, reason: error?.failureType ? error.message : "Premium writer could not complete the request.", failureStatus: httpStatus,
       validation: { valid: false, reason: validation?.reason ?? "Master was not accepted.", ...(validation?.diagnostic ? { diagnostic: validation.diagnostic } : {}) },
       ...(error?.incompleteDiagnostics ? { incompleteDiagnostics: error.incompleteDiagnostics } : {}),
+      ...(failureType === "timeout" ? { executionDiagnostics: error.executionDiagnostics ?? {
+        timeoutLayer: error?.name === "APIConnectionTimeoutError" ? "openai_sdk" : "request_abort",
+        timeoutMs, abortRequested: true, providerCompletionUnknown: true,
+      } } : {}),
       ...(error?.failureDiagnostic ? { failureDiagnostic: error.failureDiagnostic } : {}) };
     if (enabled && internalBenchmark && includeRejectedDraft && draft !== undefined) {
       // The privacy/internal-metadata gate takes precedence even for reviewers.
@@ -230,6 +260,19 @@ export async function generateSleepPremiumMaster({
       result.usage = safeUsage(response, result.source);
       result.requestCount = requestCount;
       result.serializedBriefCharacters = serializedBriefCharacters;
+      result.inputMetrics = {
+        encoding: "tables-and-text.v2",
+        briefCharacters: serializedBriefCharacters,
+        briefEstimatedTokens: serializedBriefCharacters === null ? null : Math.ceil(serializedBriefCharacters / 4),
+        instructionsCharacters: SLEEP_PREMIUM_WRITER_INSTRUCTIONS.length,
+        estimateMethod: "characters / 4, rounded up; not provider tokenization",
+      };
+      result.requestLatencyMilliseconds = requestStarted === null ? null : requestLatencyMilliseconds ?? Math.round(performance.now() - requestStarted);
+      result.providerMetadata = {
+        requestId: safeRequestId(response?._request_id), usagePresent: response?.usage != null,
+        responseModel: typeof response?.model === "string" && /^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/u.test(response.model) ? response.model : null,
+        reasoningEffort: "low", timeoutMs,
+      };
       result.review_only = true;
       result.release_allowed = false;
       result.clinical_review_status = "pending";

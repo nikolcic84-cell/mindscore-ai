@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { createServer, request } from "node:http";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 // Bridge the existing server dependency; no package/dependency changes.
@@ -11,13 +11,14 @@ import express from "../server/node_modules/express/index.js";
 import { registerSleepPremiumBenchmarkRoute } from "../server/sleepPremiumBenchmarkRoute.js";
 import { benchmarkFixtures } from "./debug-sleep-premium-story-material.js";
 import { buildSleepPremiumInput } from "../server/sleepPremiumInput.js";
-import { buildSleepPremiumWriterBrief } from "../server/sleepPremiumWriterBrief.js";
+import { buildSleepPremiumWriterBrief, projectSleepPremiumWriterBrief } from "../server/sleepPremiumWriterBrief.js";
 import { formatBenchmark } from "./run-sleep-premium-writer-benchmarks.js";
 import { generateSleepPremiumMaster } from "../server/sleepPremiumWriter.js";
 
 // Standalone: node --test scripts/test-sleep-premium-benchmark-route.js
 // All AI responses are injected synthetic scaffolding, never live AI or keys.
-const ENDPOINT = "/api/dev/premium-writer-benchmark";
+const LEGACY_ENDPOINT = "/api/dev/premium-writer-benchmark";
+const ENDPOINT = "/api/dev/premium-writer-benchmark-v2";
 const HOST = "mindscore-premium-staging.onrender.com";
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 const staging = () => ({ RENDER_GIT_BRANCH: "premium-ai-staging", ENABLE_PREMIUM_AI_PREVIEW: "true",
@@ -41,12 +42,17 @@ after(async () => {
 });
 
 const unique = (values) => [...new Set(values)];
-function decodeBrief(serialized) {
-  const { brief, shared_text } = JSON.parse(serialized);
+function decodeWriterTransport(serialized) {
+  const envelope = JSON.parse(serialized);
+  assert.equal(envelope.encoding, "tables-and-text.v2");
+  const { brief, shared_text } = envelope;
   const decode = (value) => {
     if (Array.isArray(value)) return value.map(decode);
     if (value && typeof value === "object") {
       if (Object.keys(value).length === 1 && Object.hasOwn(value, "$text")) return shared_text[value.$text];
+      if (Array.isArray(value.columns) && Array.isArray(value.rows)) {
+        return value.rows.map((row) => Object.fromEntries(value.columns.map((column, index) => [column, decode(row[index])])));
+      }
       return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, decode(child)]));
     }
     return value;
@@ -80,11 +86,17 @@ function draft(brief) {
     technique_ids: unique(master.plan7.map(({ technique_id }) => technique_id).filter((id) => id !== null)), device_ids: [] };
   return master;
 }
-const response = (requestBody) => ({ status: "completed", output_text: JSON.stringify(draft(decodeBrief(requestBody.input[1].content))),
-  usage: { input_tokens: 120, output_tokens: 80, total_tokens: 200, credential: "never-return-this-usage-field" } });
+const response = (_requestBody, _options, fixtureIndex) => {
+  const fixture = benchmarkFixtures[fixtureIndex];
+  assert.ok(fixture, "each synthetic writer request maps to a fixture answer set");
+  const canonicalBrief = buildSleepPremiumWriterBrief(buildSleepPremiumInput(fixture.answers));
+  return { status: "completed", output_text: JSON.stringify(draft(canonicalBrief)),
+    usage: { input_tokens: 120, output_tokens: 80, total_tokens: 200, credential: "never-return-this-usage-field" } };
+};
 function mock(handler = response) {
   const calls = [];
   return { calls, responses: { create: async (body, options) => {
+    const callIndex = calls.length;
     calls.push({ body, options });
     assert.equal(options.maxRetries, 0);
     assert.equal(options.timeout, 60000);
@@ -92,19 +104,25 @@ function mock(handler = response) {
     assert.equal(body.model, "gpt-5-mini");
     assert.equal(body.max_output_tokens, 8000);
     assert.equal(body.store, false);
-    return handler(body, options);
+    assert.deepEqual(body.reasoning, { effort: "low" });
+    assert.equal(body.text.verbosity, "low");
+    return handler(body, options, callIndex);
   } } };
 }
 
 async function setup(t, options = {}, cache) {
-  const directory = cache ?? await mkdtemp(join(tmpdir(), "sleep-bench-route-"));
-  if (!cache) t.after(() => rm(directory, { recursive: true, force: true }));
+  const baseDirectory = cache ? dirname(cache) : await mkdtemp(join(tmpdir(), "sleep-bench-route-"));
+  const directory = cache ?? join(baseDirectory, "premium-writer-benchmark-v2");
+  const legacyDirectory = join(baseDirectory, "premium-writer-benchmark-v1");
+  await mkdir(directory, { recursive: true });
+  await mkdir(legacyDirectory, { recursive: true });
+  if (!cache) t.after(() => rm(baseDirectory, { recursive: true, force: true }));
   const client = options.openaiClient ?? mock();
   const env = options.env ?? staging();
   const app = express();
   app.set("trust proxy", true); // Stronger check: forwarded hostname MUST NOT authorize.
   const registered = registerSleepPremiumBenchmarkRoute(app, { openaiClient: client, apiKeyAvailable: true,
-    cacheDir: directory, ...options, env });
+    cacheDir: legacyDirectory, ...options, env });
   // Even an ungated app must not echo arbitrary paths in its default 404 HTML.
   app.use((req, res) => res.status(404).json({ error: "not_found" }));
   const server = createServer(app);
@@ -124,7 +142,7 @@ async function setup(t, options = {}, cache) {
     if (body !== undefined) req.write(typeof body === "string" ? body : JSON.stringify(body));
     req.end();
   });
-  return { directory, client, env, registered, send };
+  return { directory, legacyDirectory, client, env, registered, send };
 }
 
 test("pure import is silent and production import does not load evidence", () => {
@@ -176,7 +194,7 @@ test("safe status contains only commit, enable boolean, completed count and fixt
   app.env.SECRET = "must-not-appear";
   let out = await app.send();
   assert.equal(out.status, 200);
-  assert.deepEqual(out.body, { version: "phase2bench.v1", commit: "a".repeat(40), enabled: true, completed: 0,
+  assert.deepEqual(out.body, { version: "phase2bench.v2", commit: "a".repeat(40), enabled: true, completed: 0,
     fixtures: Object.fromEntries(LETTERS.map((id) => [id, "unused"])) });
   assert.equal(out.headers["cache-control"], "no-store");
   for (const invalid of ["commit-with-secret", "a".repeat(39), "g".repeat(40), undefined]) {
@@ -240,7 +258,13 @@ test("six canonical fixtures: six real writer mock calls, complete formatter JSO
     assert.equal(result.semantic_review_required, true);
     assert.equal(result.release_allowed, false);
     const brief = buildSleepPremiumWriterBrief(buildSleepPremiumInput(benchmarkFixtures[i].answers));
-    assert.deepEqual(decodeBrief(app.client.calls[i].body.input[1].content), brief);
+    const writerRequest = app.client.calls[i].body;
+    const transport = decodeWriterTransport(writerRequest.input[1].content);
+    assert.deepEqual(transport, projectSleepPremiumWriterBrief(brief));
+    assert.equal(writerRequest.text.format.name, "mindscore_sleep_premium_master_v1");
+    assert.equal(writerRequest.text.verbosity, "low");
+    assert.deepEqual(writerRequest.reasoning, { effort: "low" });
+    assert.ok(!Object.hasOwn(transport, "supporting_facts"));
     assert.equal(out.body.priority, brief.priority.area);
     assert.ok(Buffer.byteLength(out.text) < 256 * 1024);
     assert.ok(!out.text.includes("never-return-this-usage-field"));
@@ -270,7 +294,7 @@ test("six canonical fixtures: six real writer mock calls, complete formatter JSO
     import { createServer, request } from 'node:http';
     import { registerSleepPremiumBenchmarkRoute } from ${JSON.stringify(routeUrl)};
     const app = express();
-    registerSleepPremiumBenchmarkRoute(app, { cacheDir: ${JSON.stringify(app.directory)},
+    registerSleepPremiumBenchmarkRoute(app, { cacheDir: ${JSON.stringify(app.legacyDirectory)},
       apiKeyAvailable: false, env: ${JSON.stringify(staging())} });
     const server = createServer(app);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -300,7 +324,7 @@ test("exclusive reservation precedes API; simultaneous repeat=409, other fixture
   let finish;
   const entered = new Promise((resolve) => { started = resolve; });
   const pending = new Promise((resolve) => { finish = resolve; });
-  const client = mock(async (body) => { started(); await pending; return response(body); });
+  const client = mock(async (_body, _options, fixtureIndex) => { started(); await pending; return response(null, null, fixtureIndex); });
   const app = await setup(t, { openaiClient: client });
   const otherApp = await setup(t);
   const duplicateApp = await setup(t, {}, app.directory);
@@ -442,4 +466,35 @@ test("corrupt disk cache or failed publication fails closed and never permits an
   assert.equal((await publication.send("POST", { fixture: "A" })).status, 503);
   assert.equal((await publication.send("POST", { fixture: "A" })).status, 409);
   assert.equal(publication.client.calls.length, 1);
+});
+
+test("v1 remains historical read-only; v2 generation and caches are isolated", async (t) => {
+  const app = await setup(t);
+  const historical = { version: "phase2bench.v1", commit: "b".repeat(40), fixture: "A", status: "completed",
+    review_only: true, release_allowed: false, result: { historical: "keep-this-record" } };
+  await writeFile(join(app.legacyDirectory, "A.reserved"), "");
+  await writeFile(join(app.legacyDirectory, "A.json"), JSON.stringify(historical));
+
+  const oldRead = await app.send("GET", undefined, `${LEGACY_ENDPOINT}?fixture=A`);
+  assert.equal(oldRead.status, 200);
+  assert.deepEqual(oldRead.body, historical);
+  const oldStatus = await app.send("GET", undefined, LEGACY_ENDPOINT);
+  assert.equal(oldStatus.body.version, "phase2bench.v1");
+  assert.equal(oldStatus.body.completed, 1);
+  assert.equal(oldStatus.body.fixtures.A, "completed");
+  assert.equal((await app.send("POST", { fixture: "A" }, LEGACY_ENDPOINT)).status, 410);
+  assert.equal(app.client.calls.length, 0);
+
+  assert.equal((await app.send("GET", undefined, `${ENDPOINT}?fixture=A`)).status, 404);
+  const fresh = await app.send("POST", { fixture: "A" });
+  assert.equal(fresh.status, 200, fresh.text);
+  assert.equal(fresh.body.version, "phase2bench.v2");
+  assert.equal(fresh.body.status, "completed");
+  assert.equal(app.client.calls.length, 1);
+  assert.deepEqual(JSON.parse(await readFile(join(app.legacyDirectory, "A.json"), "utf8")), historical);
+  assert.deepEqual(JSON.parse(await readFile(join(app.directory, "A.json"), "utf8")), fresh.body);
+  assert.deepEqual((await app.send("GET", undefined, `${LEGACY_ENDPOINT}?fixture=A`)).body, historical);
+  assert.equal((await app.send("POST", { fixture: "A" }, LEGACY_ENDPOINT)).status, 410,
+    "even an existing v1 cache is only accessible through GET");
+  assert.equal(app.client.calls.length, 1, "v1 must never invoke generation");
 });

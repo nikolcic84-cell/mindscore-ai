@@ -1,0 +1,32 @@
+{
+  "fixture": "D",
+  "commit": "d089299fcbd9acecb5e0b43ba79ab139590f4996",
+  "profile": "SAN POD PRITISKOM",
+  "priority": "Više delova tvoje noći",
+  "latencyMilliseconds": 60011,
+  "status": "failed",
+  "validation": {
+    "valid": false,
+    "reason": "Master was not accepted."
+  },
+  "failure": "timeout",
+  "source": "fallback",
+  "requestCount": 1,
+  "usage": {
+    "model": "gpt-5-mini",
+    "input_tokens": null,
+    "output_tokens": null,
+    "total_tokens": null,
+    "response_status": "unavailable",
+    "source": "FALLBACK"
+  },
+  "primary": "duration_recovery",
+  "master": null,
+  "rejectedDraft": null,
+  "withheld": false,
+  "incomplete": null,
+  "quality": {
+    "requires_human_review": true,
+    "evaluation": "No accepted AI master; no quality success claimed."
+  }
+}
