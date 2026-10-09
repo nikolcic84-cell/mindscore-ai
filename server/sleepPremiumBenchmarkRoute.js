@@ -5,10 +5,12 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 const V1_PATH = "/api/dev/premium-writer-benchmark";
 const V2_PATH = "/api/dev/premium-writer-benchmark-v2";
 const V3_PATH = "/api/dev/premium-writer-benchmark-v3";
+const V4_PATH = "/api/dev/premium-writer-benchmark-v4";
 const HOST = "mindscore-premium-staging.onrender.com";
 const V1_VERSION = "phase2bench.v1";
 const V2_VERSION = "phase2bench.v2";
 const V3_VERSION = "phase2bench.v3";
+const V4_VERSION = "phase2bench.v4";
 const FIXTURES = Object.freeze(["A", "B", "C", "D", "E", "F"]);
 const MAX_JSON_BYTES = 256 * 1024;
 // Shared by every registration/cache directory in this process, not per app.
@@ -21,12 +23,13 @@ const known = (fixture) => typeof fixture === "string" && FIXTURES.includes(fixt
 
 // No evidence/writer/benchmark imports on an ungated registration (or GET).
 async function dependencies() {
-  const [fixtures, formatter, input, writer] = await Promise.all([
+  const [fixtures, formatter, input, writer, storyBenchmark] = await Promise.all([
     import("../scripts/debug-sleep-premium-story-material.js"),
     import("../scripts/run-sleep-premium-writer-benchmarks.js"),
     import("./sleepPremiumInput.js"), import("./sleepPremiumWriter.js"),
+    import("../scripts/run-sleep-premium-story-benchmarks.js"),
   ]);
-  return { ...fixtures, ...formatter, ...input, ...writer };
+  return { ...fixtures, ...formatter, ...input, ...writer, ...storyBenchmark };
 }
 
 /** Staging exposure gate, NOT authentication. Mount by dynamic import ONLY
@@ -153,15 +156,22 @@ function registerNamespace(app, { path, version, directory, generationEnabled, o
       const synthetic = api.benchmarkFixtures[FIXTURES.indexOf(fixture)];
       const input = api.buildSleepPremiumInput(synthetic.answers);
       if (input.profile !== synthetic.expectedProfile) throw new Error("Fixture contract");
-      // The existing writer builds the canonical master brief, validates the
-      // master, resolves preview/science, and enforces one call/maxRetries:0.
-      const result = await api.generateSleepPremiumMaster({ input, openaiClient, apiKeyAvailable: true,
-        internalBenchmark: true, includeRejectedDraft: true, includePreview: true });
-      const review = JSON.parse(api.formatBenchmark(result, { fixtureId: fixture, format: "json" }));
+      const storyPipeline = version === V4_VERSION;
+      const result = storyPipeline
+        ? await api.generateSleepPremiumStoryReport({ input, openaiClient, apiKeyAvailable: true,
+          onIncompleteResponse: (metadata) => console.warn("[PREMIUM_AI_STORY_INCOMPLETE_RESPONSE]", JSON.stringify(metadata)),
+          logUsage: (metadata) => console.log("[PREMIUM_AI_STORY_USAGE]", JSON.stringify(metadata)) })
+        : await api.generateSleepPremiumMaster({ input, openaiClient, apiKeyAvailable: true,
+          internalBenchmark: true, includeRejectedDraft: true, includePreview: true });
+      const review = storyPipeline
+        ? JSON.parse(api.formatSleepPremiumStoryBenchmark(result, { fixtureId: fixture, format: "json" }))
+        : JSON.parse(api.formatBenchmark(result, { fixtureId: fixture, format: "json" }));
       const payload = { version, commit: commit(env), fixture,
-        profile: result.brief.profile, priority: result.brief.priority.area,
+        profile: storyPipeline ? result.master.profile : result.brief.profile,
+        priority: storyPipeline ? result.master.priority.area : result.brief.priority.area,
         latencyMilliseconds: Math.round(performance.now() - started),
-        status: result.source === "ai" && result.validation?.valid === true ? "completed" : "failed",
+        status: storyPipeline ? (result.report && result.validation?.valid ? "completed" : "failed")
+          : result.source === "ai" && result.validation?.valid === true ? "completed" : "failed",
         phase2reviewonly: true, review_only: true, release_allowed: false, result: review };
       if (Buffer.byteLength(JSON.stringify(payload), "utf8") >= MAX_JSON_BYTES) {
         // Never clip prose into a purported full report, or regenerate it.
@@ -183,8 +193,8 @@ function registerNamespace(app, { path, version, directory, generationEnabled, o
   });
 }
 
-/** Staging-only benchmark route set. v1 and v2 are historical read-only
- * namespaces; only the new v3 namespace can reserve fixtures or invoke the
+/** Staging-only benchmark route set. v1-v3 are historical read-only
+ * namespaces; only the new v4 namespace can reserve fixtures or invoke the
  * writer. Every version keeps an independent immutable cache directory.
  */
 export function registerSleepPremiumBenchmarkRoute(app, {
@@ -195,17 +205,20 @@ export function registerSleepPremiumBenchmarkRoute(app, {
   // server.js owns the stable v1 path. Derive independent siblings without
   // migrating, deleting, or modifying any historical version's cache.
   const directoryForVersion = (version) => directory
-    ? /-v[123]$/u.test(basename(directory))
-      ? join(dirname(directory), `${basename(directory).replace(/-v[123]$/u, "")}-${version}`)
+    ? /-v[1-4]$/u.test(basename(directory))
+      ? join(dirname(directory), `${basename(directory).replace(/-v[1-4]$/u, "")}-${version}`)
       : join(directory, `premium-writer-benchmark-${version}`)
     : null;
   const v2Directory = directoryForVersion("v2");
   const v3Directory = directoryForVersion("v3");
+  const v4Directory = directoryForVersion("v4");
   registerNamespace(app, { path: V1_PATH, version: V1_VERSION, directory,
     generationEnabled: false, openaiClient, apiKeyAvailable, env });
   registerNamespace(app, { path: V2_PATH, version: V2_VERSION, directory: v2Directory,
     generationEnabled: false, openaiClient, apiKeyAvailable, env });
   registerNamespace(app, { path: V3_PATH, version: V3_VERSION, directory: v3Directory,
+    generationEnabled: true, openaiClient, apiKeyAvailable, env });
+  registerNamespace(app, { path: V4_PATH, version: V4_VERSION, directory: v4Directory,
     generationEnabled: true, openaiClient, apiKeyAvailable, env });
   return true;
 }
