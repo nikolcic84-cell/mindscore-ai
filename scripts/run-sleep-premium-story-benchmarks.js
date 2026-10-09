@@ -6,11 +6,11 @@ import { buildDeterministicSleepPremiumStoryReport, generateSleepPremiumStoryRep
 
 export { generateSleepPremiumStoryReport };
 
-export function formatSleepPremiumStoryBenchmark(result, { fixtureId = "unspecified", format = "text" } = {}) {
+export function formatSleepPremiumStoryBenchmark(result, { fixtureId = "unspecified", format = "text", benchmarkVersion = "phase2bench.v4" } = {}) {
   const raw = safeRawProse(result.rawGptProse);
   const report = {
     banner: "INTERNAL SYNTHETIC BENCHMARK — REVIEW ONLY — NOT CUSTOMER RELEASE",
-    version: "phase2bench.v4",
+    version: benchmarkVersion,
     fixture: fixtureId,
     source: result.source,
     validation: result.validation,

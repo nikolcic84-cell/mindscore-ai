@@ -3,9 +3,11 @@ import { buildSleepPremiumStoryMaster } from "./sleepPremiumStoryMaster.js";
 export const SLEEP_PREMIUM_STORY_MODEL = "gpt-5-mini";
 export const SLEEP_PREMIUM_STORY_MAX_OUTPUT_TOKENS = 8000;
 export const SLEEP_PREMIUM_STORY_INSTRUCTIONS = `Ti si objašnjavač. Vrati samo tražena JSON polja na prirodnom srpskom, latinicom. MindScore je već odredio činjenice, uvide, očuvane osobine, pitanje, nauku i plan; ti ne biraš niti menjaš ništa od toga.
-Piši priču koja povezuje samo dostavljene customer-safe činjenice. Razdvojeni odgovori ne potvrđuju uzrok niti da se stvari dešavaju iste noći. Dnevnik je subjektivni utisak, ne objektivno merenje. Nauku objasni samo kroz unapred odobren koncept i ograničenja; ne dodaj izvore ili tvrdnje.
-Ne vraćaj profile, prioritete, plan/dane, radnje, tehnike, naučne tvrdnje kao dodatna polja, izvore, citate ili ID-jeve. Ne dodaj dijagnozu, lečenje, preporuke, obećanja, objektivna merenja ili uzročnost. MIRNA NOĆ: sačuvaj miran ton i ne izmišljaj problem.
-Sva polja su kratka, osim story_intro koji cilja 120–180 reči kada materijal to podržava. Insights objašnjavaju samo ponuđene uvide. do_not_change_explanation/open_question_explanation su null ako su odgovarajući podaci null. insight_2/3 su null ako taj broj uvida nije unapred odabran. experiment_explanation objašnjava svrhu fiksnog plana; ne piše dane. Piši prirodno, bez uredničkog/AI jezika, mašinskih oznaka ili engleskih placeholdera.`;
+Svaku tvrdnju o osobi veži za dostavljene činjenice i zadrži njihov opseg: trajanje sna nije vreme u krevetu; potreba za kafom/pauzom nije isto što i pospanost; teško vraćanje u san nije učestalost buđenja; manjak energije nije raspoloženje; mogućnost dužeg ostajanja u krevetu nije ostajanje kod kuće. Ne dodaj napetost, način suočavanja, učestalost, merenje, simptom ili drugi događaj koji nije naveden.
+Nepoznat odnos ostaje nepoznat. Ako pitanje traži da li se X i Y javljaju zajedno, istih noći/dana ili su povezani, predstavi ih odvojeno i sačuvaj neizvesnost: „Navodiš X i Y. Još ne znamo da li se javljaju istih noći.“ Ne piši da postoje zajedno, često se javljaju zajedno, da su povezani, da jedno doprinosi/utiče/objašnjava drugo ili da je jedno uzrok drugog. Nemoj pretvarati poređenje u zaključak.
+Bezbednosna ograničenja su uputstva tebi, ne tekst za korisnika: izostavi ograde poput „bez tvrdnji o uzroku/terapiji/dijagnozi“, „ovo ne dokazuje“ i „ne može se zaključiti“. Ne dodaj dijagnozu, lečenje, preporuke, obećanja ili objektivna merenja. Ne pominji nauku u svojim poljima; odobrene tvrdnje i izvori dodaju se odvojeno.
+Piši kratkim, prirodnim rečenicama na savremenom srpskom. Bez uredničkog/AI jezika, prepričavanja istog kontrasta kroz više polja ili generičkog savetovanja. story_intro uvodi samo glavni personalizovani uvid; svaki insight dodaje zaseban detalj; očuvanje objašnjava šta ne treba prvo menjati; pitanje objašnjava šta još nije poznato; eksperiment ukratko objašnjava svrhu već određenog plana, bez dodatnih zadataka.
+MIRNA NOĆ ostaje mirna: pokaži šta je dosledno u prijavljenim odgovorima i šta vredi sačuvati, bez problema, drame, pitanja ili nauke ako ih master nema. Ne forsiraj savet ili promenu. Ostala polja su kratka; story_intro cilja 90–130 reči samo kada materijal to podržava. Polja za pitanje i očuvanje su null kada master nema odgovarajući podatak. insight_2/3 su null ako taj broj uvida nije unapred odabran. Vrati samo šest polja iz šeme; ne vraćaj profile, prioritete, plan/dane, radnje, tehnike, naučne tvrdnje, izvore, citate ili ID-jeve.`;
 
 const string = (maxLength) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
 const nullable = (schema) => ({ anyOf: [schema, { type: "null" }] });
@@ -31,16 +33,46 @@ const proseKeys = (master) => ["story_intro", "insight_1_explanation", "insight_
 const INTERNAL_ID = /\b(?:FACT_Q\d+|Q(?:[1-9]|1[0-2])|EV_[A-Z0-9_]+|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[a-f\d]{8}-[a-f\d-]{27,})\b/iu;
 const SENSITIVE = /\S+@\S+|https?:\/\/|\b(?:sk[-_]|pk_|whsec_|bearer\s|password|credential|api[_ -]?key|secret)\b|(?:\+?\d[\s().-]*){7,}/iu;
 const INTERNAL_WORDS = /\b(?:classifier|scoring|confidence|deterministic|deterministick\w*|urednick\w*|hipotez\w*|kandidat\w*|validator|prompt|schema|model|ovaj izveštaj|podržava \d+ uvida|tvoj prioritet #1)\b/iu;
-const DIAGNOSIS = /\b(?:imas|imate|dijagnoz\w*|nesanic\w*|apnej\w*|depres\w*|poremec\w*|bolest\w*|lekov\w*|medikament\w*|terapij\w*)\b/iu;
-const CAUSAL = /\b(?:uzroku\w*|izaziv\w*|prouzrok\w*|zbog toga|zbog misl\w*|dovodi do|will cause|caused by)\b/iu;
-const NEGATED_CAUSAL_CAVEAT = /\bne govori\s+sta\s+ih\s+je\s+izazvalo\b|\bne (?:pokazuje|utvrdjuje|potvrdjuje|dokazuje)\b.{0,45}\b(?:uzrok\w*|izaziv\w*|povezanost|da li jedno)\b|\bbez zakljucka o uzroku\b|\bne uvodi novu pretpostavku o uzroku\b/gu;
+const DIAGNOSIS = /\b(?:dijagnoz\w*|nesanic\w*|apnej\w*|depres\w*|anksiozn\w*|poremec\w*|bolest\w*|lekov\w*|medikament\w*|terapij\w*)\b/iu;
+const TREATMENT_RECOMMENDATION = /\b(?:preporucuj\w*|propis\w*|primeni|uzmi|koristi|zapo[cč]ni|treba\s+da\s+uzmes)\b.{0,55}\b(?:lek\w*|terapij\w*|medikament\w*|lecenj\w*)\b/iu;
+const CAUSAL = /\b(?:uzroku\w*|uzrocn\w*\s+vez\w*|izaziv\w*|prouzrok\w*|zbog toga|zbog misl\w*|dovodi do|doprinos\w*|utic\w*|objasnjav\w*|will cause|caused by)\b/iu;
+const NEGATED_CAUSAL_CAVEAT = /\bne govori\s+sta\s+ih\s+je\s+izazvalo\b|\bne (?:pokazuje|utvrdjuje|potvrdjuje|dokazuje)\b.{0,45}\b(?:uzrok\w*|uzroc\w*|izaziv\w*|povezanost|da li jedno)\b|\bbez (?:izvlacenja brzih zakljucaka|tvrdnji|zakljucaka) o uzroc?\w*\b|\bbez zakljucka o uzroku\b|\bne uvodi novu pretpostavku o uzroku\b|\bne (?:postoji|postoji potvrda za) uzrocna veza\b/gu;
+const NEGATED_MEDICAL_CAVEAT = /\bbez (?:tvrdnji|zakljucaka) o uzroc\w*(?: ili (?:terapij\w*|dijagnoz\w*))?\b|\bbez tvrdnji o uzrocima ili terapij\w*\b|\bbez zakljucaka o uzroku ili dijagnoz\w*\b|\bbez dijagnoz\w*\b|\bne predstavlja dijagnoz\w*\b|\bnije dijagnoz\w*\b|\bbez terapij\w*\b/gu;
 const GUARANTEE = /\b(?:sigurno|garantovan\w*|definitivn\w*|will improve|will fix|leci|izleci|popravlja|resava)\b/iu;
 const OBJECTIVE = /\b(?:objektiv\w*\s+(?:izmer\w*|dokaz\w*|utvrd\w*)|objectiv\w*\s+(?:measure|prove|establish))\b/iu;
 const UNSUPPORTED_COOCCURRENCE = /\b(?:cesto\s+se\s+(?:javlj\w*|pojavljuj\w*)|(?:javlj\w*|pojavljuj\w*)\s+se)\s+(?:cesto\s+)?(?:zajedno|iste?\s+noci|iste?\s+dana)\b/iu;
+const RELATIONSHIP_ASSERTION = /\b(?:koegzistir\w*|povezan\w*|udruzen\w*|doprinos\w*|utic\w*|objasnjav\w*|postoj\w*\s+(?:cesto\s+)?zajedno|javlj\w*\s+(?:cesto\s+)?zajedno|pojavljuj\w*\s+(?:cesto\s+)?zajedno|cesto\s+zajedno|istih\s+noci|iste\s+noci|istim\s+danima|istog\s+dana)\b/iu;
+const UNCERTAINTY_CUE = /\b(?:jos\s+ne\s+znamo|ne\s+znamo|nije\s+poznato|ostaje\s+otvoren\w*|da\s+li|pitanje\s+je)\b/iu;
+const SAFETY_DISCLAIMER = /\b(?:bez tvrdnji o uzroku|bez tvrdnji o terapiji|bez tvrdnji o dijagnozi|bez terapije|bez dijagnoze|ovo ne dokazuje|ne moze se zakljuciti|ovo nije dijagnoza|ne predstavlja dijagnozu)\b/iu;
 const ENGLISH_PLACEHOLDER = /\b(?:begin|start) the allocated plan\b|\bno additional action\b|\byour assigned step\b|\btrack your sleep\b/iu;
 const BIBLIOGRAPHY = /\b(?:doi|pubmed|pmid|et al|bibliograf\w*|citiran\w*)\b|\b(?:19|20)\d{2}\b|\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]/iu;
 const normalize = (value) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/gu, "d").toLowerCase();
 const words = (text) => (text.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu) ?? []).length;
+const sentences = (text) => text.split(/(?<=[.!?])\s+/u);
+const stripNegatedCaveats = (text, pattern) => text.replace(pattern, " ");
+function hasAssertedUnknownRelationship(copy, master) {
+  return sentences(copy).some((sentence) => {
+    const asserted = UNSUPPORTED_COOCCURRENCE.test(sentence) ||
+      (Boolean(master.openQuestion) && RELATIONSHIP_ASSERTION.test(sentence));
+    return asserted && !UNCERTAINTY_CUE.test(sentence);
+  });
+}
+function hasUnsupportedFactStrengthening(copy, master) {
+  const facts = normalize(master.selectedInsights.flatMap(({ facts: insightFacts }) => insightFacts).join(" "));
+  const checks = [
+    [/\b7\s*[–-]\s*9\s+sati\s+u\s+krevetu\b/u, /\b7\s*[–-]\s*9\s+sati\b/u.test(facts) && !/\bu\s+krevetu\b/u.test(facts)],
+    [/\bpospanost\b/u, /\b(?:kaf\w*|pauz\w*)\b/u.test(facts) && !/\b(?:pospanost|jedva\s+drzis\s+oci|tesko\s+drzis\s+oci)\b/u.test(facts)],
+    [/\b(?:cesta|ucestala)\s+budenj\w*\b|\b(?:se\s+)?budis\s+(?:se\s+)?(?:vise\s+puta|cesto)\b/u, !/\b(?:vise\s+puta|budi(?:s)?\s+se\s+cesto|cesta\s+budenja)\b/u.test(facts)],
+    [/\b(?:mrzovolj\w*|razdrazljiv\w*|lose\s+raspolozen\w*)\b/u, !/\b(?:mrzovolj\w*|razdrazljiv\w*|raspolozen\w*)\b/u.test(facts)],
+    [/\b(?:ostan\w*|ostaj\w*)\s+kod\s+kuce\b/u, !/\bkod\s+kuce\b/u.test(facts)],
+    [/\b(?:napetost|pokusaj\s+da\s+se\s+odvrati\s+paznja|odvratis\s+paznju)\b/u, !/\b(?:napetost|odvrat\w*\s+paznj\w*)\b/u.test(facts)],
+  ];
+  return checks.some(([pattern, unsupported]) => unsupported && pattern.test(copy));
+}
+function hasAssertedCausality(copy) {
+  return sentences(copy).some((sentence) => CAUSAL.test(stripNegatedCaveats(sentence, NEGATED_CAUSAL_CAVEAT)) &&
+    !UNCERTAINTY_CUE.test(sentence));
+}
 const safeCount = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const safeUsage = (response, source) => ({
   input_tokens: safeCount(response?.usage?.input_tokens),
@@ -53,7 +85,6 @@ const safeUsage = (response, source) => ({
 
 export function validateSleepPremiumStoryProse(candidate, master) {
   const keys = proseKeys(master);
-  const schema = buildSleepPremiumStoryProseSchema({ selectedInsightCount: master.selectedInsights.length }).schema;
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) ||
       Object.keys(candidate).length !== keys.length || keys.some((key) => !Object.hasOwn(candidate, key))) {
     return { valid: false, field: "$", category: "shape" };
@@ -83,9 +114,15 @@ export function validateSleepPremiumStoryProse(candidate, master) {
     if (INTERNAL_ID.test(value)) return { valid: false, field: key, category: "machine_id" };
     if (SENSITIVE.test(value)) return { valid: false, field: key, category: "sensitive_or_link" };
     if (INTERNAL_WORDS.test(copy)) return { valid: false, field: key, category: "internal_language" };
-    if (DIAGNOSIS.test(copy)) return { valid: false, field: key, category: "medical_or_diagnostic" };
-    if (CAUSAL.test(copy.replace(NEGATED_CAUSAL_CAVEAT, " "))) return { valid: false, field: key, category: "causal_claim" };
-    if (UNSUPPORTED_COOCCURRENCE.test(copy)) return { valid: false, field: key, category: "unsupported_cooccurrence" };
+    if (SAFETY_DISCLAIMER.test(copy)) return { valid: false, field: key, category: "unnecessary_disclaimer" };
+    const medicalCopy = stripNegatedCaveats(copy, NEGATED_MEDICAL_CAVEAT);
+    if (DIAGNOSIS.test(medicalCopy) || TREATMENT_RECOMMENDATION.test(medicalCopy)) {
+      return { valid: false, field: key, category: "medical_or_diagnostic" };
+    }
+    if (hasAssertedCausality(copy)) return { valid: false, field: key, category: "causal_claim" };
+    if (hasAssertedUnknownRelationship(copy, master)) return { valid: false, field: key, category: "unsupported_cooccurrence" };
+    if (hasAssertedUnknownRelationship(copy, master)) return { valid: false, field: key, category: "unsupported_cooccurrence" };
+    if (hasUnsupportedFactStrengthening(copy, master)) return { valid: false, field: key, category: "unsupported_fact_strengthening" };
     if (GUARANTEE.test(copy)) return { valid: false, field: key, category: "guarantee" };
     if (OBJECTIVE.test(copy)) return { valid: false, field: key, category: "objective_measurement" };
     if (ENGLISH_PLACEHOLDER.test(copy)) return { valid: false, field: key, category: "english_placeholder" };

@@ -6,11 +6,13 @@ const V1_PATH = "/api/dev/premium-writer-benchmark";
 const V2_PATH = "/api/dev/premium-writer-benchmark-v2";
 const V3_PATH = "/api/dev/premium-writer-benchmark-v3";
 const V4_PATH = "/api/dev/premium-writer-benchmark-v4";
+const V5_PATH = "/api/dev/premium-writer-benchmark-v5";
 const HOST = "mindscore-premium-staging.onrender.com";
 const V1_VERSION = "phase2bench.v1";
 const V2_VERSION = "phase2bench.v2";
 const V3_VERSION = "phase2bench.v3";
 const V4_VERSION = "phase2bench.v4";
+const V5_VERSION = "phase2bench.v5";
 const FIXTURES = Object.freeze(["A", "B", "C", "D", "E", "F"]);
 const MAX_JSON_BYTES = 256 * 1024;
 // Shared by every registration/cache directory in this process, not per app.
@@ -156,7 +158,7 @@ function registerNamespace(app, { path, version, directory, generationEnabled, o
       const synthetic = api.benchmarkFixtures[FIXTURES.indexOf(fixture)];
       const input = api.buildSleepPremiumInput(synthetic.answers);
       if (input.profile !== synthetic.expectedProfile) throw new Error("Fixture contract");
-      const storyPipeline = version === V4_VERSION;
+      const storyPipeline = version === V4_VERSION || version === V5_VERSION;
       const result = storyPipeline
         ? await api.generateSleepPremiumStoryReport({ input, openaiClient, apiKeyAvailable: true,
           onIncompleteResponse: (metadata) => console.warn("[PREMIUM_AI_STORY_INCOMPLETE_RESPONSE]", JSON.stringify(metadata)),
@@ -164,7 +166,7 @@ function registerNamespace(app, { path, version, directory, generationEnabled, o
         : await api.generateSleepPremiumMaster({ input, openaiClient, apiKeyAvailable: true,
           internalBenchmark: true, includeRejectedDraft: true, includePreview: true });
       const review = storyPipeline
-        ? JSON.parse(api.formatSleepPremiumStoryBenchmark(result, { fixtureId: fixture, format: "json" }))
+        ? JSON.parse(api.formatSleepPremiumStoryBenchmark(result, { fixtureId: fixture, format: "json", benchmarkVersion: version }))
         : JSON.parse(api.formatBenchmark(result, { fixtureId: fixture, format: "json" }));
       const payload = { version, commit: commit(env), fixture,
         profile: storyPipeline ? result.master.profile : result.brief.profile,
@@ -193,9 +195,8 @@ function registerNamespace(app, { path, version, directory, generationEnabled, o
   });
 }
 
-/** Staging-only benchmark route set. v1-v3 are historical read-only
- * namespaces; only the new v4 namespace can reserve fixtures or invoke the
- * writer. Every version keeps an independent immutable cache directory.
+/** Staging-only benchmark route set. Each version keeps its own cache; v4
+ * generation is retired, and v5 is the new six-fixture story-writer run.
  */
 export function registerSleepPremiumBenchmarkRoute(app, {
   openaiClient, apiKeyAvailable, cacheDir, env = process.env,
@@ -205,13 +206,14 @@ export function registerSleepPremiumBenchmarkRoute(app, {
   // server.js owns the stable v1 path. Derive independent siblings without
   // migrating, deleting, or modifying any historical version's cache.
   const directoryForVersion = (version) => directory
-    ? /-v[1-4]$/u.test(basename(directory))
-      ? join(dirname(directory), `${basename(directory).replace(/-v[1-4]$/u, "")}-${version}`)
+    ? /-v[1-5]$/u.test(basename(directory))
+      ? join(dirname(directory), `${basename(directory).replace(/-v[1-5]$/u, "")}-${version}`)
       : join(directory, `premium-writer-benchmark-${version}`)
     : null;
   const v2Directory = directoryForVersion("v2");
   const v3Directory = directoryForVersion("v3");
   const v4Directory = directoryForVersion("v4");
+  const v5Directory = directoryForVersion("v5");
   registerNamespace(app, { path: V1_PATH, version: V1_VERSION, directory,
     generationEnabled: false, openaiClient, apiKeyAvailable, env });
   registerNamespace(app, { path: V2_PATH, version: V2_VERSION, directory: v2Directory,
@@ -219,6 +221,8 @@ export function registerSleepPremiumBenchmarkRoute(app, {
   registerNamespace(app, { path: V3_PATH, version: V3_VERSION, directory: v3Directory,
     generationEnabled: true, openaiClient, apiKeyAvailable, env });
   registerNamespace(app, { path: V4_PATH, version: V4_VERSION, directory: v4Directory,
+    generationEnabled: false, openaiClient, apiKeyAvailable, env });
+  registerNamespace(app, { path: V5_PATH, version: V5_VERSION, directory: v5Directory,
     generationEnabled: true, openaiClient, apiKeyAvailable, env });
   return true;
 }

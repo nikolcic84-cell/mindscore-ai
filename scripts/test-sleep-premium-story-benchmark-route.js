@@ -14,6 +14,7 @@ import { SLEEP_PREMIUM_STORY_INSTRUCTIONS } from "../server/sleepPremiumStoryWri
 const HOST = "mindscore-premium-staging.onrender.com";
 const V3 = "/api/dev/premium-writer-benchmark-v3";
 const V4 = "/api/dev/premium-writer-benchmark-v4";
+const V5 = "/api/dev/premium-writer-benchmark-v5";
 const staging = { RENDER_GIT_BRANCH: "premium-ai-staging", ENABLE_PREMIUM_AI_PREVIEW: "true",
   RENDER_EXTERNAL_HOSTNAME: HOST, RENDER_GIT_COMMIT: "a".repeat(40) };
 const savedEnvironment = { branch: process.env.RENDER_GIT_BRANCH, enabled: process.env.ENABLE_PREMIUM_AI_PREVIEW };
@@ -25,15 +26,15 @@ after(() => {
   if (savedEnvironment.enabled === undefined) delete process.env.ENABLE_PREMIUM_AI_PREVIEW;
   else process.env.ENABLE_PREMIUM_AI_PREVIEW = savedEnvironment.enabled;
 });
-const longIntro = "Tvoji odgovori daju više pogleda na san nego što staje u jednu ocenu. Jedan deo se odnosi na period pred spavanje, drugi na tok noći, a treći na osećaj po buđenju ili tokom dana. To ne znači da se sve dogodilo iste noći niti da jedan deo objašnjava drugi. Vredi zadržati i ono što već deluje mirnije, umesto da se menja sve odjednom. Uvidi ispod izdvajaju samo odnose koje tvoji odgovori podržavaju. Gde nedostaje važan podatak, pitanje ostaje otvoreno. Sedmodnevni pokušaj je mali i dobrovoljan; možeš ga preskočiti ako ti ne prija. Cilj je jasnije razumeti sopstvene utiske, a ne postići unapred obećan ishod. Neke razlike mogu ostati otvorene, čak i kada nekoliko delova sna deluje mirnije. Zato plan nudi prostor da razmisliš bez menjanja navika, brojanja minuta ili očekivanja određenog rezultata. Možeš uzeti samo ono što ti je korisno i ostaviti po strani sve što ti dodaje obavezu.";
+const longIntro = "U tvojim odgovorima pojavljuje se nekoliko delova iskustva sa snom: završetak večeri, tok noći, jutro i energija tokom dana. Svaki opis govori o svom delu, pa ih vredi čitati odvojeno. Odabrani uvidi izdvajaju konkretne odgovore i pokazuju šta je u njima vredno pažnje. Kada je za razumevanje potrebno poređenje, ono ostaje otvoreno dok ne znamo kako se utisci raspoređuju po noćima ili danima. Deo plana već je određen iz tvojih odgovora; ova priča ga ne menja niti mu dodaje novu radnju. Sačuvane osobine imaju svoje mesto uz uvid, bez pretvaranja u drugi prioritet. Tekst se drži onoga što si prijavio i ne dopunjava praznine pretpostavkama.";
 const proseFor = (master) => ({
   story_intro: longIntro,
-  insight_1_explanation: "Ovaj odnos povezuje samo iskustva koja su već navedena; ne govori šta ih je izazvalo.",
-  insight_2_explanation: master.selectedInsights.length >= 2 ? "Drugi uvid dodaje zaseban ugao iz odgovora, bez zaključka da su iskustva nastala zajedno." : null,
-  ...(master.selectedInsights.length >= 3 ? { insight_3_explanation: "Treći ugao dopunjuje priču, ali ne uvodi novu pretpostavku o uzroku." } : {}),
-  do_not_change_explanation: master.doNotTargetFirst.length ? "Ovaj deo ne mora biti prvi cilj jer već postoji prijavljeni oslonac; to ne poništava ostale odgovore." : null,
-  open_question_explanation: master.openQuestion ? "Odgovor bi pomogao da se razdvoje dva moguća opisa, bez pretpostavke da su ista noć." : null,
-  experiment_explanation: "Plan razdvaja već izabrane uglove kako bi ostalo jasno šta je izvodljivo, bez menjanja svega odjednom.",
+  insight_1_explanation: "Odabrani odgovori daju dva odvojena ugla; nije poznato da li se javljaju iste noći.",
+  insight_2_explanation: master.selectedInsights.length >= 2 ? "Sledeći uvid izdvaja drugi deo odgovora koji prvi ne obuhvata." : null,
+  ...(master.selectedInsights.length >= 3 ? { insight_3_explanation: "Treći uvid dodaje zaseban podatak iz tvojih odgovora." } : {}),
+  do_not_change_explanation: master.doNotTargetFirst.length ? "Ovaj deo već opisuje osobinu koju želiš da sačuvaš." : null,
+  open_question_explanation: master.openQuestion ? "Poređenje bi razjasnilo da li se ova dva opisa odnose na istu noć." : null,
+  experiment_explanation: "Plan već sadrži odabrane korake; ovo polje ne dodaje novu radnju.",
 });
 
 async function setup(t, handler) {
@@ -69,7 +70,7 @@ async function setup(t, handler) {
   return { root, v1Dir, v2Dir, v3Dir, calls, send };
 }
 
-test("v4 returns complete structured prose-only reports and derives every report scaffold deterministically", async (t) => {
+test("v5 returns complete structured prose-only reports and derives every report scaffold deterministically", async (t) => {
   const expectedRawProse = [];
   const app = await setup(t, async (requestBody, options, index) => {
     const input = buildSleepPremiumInput(benchmarkFixtures[index].answers);
@@ -93,9 +94,9 @@ test("v4 returns complete structured prose-only reports and derives every report
   });
 
   for (const [index, fixture] of benchmarkFixtures.entries()) {
-    const response = await app.send("POST", V4, { fixture: "".concat("ABCDEF"[index]) });
+    const response = await app.send("POST", V5, { fixture: "".concat("ABCDEF"[index]) });
     assert.equal(response.status, 200, JSON.stringify(response.body));
-    assert.equal(response.body.version, "phase2bench.v4");
+    assert.equal(response.body.version, "phase2bench.v5");
     assert.equal(response.body.status, "completed", JSON.stringify(response.body.result.failure));
     const report = response.body.result;
     const expectedMaster = buildSleepPremiumStoryMaster(buildSleepPremiumInput(fixture.answers)).master;
@@ -115,14 +116,14 @@ test("v4 returns complete structured prose-only reports and derives every report
     assert.equal(report.usage.input_tokens, 410);
     assert.equal(app.calls.length, index + 1);
   }
-  const status = await app.send("GET", V4);
-  assert.equal(status.body.version, "phase2bench.v4");
+  const status = await app.send("GET", V5);
+  assert.equal(status.body.version, "phase2bench.v5");
   assert.equal(status.body.completed, 6);
 });
 
-test("v4 provider/validation failure returns a complete deterministic fallback without altering the master", async (t) => {
+test("v5 provider/validation failure returns a complete deterministic fallback without altering the master", async (t) => {
   const app = await setup(t, async () => ({ status: "completed", output_text: JSON.stringify({ story_intro: "invalid" }), usage: { input_tokens: 40, output_tokens: 5, total_tokens: 45 } }));
-  const response = await app.send("POST", V4, { fixture: "A" });
+  const response = await app.send("POST", V5, { fixture: "A" });
   assert.equal(response.status, 200, JSON.stringify(response.body));
   assert.equal(response.body.status, "failed");
   const report = response.body.result;
@@ -136,15 +137,17 @@ test("v4 provider/validation failure returns a complete deterministic fallback w
   assert.equal(app.calls.length, 1);
 });
 
-test("v1/v2/v3 archives are preserved and v4 cache is independent", async (t) => {
+test("v1-v4 archives are preserved and v5 cache is independent", async (t) => {
   const app = await setup(t, async () => ({ status: "failed", incomplete_details: { reason: "max_output_tokens" },
     id: "resp_test", _request_id: "req_test", usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } }));
   const expected = [
     ["/api/dev/premium-writer-benchmark", "phase2bench.v1", app.v1Dir],
     ["/api/dev/premium-writer-benchmark-v2", "phase2bench.v2", app.v2Dir],
     [V3, "phase2bench.v3", app.v3Dir],
+    [V4, "phase2bench.v4", join(app.root, "premium-writer-benchmark-v4")],
   ];
   for (const [path, version, directory] of expected) {
+    await mkdir(directory, { recursive: true });
     const historical = { version, fixture: "A", status: "completed", review_only: true, release_allowed: false, result: { preserve: version } };
     await writeFile(join(directory, "A.reserved"), "");
     await writeFile(join(directory, "A.json"), JSON.stringify(historical));
@@ -154,8 +157,10 @@ test("v1/v2/v3 archives are preserved and v4 cache is independent", async (t) =>
     else assert.equal(post.status, 410, `${version} generation is retired`);
     assert.deepEqual(JSON.parse(await readFile(join(directory, "A.json"), "utf8")), historical);
   }
-  assert.equal((await app.send("GET", `${V4}?fixture=A`)).status, 404);
-  const status = await app.send("GET", V4);
+  assert.equal((await app.send("GET", `${V5}?fixture=A`)).status, 404);
+  const retiredV4 = await app.send("POST", V4, { fixture: "B" });
+  assert.equal(retiredV4.status, 410, "v4 cannot generate or mutate its immutable cache");
+  const status = await app.send("GET", V5);
   assert.deepEqual(status.body.fixtures, Object.fromEntries(["A", "B", "C", "D", "E", "F"].map((id) => [id, "unused"])));
   assert.equal(app.calls.length, 0);
 });
